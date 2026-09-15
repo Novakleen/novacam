@@ -101,7 +101,9 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
     });
   };
 
+  const isAdmin = profile?.role === 'Admin';
   const isAdminOrManager = profile?.role === 'Admin' || profile?.role === 'Manager';
+  const isMemberLike = profile?.role === 'Member' || profile?.role === 'Viewer';
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900/95 backdrop-blur-xl border-r border-gray-100 dark:border-gray-800">
@@ -142,10 +144,12 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           icon={ImageIcon} label="Photos" path="/photos" 
           isActive={location.pathname === '/photos'} onClick={() => navigate('/photos')}
         />
-        <SidebarItem 
-          icon={Users} label="Team Members" path="/users"
-          isActive={location.pathname === '/users'} onClick={() => navigate('/users')} 
-        />
+        {isAdmin && (
+          <SidebarItem 
+            icon={Users} label="Team Members" path="/users"
+            isActive={location.pathname === '/users'} onClick={() => navigate('/users')} 
+          />
+        )}
         <SidebarItem 
           icon={Clock} label="Time Tracker" path="/time-tracker"
           isActive={location.pathname === '/time-tracker'} onClick={() => navigate('/time-tracker')}
@@ -157,61 +161,65 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           isNew
         />
 
-        <div className="px-4 mb-2 mt-6">
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tools</h3>
-        </div>
+        {!isMemberLike && isAdminOrManager && (
+          <>
+            <div className="px-4 mb-2 mt-6">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tools</h3>
+            </div>
 
-        <SidebarItem 
-          icon={BarChart3} label="HubSpot Dashboard" path="/hubspot-dashboard" 
-          isActive={location.pathname === '/hubspot-dashboard'} onClick={() => navigate('/hubspot-dashboard')}
-        />
+            <SidebarItem 
+              icon={BarChart3} label="HubSpot Dashboard" path="/hubspot-dashboard" 
+              isActive={location.pathname === '/hubspot-dashboard'} onClick={() => navigate('/hubspot-dashboard')}
+            />
 
-        <SidebarItem 
-          icon={LinkIcon} label="HubSpot CRM" path="/crm-hubspot" 
-          isActive={location.pathname === '/crm-hubspot'} onClick={handleComingSoon} isComingSoon
-        />
+            <SidebarItem 
+              icon={LinkIcon} label="HubSpot CRM" path="/crm-hubspot" 
+              isActive={location.pathname === '/crm-hubspot'} onClick={handleComingSoon} isComingSoon
+            />
 
-        <SidebarItem 
-          icon={UploadCloud} label="Large File Upload" path="/upload-large"
-          isActive={location.pathname === '/upload-large'} onClick={() => navigate('/upload-large')} 
-        />
-        
-        {isAdminOrManager && (
-          <SidebarItem 
-            icon={UserPlus} label="User Management" path="/admin/users"
-            isActive={location.pathname === '/admin/users'} onClick={() => navigate('/admin/users')} 
-          />
+            <SidebarItem 
+              icon={UploadCloud} label="Large File Upload" path="/upload-large"
+              isActive={location.pathname === '/upload-large'} onClick={() => navigate('/upload-large')} 
+            />
+            
+            {isAdmin && (
+              <SidebarItem 
+                icon={UserPlus} label="User Management" path="/admin/users"
+                isActive={location.pathname === '/admin/users'} onClick={() => navigate('/admin/users')} 
+              />
+            )}
+            
+            <div className="mt-6 px-4 mb-2">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Marketing</h3>
+            </div>
+            
+            <SidebarItem 
+              icon={Briefcase} label="Public Portfolio" path="/portfolio" 
+              isActive={location.pathname === '/portfolio'} onClick={() => navigate('/portfolio')}
+            />
+            
+            <div className="mt-6 px-4 mb-2">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Debug</h3>
+            </div>
+
+            <SidebarItem 
+              icon={Bug} label="Bug Hunter" path="/bug-hunter" 
+              isActive={location.pathname === '/bug-hunter'} onClick={() => navigate('/bug-hunter')}
+            />
+            <SidebarItem 
+              icon={Camera} label="CompanyCam" path="/companycam-explorer" 
+              isActive={location.pathname === '/companycam-explorer'} onClick={() => navigate('/companycam-explorer')} isNew
+            />
+            <SidebarItem 
+              icon={Bug} label="HubSpot Debugger" path="/hubspot-debug" 
+              isActive={location.pathname === '/hubspot-debug'} onClick={() => navigate('/hubspot-debug')}
+            />
+            <SidebarItem 
+              icon={MessageSquare} label="Direct7 SMS" path="/direct7-debug" 
+              isActive={location.pathname === '/direct7-debug'} onClick={() => navigate('/direct7-debug')}
+            />
+          </>
         )}
-        
-        <div className="mt-6 px-4 mb-2">
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Marketing</h3>
-        </div>
-        
-        <SidebarItem 
-          icon={Briefcase} label="Public Portfolio" path="/portfolio" 
-          isActive={location.pathname === '/portfolio'} onClick={() => navigate('/portfolio')}
-        />
-        
-        <div className="mt-6 px-4 mb-2">
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Debug</h3>
-        </div>
-
-        <SidebarItem 
-          icon={Bug} label="Bug Hunter" path="/bug-hunter" 
-          isActive={location.pathname === '/bug-hunter'} onClick={() => navigate('/bug-hunter')}
-        />
-        <SidebarItem 
-          icon={Camera} label="CompanyCam" path="/companycam-explorer" 
-          isActive={location.pathname === '/companycam-explorer'} onClick={() => navigate('/companycam-explorer')} isNew
-        />
-        <SidebarItem 
-          icon={Bug} label="HubSpot Debugger" path="/hubspot-debug" 
-          isActive={location.pathname === '/hubspot-debug'} onClick={() => navigate('/hubspot-debug')}
-        />
-        <SidebarItem 
-          icon={MessageSquare} label="Direct7 SMS" path="/direct7-debug" 
-          isActive={location.pathname === '/direct7-debug'} onClick={() => navigate('/direct7-debug')}
-        />
       </div>
 
       <div className="p-4 border-t border-gray-100 dark:border-gray-800 md:hidden bg-gray-50/50 dark:bg-gray-900/50">
