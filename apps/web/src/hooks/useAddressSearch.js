@@ -101,7 +101,7 @@ const useAddressSearch = () => {
           { 
             signal,
             headers: {
-              'Accept-Language': 'en-US,en;q=0.9',
+              'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
               // It's polite to identify the app to OSM
               'User-Agent': 'NovaKleen-Project-App/1.0'
             }

@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Loader2, MapPin, Search, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import useAddressSearch from '@/hooks/useAddressSearch';
 
@@ -11,17 +10,21 @@ import useAddressSearch from '@/hooks/useAddressSearch';
  * 
  * @param {Object} props
  * @param {function} props.onSelect - Callback fired when an address is selected. format: (addressObject) => void
+ * @param {function} [props.onInputChange] - Callback fired when the user types (raw query string)
  * @param {string} [props.placeholder] - Input placeholder text
  * @param {string} [props.className] - Additional CSS classes
  * @param {string} [props.defaultValue] - Initial value for the input
  * @param {boolean} [props.disabled] - Whether the input is disabled
+ * @param {string} [props.id] - Optional input id
  */
 const AddressSearchInput = ({ 
-  onSelect, 
+  onSelect,
+  onInputChange,
   placeholder = "Search for an address...", 
   className,
   defaultValue = "",
-  disabled = false
+  disabled = false,
+  id,
 }) => {
   const { 
     query, 
@@ -37,11 +40,9 @@ const AddressSearchInput = ({
   const wrapperRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Initialize with default value if provided
+  // Reset query whenever defaultValue changes (e.g. dialog reopen / profile load)
   useEffect(() => {
-    if (defaultValue) {
-      setQuery(defaultValue);
-    }
+    setQuery(defaultValue ?? '');
   }, [defaultValue, setQuery]);
 
   // Handle click outside to close suggestions
@@ -65,7 +66,11 @@ const AddressSearchInput = ({
   }, [suggestions]);
 
   const handleInputChange = (e) => {
-    searchAddress(e.target.value);
+    const value = e.target.value;
+    searchAddress(value);
+    if (onInputChange) {
+      onInputChange(value);
+    }
   };
 
   const handleSelect = (item) => {
@@ -94,6 +99,7 @@ const AddressSearchInput = ({
         </div>
         
         <Input
+          id={id}
           ref={inputRef}
           value={query}
           onChange={handleInputChange}
@@ -123,6 +129,7 @@ const AddressSearchInput = ({
           {suggestions.map((item, index) => (
             <button
               key={index}
+              type="button"
               onClick={() => handleSelect(item)}
               className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700 focus:outline-none transition-colors flex items-start gap-2"
               role="option"

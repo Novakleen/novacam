@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import AddressSearchInput from '@/components/ui/AddressSearchInput';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
@@ -161,11 +162,15 @@ const ProfilePage = () => {
                 <MapPin className="inline h-4 w-4 mr-2" />
                 Adresse
               </Label>
-              <Input
+              <AddressSearchInput
+                key={`profile-${profile?.id ?? 'loading'}-${profile?.updated_at ?? ''}`}
                 id="address"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Enter your address"
+                defaultValue={address}
+                placeholder="Tapez une adresse…"
+                onSelect={(item) =>
+                  setAddress(item?.display_name || item?.formattedAddress || '')
+                }
+                onInputChange={setAddress}
               />
             </div>
 
@@ -205,7 +210,7 @@ const ProfilePage = () => {
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
           <p className="text-sm text-blue-800 dark:text-blue-200">
             <strong>GDPR Compliance:</strong> Your data is stored securely and processed in accordance with EU GDPR regulations. 
-            You have the right to access, modify, or delete your personal data at any time.
+            You have the right to access, update, or delete your personal data at any time.
           </p>
         </div>
       </div>

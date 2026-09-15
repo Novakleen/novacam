@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, UserPlus, Lock, Mail, User, Shield, AlertCircle, MapPin } from 'lucide-react';
+import { Loader2, UserPlus, Lock, Mail, User, Shield, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
+import AddressSearchInput from '@/components/ui/AddressSearchInput';
 import { supabase } from '@/lib/customSupabaseClient';
 
 const DirectUserCreationDialog = ({ onUserCreated }) => {
@@ -90,7 +91,7 @@ const DirectUserCreationDialog = ({ onUserCreated }) => {
         <DialogHeader>
           <DialogTitle>Create New User</DialogTitle>
           <DialogDescription>
-            Directly add a user to the system. They will be able to log in immediately with these credentials.
+            Directly add a user to the system with name, email, address, and role. They will be able to log in immediately with these credentials. Use address autocomplete to pick a validated address.
           </DialogDescription>
         </DialogHeader>
         
@@ -118,16 +119,21 @@ const DirectUserCreationDialog = ({ onUserCreated }) => {
 
           <div className="grid gap-2">
             <Label htmlFor="address">Adresse</Label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-              <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="pl-10"
-                placeholder="Street, city, postal code"
-              />
-            </div>
+            <AddressSearchInput
+              key={`create-${isOpen}`}
+              id="address"
+              defaultValue={formData.address}
+              placeholder="Tapez une adresse…"
+              onSelect={(item) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  address: item?.display_name || item?.formattedAddress || '',
+                }))
+              }
+              onInputChange={(value) =>
+                setFormData((prev) => ({ ...prev, address: value }))
+              }
+            />
           </div>
 
           <div className="grid gap-2">
