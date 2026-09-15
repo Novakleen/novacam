@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Pencil, Mail, User, Shield, AlertCircle, MapPin } from 'lucide-react';
+import { Loader2, Pencil, Mail, User, Shield, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
+import AddressSearchInput from '@/components/ui/AddressSearchInput';
 import { supabase } from '@/lib/customSupabaseClient';
 
 const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
@@ -81,7 +82,9 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Edit User</DialogTitle>
-          <DialogDescription>Update the user's name, email, and role.</DialogDescription>
+          <DialogDescription>
+            Update the user&apos;s name, email, address, and role. Use address autocomplete to pick a validated address.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
@@ -108,16 +111,21 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
 
           <div className="grid gap-2">
             <Label htmlFor="edit-address">Adresse</Label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-              <Input
-                id="edit-address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="pl-10"
-                placeholder="Street, city, postal code"
-              />
-            </div>
+            <AddressSearchInput
+              key={`${user?.id ?? 'new'}-${isOpen}`}
+              id="edit-address"
+              defaultValue={formData.address}
+              placeholder="Tapez une adresse…"
+              onSelect={(item) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  address: item?.display_name || item?.formattedAddress || '',
+                }))
+              }
+              onInputChange={(value) =>
+                setFormData((prev) => ({ ...prev, address: value }))
+              }
+            />
           </div>
 
           <div className="grid gap-2">
