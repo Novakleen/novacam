@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Home, Image as ImageIcon, Users, Briefcase, Bell, Monitor, Map as MapIcon, 
   Menu, X, LogOut, Moon, Sun, User, UserPlus, UploadCloud, Link as LinkIcon,
-  Bug, ChevronRight, MessageSquare, BarChart3, Camera, Clock, Droplets
+  Bug, ChevronRight, MessageSquare, BarChart3, Camera, Clock, Droplets, PieChart
 } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -160,6 +160,12 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           isActive={location.pathname === '/spray-tracker'} onClick={() => navigate('/spray-tracker')}
           isNew
         />
+        {isAdmin && (
+          <SidebarItem 
+            icon={PieChart} label="Marges" path="/margins"
+            isActive={location.pathname === '/margins'} onClick={() => navigate('/margins')}
+          />
+        )}
 
         {!isMemberLike && isAdminOrManager && (
           <>
@@ -305,6 +311,7 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
                 location.pathname === '/hubspot-dashboard' ? 'HubSpot Dashboard' :
                 location.pathname === '/companycam-explorer' ? 'CompanyCam Explorer' :
                 location.pathname === '/direct7-debug' ? 'Direct7 SMS Debug' :
+                location.pathname === '/margins' ? 'Marge chantiers' :
                 location.pathname === '/bug-hunter' ? 'Bug Hunter' :
                 location.pathname.replace('/', '').charAt(0).toUpperCase() + location.pathname.slice(2)}
              </h2>

@@ -30,6 +30,7 @@ import UploadManager from '@/components/uploads/UploadManager';
 import BugHunterPage from '@/pages/BugHunterPage';
 import TimeTrackerPage from '@/pages/TimeTrackerPage';
 import SprayTrackerPage from '@/pages/SprayTrackerPage';
+import MarginsPage from '@/pages/MarginsPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
 
 const PrivateRoute = ({ children }) => {
@@ -213,6 +214,7 @@ function AppRoutes() {
 
           <Route path="/time-tracker" element={<PrivateRoute><TimeTrackerPage /></PrivateRoute>} />
           <Route path="/spray-tracker" element={<PrivateRoute><SprayTrackerPage /></PrivateRoute>} />
+          <Route path="/margins" element={<RoleRoute allowedRoles={['Admin']}><MarginsPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
           
