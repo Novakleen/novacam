@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
       }
     )
 
-    const { email, password, fullName, role } = await req.json()
+    const { email, password, fullName, role, address } = await req.json()
 
     if (!email || !password) {
       return new Response(
@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     // Using upsert ensures we handle the race condition if the trigger is slow/fast
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .update({ role: role || 'Member', full_name: fullName })
+      .update({ role: role || 'Member', full_name: fullName, ...(address !== undefined ? { address } : {}) })
       .eq('id', userData.user.id)
 
     if (profileError) {

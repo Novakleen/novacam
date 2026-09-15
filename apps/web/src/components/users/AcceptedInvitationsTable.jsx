@@ -100,10 +100,15 @@ const AcceptedInvitationsTable = ({ users, loading, onActionComplete, currentUse
                           {user.initials || <User className="h-4 w-4" />}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="font-medium text-gray-900 dark:text-white">
-                        {user.full_name || 'Unnamed User'}
-                        {isSelf && <span className="ml-2 text-xs text-blue-600">(You)</span>}
-                      </span>
+                      <div>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {user.full_name || 'Unnamed User'}
+                          {isSelf && <span className="ml-2 text-xs text-blue-600">(You)</span>}
+                        </span>
+                        {user.address ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{user.address}</p>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                   <td className="py-4 px-6 text-sm text-gray-600 dark:text-gray-300">

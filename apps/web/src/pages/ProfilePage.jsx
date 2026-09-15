@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
-import { User, Mail, Shield } from 'lucide-react';
+import { User, Mail, Shield, MapPin } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
@@ -15,6 +15,7 @@ const ProfilePage = () => {
   const { toast } = useToast();
   const [profile, setProfile] = useState(null);
   const [fullName, setFullName] = useState('');
+  const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -38,6 +39,7 @@ const ProfilePage = () => {
       if (data) {
         setProfile(data);
         setFullName(data.full_name || '');
+        setAddress(data.address || '');
       }
     } catch (error) {
       console.error("Profile fetch error:", error);
@@ -67,6 +69,7 @@ const ProfilePage = () => {
       // For this form, we are only updating name/initials, but good practice to be safe
       const updates = {
         full_name: fullName,
+        address: address,
         initials: initials,
         updated_at: new Date().toISOString(),
       };
@@ -150,6 +153,19 @@ const ProfilePage = () => {
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Enter your full name"
                 required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="address">
+                <MapPin className="inline h-4 w-4 mr-2" />
+                Adresse
+              </Label>
+              <Input
+                id="address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Enter your address"
               />
             </div>
 

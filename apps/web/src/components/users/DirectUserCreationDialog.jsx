@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, UserPlus, Lock, Mail, User, Shield, AlertCircle } from 'lucide-react';
+import { Loader2, UserPlus, Lock, Mail, User, Shield, AlertCircle, MapPin } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ const DirectUserCreationDialog = ({ onUserCreated }) => {
   const [formData, setFormData] = useState({
     email: '',
     fullName: '',
+    address: '',
     password: '',
     role: 'Member',
   });
@@ -35,7 +36,7 @@ const DirectUserCreationDialog = ({ onUserCreated }) => {
   };
 
   const resetForm = () => {
-    setFormData({ email: '', fullName: '', password: '', role: 'Member' });
+    setFormData({ email: '', fullName: '', address: '', password: '', role: 'Member' });
     setError('');
   };
 
@@ -111,6 +112,20 @@ const DirectUserCreationDialog = ({ onUserCreated }) => {
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                 className="pl-10"
                 placeholder="John Doe"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="address">Adresse</Label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className="pl-10"
+                placeholder="Street, city, postal code"
               />
             </div>
           </div>
