@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Pencil, Mail, User, Shield, AlertCircle } from 'lucide-react';
+import { Loader2, Pencil, Mail, User, Shield, AlertCircle, MapPin } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
+    address: '',
     role: 'Member',
   });
 
@@ -26,6 +27,7 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
       setFormData({
         fullName: user.full_name || '',
         email: user.email || '',
+        address: user.address || '',
         role: user.role || 'Member',
       });
       setError('');
@@ -48,6 +50,7 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
           userId: user.id,
           fullName: formData.fullName,
           email: formData.email,
+          address: formData.address,
           role: formData.role,
         },
       });
@@ -99,6 +102,20 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                 className="pl-10"
                 placeholder="John Doe"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="edit-address">Adresse</Label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              <Input
+                id="edit-address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className="pl-10"
+                placeholder="Street, city, postal code"
               />
             </div>
           </div>

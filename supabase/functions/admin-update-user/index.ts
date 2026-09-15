@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Admin privileges required' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const { userId, fullName, role, email, password } = await req.json()
+    const { userId, fullName, role, email, password, address } = await req.json()
     if (!userId) {
       return new Response(JSON.stringify({ error: 'userId is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
     if (fullName !== undefined) profileUpdate.full_name = fullName
     if (role !== undefined) profileUpdate.role = role
     if (email !== undefined) profileUpdate.email = email
+    if (address !== undefined) profileUpdate.address = address
     if (Object.keys(profileUpdate).length > 0) {
       const { error: profileError } = await supabaseAdmin.from('profiles').update(profileUpdate).eq('id', userId)
       if (profileError) {
