@@ -22,6 +22,7 @@ import {
   Mail,
   UploadCloud as CloudUpload,
   ClipboardList,
+  PieChart,
   Image as ImageIcon,
   Plus,
   Pencil,
@@ -58,6 +59,7 @@ import ProjectTimeSection from '@/components/time/ProjectTimeSection';
 import ProjectSpraySection from '@/components/spray/ProjectSpraySection';
 import ProjectExpenseSection from '@/components/expenses/ProjectExpenseSection';
 import SuiviSidebarLinks from '@/components/suivi/SuiviSidebarLinks';
+import ProjectMarginTab from '@/components/margins/ProjectMarginTab';
 import { archiveProject } from '@/lib/projectUtils';
 import { useAssignCustomer } from '@/hooks/useAssignCustomer';
 import {
@@ -675,6 +677,13 @@ const ProjectDetailPage = () => {
                     {t('suivi.title')}
                   </TabsTrigger>
                   <TabsTrigger
+                    value="marge"
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-gray-900 dark:data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:shadow-none bg-transparent px-3 sm:px-4 py-2.5 text-sm font-medium text-gray-500 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white gap-1.5"
+                  >
+                    <PieChart className="h-3.5 w-3.5" />
+                    Marge
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="beforeafter"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-gray-900 dark:data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:shadow-none bg-transparent px-3 sm:px-4 py-2.5 text-sm font-medium text-gray-500 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white gap-1.5"
                   >
@@ -759,6 +768,18 @@ const ProjectDetailPage = () => {
                     projectId={id}
                     projectName={project?.name}
                     companycamProjectId={project?.companycam_project_id || null}
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="marge" className="mt-0 space-y-5 focus-visible:outline-none">
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                  <ProjectMarginTab
+                    projectId={id}
+                    companycamProjectId={project?.companycam_project_id || null}
+                    projectName={project?.name || ''}
+                    projectAddress={project?.full_address || project?.address || ''}
+                    isAdmin={isAdmin}
                   />
                 </div>
               </TabsContent>

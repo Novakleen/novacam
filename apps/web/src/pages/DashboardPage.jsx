@@ -114,7 +114,7 @@ const DashboardPage = () => {
         .select('project_id, companycam_project_id, start_time, end_time, break_minutes'),
       supabase
         .from('spray_entries')
-        .select('project_id, companycam_project_id, product_quantity, surface_m2'),
+        .select('project_id, companycam_project_id, product_quantity, surface_m2, spray_hours'),
     ]);
 
     const timeByProject = {};
@@ -133,14 +133,19 @@ const DashboardPage = () => {
 
     const sprayByProject = {};
     const sprayByCc = {};
+    const sprayHoursByProject = {};
+    const sprayHoursByCc = {};
     (sprayRes.data || []).forEach((row) => {
       const qty = Number(row.product_quantity) || 0;
       const m2 = Number(row.surface_m2) || 0;
+      const sprayH = Number(row.spray_hours) || 0;
       if (row.project_id) {
         const cur = sprayByProject[row.project_id] || { product_qty: 0, surface_m2: 0 };
         cur.product_qty += qty;
         cur.surface_m2 += m2;
         sprayByProject[row.project_id] = cur;
+        sprayHoursByProject[row.project_id] =
+          (sprayHoursByProject[row.project_id] || 0) + sprayH;
       }
       if (row.companycam_project_id) {
         const key = String(row.companycam_project_id);
@@ -148,10 +153,35 @@ const DashboardPage = () => {
         cur.product_qty += qty;
         cur.surface_m2 += m2;
         sprayByCc[key] = cur;
+        sprayHoursByCc[key] = (sprayHoursByCc[key] || 0) + sprayH;
       }
     });
 
-    statsRef.current = { timeByProject, timeByCc, sprayByProject, sprayByCc };
+    let marginByProject = {};
+    let marginByCc = {};
+    try {
+      // All snapshots (one dossier per project) — small table
+      const { data: margins } = await supabase
+        .from('margin_dossiers')
+        .select('project_id, companycam_project_id, ma, mb, ma_pct, generated_at');
+      for (const row of margins || []) {
+        if (row.project_id) marginByProject[row.project_id] = row;
+        if (row.companycam_project_id) marginByCc[String(row.companycam_project_id)] = row;
+      }
+    } catch (e) {
+      console.warn('margin snapshots load failed', e);
+    }
+
+    statsRef.current = {
+      timeByProject,
+      timeByCc,
+      sprayByProject,
+      sprayByCc,
+      sprayHoursByProject,
+      sprayHoursByCc,
+      marginByProject,
+      marginByCc,
+    };
     return statsRef.current;
   }, []);
 
@@ -162,17 +192,21 @@ const DashboardPage = () => {
         (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
       const photos = media.filter((m) => m.file_type !== 'video');
-      const spray = s.sprayByProject[p.id] || { product_qty: 0, surface_m2: 0 };
-      let hours = s.timeByProject[p.id] || 0;
+      const spray = { ...(s.sprayByProject[p.id] || { product_qty: 0, surface_m2: 0 }) };
+      let hours = (s.timeByProject[p.id] || 0) + (s.sprayHoursByProject?.[p.id] || 0);
       if (p.companycam_project_id) {
-        hours += s.timeByCc[String(p.companycam_project_id)] || 0;
-        const sprayCc = s.sprayByCc[String(p.companycam_project_id)] || {
-          product_qty: 0,
-          surface_m2: 0,
-        };
+        const cc = String(p.companycam_project_id);
+        hours += (s.timeByCc[cc] || 0) + (s.sprayHoursByCc?.[cc] || 0);
+        const sprayCc = s.sprayByCc[cc] || { product_qty: 0, surface_m2: 0 };
         spray.product_qty += sprayCc.product_qty;
         spray.surface_m2 += sprayCc.surface_m2;
       }
+      const margin =
+        s.marginByProject?.[p.id] ||
+        (p.companycam_project_id
+          ? s.marginByCc?.[String(p.companycam_project_id)]
+          : null) ||
+        null;
       return {
         ...p,
         source: 'novacam',
@@ -188,6 +222,8 @@ const DashboardPage = () => {
           hours,
           product_qty: spray.product_qty,
           surface_m2: spray.surface_m2,
+          ma_pct: margin?.ma_pct ?? null,
+          ma: margin?.ma ?? null,
         },
       };
     });
@@ -198,7 +234,8 @@ const DashboardPage = () => {
     return (rows || []).map((p) => {
       const idStr = String(p.id);
       const spray = s.sprayByCc[idStr] || { product_qty: 0, surface_m2: 0 };
-      const hours = s.timeByCc[idStr] || 0;
+      const hours = (s.timeByCc[idStr] || 0) + (s.sprayHoursByCc?.[idStr] || 0);
+      const margin = s.marginByCc?.[idStr] || null;
       const feature = extractFeatureImage(p);
       const photoCount = p.photo_count ?? p.photos_count ?? p.image_count ?? 0;
       const existingRecent = p.recent_photos || [];
@@ -223,6 +260,8 @@ const DashboardPage = () => {
           hours,
           product_qty: spray.product_qty,
           surface_m2: spray.surface_m2,
+          ma_pct: margin?.ma_pct ?? null,
+          ma: margin?.ma ?? null,
         },
       };
     });
@@ -332,10 +371,19 @@ const DashboardPage = () => {
             list = list.map((p) => {
               const sb = map[String(p.id)];
               if (!sb) return p;
+              const margin =
+                statsRef.current?.marginByProject?.[sb.id] ||
+                statsRef.current?.marginByCc?.[String(p.id)] ||
+                null;
               return {
                 ...p,
                 supabase_id: sb.id,
                 hubspot_contact_id: sb.hubspot_contact_id || p.hubspot_contact_id,
+                stats: {
+                  ...p.stats,
+                  ma_pct: margin?.ma_pct ?? p.stats?.ma_pct ?? null,
+                  ma: margin?.ma ?? p.stats?.ma ?? null,
+                },
               };
             });
           }

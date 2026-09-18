@@ -22,7 +22,8 @@ import {
  * essenceHours = sum person hours on lines whose service ∈ params.essence_services
  * essenceFuel = essenceHours * essence_l_h * essence_eur_l
  * fuel (total) = (dieselFuel||0) + (essenceFuel||0)
- * direct = productCost + mo + fuel
+ * otherExpenses = sum project_expenses.amount_ht (optional)
+ * direct = productCost + mo + fuel + otherExpenses
  * if caHt null: mb/ma null, com=0, ads=0
  * else:
  *   com = closer in commercial_closers ? caHt * com_rate : 0
@@ -47,9 +48,11 @@ export function calculateProjectMargin({
   prices = {},
   fuelByDate = {},
   dieselEurL,
+  otherExpenses = 0,
 } = {}) {
   const personHours = sumPersonHours(hourLines);
   const productCost = sumProductCost(productLines, prices);
+  const otherExp = Number(otherExpenses) || Number(dossier.other_expenses) || 0;
   const eurH = Number(params.eur_h) || 0;
   const mo = personHours * eurH;
 
@@ -72,7 +75,7 @@ export function calculateProjectMargin({
   const essenceEurL = Number(params.essence_eur_l) || 0;
   const essenceFuel = essenceHours * essenceLh * essenceEurL;
   const fuel = (dieselFuel || 0) + (essenceFuel || 0);
-  const direct = productCost + mo + fuel;
+  const direct = productCost + mo + fuel + (Number.isFinite(otherExp) ? otherExp : 0);
 
   const caHt = toNumberOrNull(dossier.ca_ht);
   const closer = dossier.closer || '';
@@ -118,6 +121,7 @@ export function calculateProjectMargin({
     fuel: roundMoney(fuel),
     fuelIncomplete: fuelResult.incomplete,
     fuelDays: fuelResult.days,
+    otherExpenses: roundMoney(otherExp || 0),
     direct: roundMoney(direct),
     caHt: caHt == null ? null : roundMoney(caHt),
     com: roundMoney(com),
