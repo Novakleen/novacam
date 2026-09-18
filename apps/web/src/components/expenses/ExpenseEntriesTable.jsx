@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,15 +11,16 @@ import {
 import { formatDateDisplay } from '@/lib/timeTracking';
 import { formatMoney } from '@/lib/margin/format';
 import { cn } from '@/lib/utils';
-import { EXPENSE_CATEGORY_LABELS } from '@/components/expenses/ExpenseEntryFormDialog';
 
 const ExpenseEntriesTable = ({
   entries = [],
   loading = false,
   onEdit,
   onDelete,
-  emptyMessage = 'Aucune dépense enregistrée.',
+  emptyMessage,
 }) => {
+  const { t } = useTranslation();
+  const empty = emptyMessage || t('expenses.empty');
   if (loading) {
     return (
       <div className="space-y-2">
@@ -32,7 +34,7 @@ const ExpenseEntriesTable = ({
   if (!entries.length) {
     return (
       <div className="rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center text-muted-foreground">
-        {emptyMessage}
+        {empty}
       </div>
     );
   }
@@ -43,19 +45,20 @@ const ExpenseEntriesTable = ({
         <table className="w-full text-sm min-w-[720px]">
           <thead>
             <tr className="bg-[#2f5f8f] text-white">
-              <th className="text-left font-semibold px-4 py-3">Date</th>
-              <th className="text-left font-semibold px-3 py-3">Catégorie</th>
-              <th className="text-left font-semibold px-3 py-3">Libellé</th>
-              <th className="text-right font-semibold px-3 py-3">Montant HT</th>
-              <th className="text-left font-semibold px-3 py-3">Membre</th>
+              <th className="text-left font-semibold px-4 py-3">{t('expenses.colDate')}</th>
+              <th className="text-left font-semibold px-3 py-3">{t('expenses.colCategory')}</th>
+              <th className="text-left font-semibold px-3 py-3">{t('expenses.colLabel')}</th>
+              <th className="text-right font-semibold px-3 py-3">{t('expenses.colAmountHt')}</th>
+              <th className="text-left font-semibold px-3 py-3">{t('expenses.colMember')}</th>
               <th className="text-right font-semibold px-3 py-3 w-12" />
             </tr>
           </thead>
           <tbody>
             {entries.map((row, idx) => {
               const userName = row.profiles?.full_name || row.profiles?.email || '—';
-              const categoryLabel =
-                EXPENSE_CATEGORY_LABELS[row.category] || row.category || '—';
+              const categoryLabel = row.category
+                ? t(`expenses.categories.${row.category}`, { defaultValue: row.category })
+                : '—';
 
               return (
                 <tr
@@ -97,13 +100,13 @@ const ExpenseEntriesTable = ({
                           onClick={() => onEdit?.(row)}
                           className="gap-2 cursor-pointer"
                         >
-                          <Pencil className="h-4 w-4" /> Modifier
+                          <Pencil className="h-4 w-4" /> {t('common.edit')}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => onDelete?.(row)}
                           className="gap-2 cursor-pointer text-red-600 focus:text-red-600"
                         >
-                          <Trash2 className="h-4 w-4" /> Supprimer
+                          <Trash2 className="h-4 w-4" /> {t('common.delete')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

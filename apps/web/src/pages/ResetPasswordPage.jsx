@@ -8,10 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 const ResetPasswordPage = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,8 +42,8 @@ const ResetPasswordPage = () => {
     if (password.length < 6) {
       toast({
         variant: "destructive",
-        title: "Password too short",
-        description: "Password must be at least 6 characters long.",
+        title: t('resetPassword.tooShortTitle'),
+        description: t('resetPassword.tooShortDesc'),
       });
       return;
     }
@@ -48,8 +51,8 @@ const ResetPasswordPage = () => {
     if (password !== confirmPassword) {
       toast({
         variant: "destructive",
-        title: "Passwords don't match",
-        description: "Please make sure both passwords are identical.",
+        title: t('resetPassword.mismatchTitle'),
+        description: t('resetPassword.mismatchDesc'),
       });
       return;
     }
@@ -63,23 +66,26 @@ const ResetPasswordPage = () => {
     if (error) {
       toast({
         variant: "destructive",
-        title: "Reset failed",
+        title: t('resetPassword.failedTitle'),
         description: error.message,
       });
       return;
     }
 
     toast({
-      title: "Password updated",
-      description: "Your password has been changed successfully. You can now sign in.",
+      title: t('resetPassword.updatedTitle'),
+      description: t('resetPassword.updatedDesc'),
     });
     navigate('/login');
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4 relative">
+      <div className="absolute top-4 right-4 z-10">
+        <LanguageSwitcher />
+      </div>
       <Helmet>
-        <title>Reset Password - Novakleen</title>
+        <title>{t('resetPassword.title')}</title>
         <meta name="description" content="Set a new password for your Novakleen account" />
       </Helmet>
 
@@ -99,10 +105,10 @@ const ResetPasswordPage = () => {
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
           <div className="text-center mb-8">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Set a New Password
+              {t('resetPassword.heading')}
             </h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm">
-              Enter your new password below
+              {t('resetPassword.subtitle')}
             </p>
           </div>
 
@@ -110,7 +116,7 @@ const ResetPasswordPage = () => {
             <form onSubmit={handleResetPassword} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="new-password" className="text-gray-700 dark:text-gray-300">
-                  New Password
+                  {t('resetPassword.newPassword')}
                 </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -129,7 +135,7 @@ const ResetPasswordPage = () => {
 
               <div className="space-y-2">
                 <Label htmlFor="confirm-password" className="text-gray-700 dark:text-gray-300">
-                  Confirm Password
+                  {t('resetPassword.confirmPassword')}
                 </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -154,12 +160,12 @@ const ResetPasswordPage = () => {
                 {loading ? (
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Updating...
+                    {t('resetPassword.updating')}
                   </div>
                 ) : (
                   <>
                     <KeyRound className="mr-2 h-5 w-5" />
-                    Update Password
+                    {t('resetPassword.update')}
                   </>
                 )}
               </Button>
@@ -168,12 +174,12 @@ const ResetPasswordPage = () => {
             <div className="text-center py-4">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Verifying your reset link...
+                {t('resetPassword.verifying')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
-                If this takes too long, your link may have expired.{' '}
+                {t('resetPassword.expiredHint')}{' '}
                 <a href="/login" className="text-blue-600 hover:underline dark:text-blue-400">
-                  Back to login
+                  {t('resetPassword.backToLogin')}
                 </a>
               </p>
             </div>

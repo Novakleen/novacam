@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { todayISODate } from '@/lib/timeTracking';
+import { useTranslation } from 'react-i18next';
 
 export const EXPENSE_CATEGORIES = [
   { value: 'nacelle', label: 'Nacelle' },
@@ -62,6 +63,7 @@ const ExpenseEntryFormDialog = ({
 }) => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() =>
     emptyForm({ user_id: user?.id, project_id: defaultProjectId || '' })
@@ -105,26 +107,26 @@ const ExpenseEntryFormDialog = ({
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const lockedProjectLabel = lockCompanyCam
-    ? ccProjectName || 'Projet CompanyCam'
+    ? ccProjectName || t('expenses.ccProject')
     : projects.find((p) => p.id === (form.project_id || defaultProjectId))?.name ||
-      'Projet actuel';
+      t('expenses.currentProject');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!form.label?.trim()) {
-      toast({ variant: 'destructive', title: 'Erreur', description: 'Le libellé est obligatoire.' });
+      toast({ variant: 'destructive', title: t('common.error'), description: t('expenses.labelRequired') });
       return;
     }
     if (!form.expense_date) {
-      toast({ variant: 'destructive', title: 'Erreur', description: 'La date est obligatoire.' });
+      toast({ variant: 'destructive', title: t('common.error'), description: t('expenses.dateRequired') });
       return;
     }
     if (!form.category) {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: 'Choisissez une catégorie.',
+        title: t('common.error'),
+        description: t('expenses.categoryRequired'),
       });
       return;
     }
@@ -139,8 +141,8 @@ const ExpenseEntryFormDialog = ({
     if (amount == null || amount < 0) {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: 'Indiquez un montant HT valide (≥ 0).',
+        title: t('common.error'),
+        description: t('expenses.amountInvalid'),
       });
       return;
     }
@@ -160,8 +162,8 @@ const ExpenseEntryFormDialog = ({
     if (!projectId && !ccId) {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: 'Aucun projet lié à cette dépense.',
+        title: t('common.error'),
+        description: t('expenses.noProject'),
       });
       return;
     }
@@ -188,10 +190,10 @@ const ExpenseEntryFormDialog = ({
       }
       if (error) throw error;
       toast({
-        title: entry ? 'Dépense mise à jour' : 'Dépense enregistrée',
+        title: entry ? t('expenses.updatedTitle') : t('expenses.savedTitle'),
         description: entry
-          ? 'Les modifications ont été sauvegardées.'
-          : 'La dépense a été ajoutée au projet.',
+          ? t('expenses.updatedDesc')
+          : t('expenses.savedDesc'),
       });
       onOpenChange(false);
       onSuccess?.();
@@ -199,8 +201,8 @@ const ExpenseEntryFormDialog = ({
       console.error(err);
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: err.message || "Impossible d'enregistrer la dépense.",
+        title: t('common.error'),
+        description: err.message || t('expenses.saveError'),
       });
     } finally {
       setSaving(false);
@@ -213,23 +215,23 @@ const ExpenseEntryFormDialog = ({
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <Wallet className="h-5 w-5 text-amber-600" />
-            {entry ? 'Modifier la dépense' : 'Nouvelle dépense'}
+            {entry ? t('expenses.editExpense') : t('expenses.newExpense')}
           </DialogTitle>
           <DialogDescription>
-            Nacelle, hôtel, parking, matériel ou autre — montant HT hors calcul de marge.
+            {t('expenses.formDescription')}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {(lockProject || lockCompanyCam) && (
             <div className="space-y-2">
-              <Label>Projet</Label>
+              <Label>{t('expenses.project')}</Label>
               <Input className="h-11 rounded-xl bg-muted" value={lockedProjectLabel} disabled />
             </div>
           )}
 
           <div className="space-y-2">
-            <Label>Date</Label>
+            <Label>{t('expenses.colDate')}</Label>
             <Input
               type="date"
               className="h-11 rounded-xl"
@@ -240,18 +242,18 @@ const ExpenseEntryFormDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Catégorie</Label>
+            <Label>{t('expenses.category')}</Label>
             <Select
               value={form.category || 'nacelle'}
               onValueChange={(v) => setField('category', v)}
             >
               <SelectTrigger className="h-11 rounded-xl">
-                <SelectValue placeholder="Choisir une catégorie" />
+                <SelectValue placeholder={t('expenses.chooseCategory')} />
               </SelectTrigger>
               <SelectContent>
                 {EXPENSE_CATEGORIES.map((c) => (
                   <SelectItem key={c.value} value={c.value}>
-                    {c.label}
+                    {t(`expenses.categories.${c.value}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -259,10 +261,10 @@ const ExpenseEntryFormDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Libellé</Label>
+            <Label>{t('expenses.label')}</Label>
             <Input
               className="h-11 rounded-xl"
-              placeholder="Ex. Location nacelle jour 1"
+              placeholder={t('expenses.labelPlaceholder')}
               value={form.label}
               onChange={(e) => setField('label', e.target.value)}
               required
@@ -271,7 +273,7 @@ const ExpenseEntryFormDialog = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Montant HT (€)</Label>
+              <Label>{t('expenses.amountHt')}</Label>
               <Input
                 type="number"
                 min={0}
@@ -283,7 +285,7 @@ const ExpenseEntryFormDialog = ({
               />
             </div>
             <div className="space-y-2">
-              <Label>TVA % (optionnel)</Label>
+              <Label>{t('expenses.vatOptional')}</Label>
               <Input
                 type="number"
                 min={0}
@@ -297,10 +299,10 @@ const ExpenseEntryFormDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Notes</Label>
+            <Label>{t('expenses.notes')}</Label>
             <Textarea
               className="rounded-xl min-h-[70px]"
-              placeholder="Ajouter une note…"
+              placeholder={t('expenses.notesPlaceholder')}
               value={form.notes}
               onChange={(e) => setField('notes', e.target.value)}
             />
@@ -313,7 +315,7 @@ const ExpenseEntryFormDialog = ({
               className="rounded-xl"
               onClick={() => onOpenChange(false)}
             >
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
@@ -321,7 +323,7 @@ const ExpenseEntryFormDialog = ({
               className="rounded-xl bg-amber-600 hover:bg-amber-700"
             >
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {entry ? 'Enregistrer' : 'Ajouter'}
+              {entry ? t('common.save') : t('common.add')}
             </Button>
           </DialogFooter>
         </form>

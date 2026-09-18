@@ -32,6 +32,7 @@ import {
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -114,6 +115,7 @@ const ProjectDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [project, setProject] = useState(null);
   const [media, setMedia] = useState([]);
@@ -624,7 +626,7 @@ const ProjectDetailPage = () => {
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-gray-900 dark:data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:shadow-none bg-transparent px-3 sm:px-4 py-2.5 text-sm font-medium text-gray-500 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white gap-1.5"
                   >
                     <ClipboardList className="h-3.5 w-3.5" />
-                    Suivi
+                    {t('suivi.title')}
                   </TabsTrigger>
                   <TabsTrigger
                     value="beforeafter"
@@ -847,7 +849,7 @@ const ProjectDetailPage = () => {
               </SidebarCard>
             )}
 
-            <SidebarCard title="Suivi">
+            <SidebarCard title={t('suivi.title')}>
               <button
                 type="button"
                 onClick={() => setActiveTab('suivi')}
@@ -858,9 +860,9 @@ const ProjectDetailPage = () => {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600">
-                    Heures prestées
+                    {t('suivi.hoursWorked')}
                   </p>
-                  <p className="text-xs text-gray-400">Time tracker</p>
+                  <p className="text-xs text-gray-400">{t('suivi.timeTrackerSubtitle')}</p>
                 </div>
               </button>
               <button
@@ -873,9 +875,9 @@ const ProjectDetailPage = () => {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600">
-                    Pulvérisations
+                    {t('suivi.sprays')}
                   </p>
-                  <p className="text-xs text-gray-400">Spray tracker</p>
+                  <p className="text-xs text-gray-400">{t('suivi.sprayTrackerSubtitle')}</p>
                 </div>
               </button>
               <button
@@ -888,9 +890,9 @@ const ProjectDetailPage = () => {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600">
-                    Autres dépenses
+                    {t('suivi.otherExpenses')}
                   </p>
-                  <p className="text-xs text-gray-400">Expense tracker</p>
+                  <p className="text-xs text-gray-400">{t('suivi.expenseTrackerSubtitle')}</p>
                 </div>
               </button>
             </SidebarCard>

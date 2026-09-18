@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Droplets, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import SprayEntriesTable from '@/components/spray/SprayEntriesTable';
 import SprayEntryFormDialog from '@/components/spray/SprayEntryFormDialog';
@@ -18,6 +19,7 @@ import {
 
 const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) => {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [entries, setEntries] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,13 +60,13 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
       console.error(err);
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: 'Impossible de charger les pulvérisations du projet.',
+        title: t('common.error'),
+        description: t('spray.loadError'),
       });
     } finally {
       setLoading(false);
     }
-  }, [projectId, companycamProjectId, toast]);
+  }, [projectId, companycamProjectId, toast, t]);
 
   const fetchUsers = useCallback(async () => {
     const { data } = await supabase
@@ -85,14 +87,14 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
     try {
       const { error } = await supabase.from('spray_entries').delete().eq('id', deleting.id);
       if (error) throw error;
-      toast({ title: 'Supprimé', description: 'La pulvérisation a été supprimée.' });
+      toast({ title: t('common.deleted'), description: t('spray.deletedDesc') });
       setDeleting(null);
       fetchEntries();
     } catch (err) {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: err.message || 'Suppression impossible.',
+        title: t('common.error'),
+        description: err.message || t('common.deleteFailed'),
       });
     } finally {
       setDeletingBusy(false);
@@ -117,10 +119,10 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Droplets className="h-5 w-5 text-primary" />
-            Pulvérisations
+            {t('spray.title')}
           </h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Total projet :{' '}
+            {t('spray.totalProject')}{' '}
             <span className="font-semibold text-foreground">
               {totals.qty.toLocaleString('fr-BE')} qté · {totals.surface.toLocaleString('fr-BE')} m² ·{' '}
               {totals.hours.toFixed(1)} h
@@ -128,14 +130,14 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
             {entries.length > 0 && (
               <span className="text-muted-foreground">
                 {' '}
-                · {entries.length} entrée{entries.length > 1 ? 's' : ''}
+                · {t('common.entries', { count: entries.length })}
               </span>
             )}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="rounded-xl h-10" onClick={fetchEntries}>
-            <RefreshCw className="h-4 w-4 mr-2" /> Actualiser
+            <RefreshCw className="h-4 w-4 mr-2" /> {t('common.refresh')}
           </Button>
           <Button
             size="sm"
@@ -145,7 +147,7 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
               setFormOpen(true);
             }}
           >
-            <Plus className="h-4 w-4 mr-2" /> Nouvelle pulvérisation
+            <Plus className="h-4 w-4 mr-2" /> {t('spray.newSpray')}
           </Button>
         </div>
       </div>
@@ -153,7 +155,7 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
       <SprayEntriesTable
         entries={entries}
         loading={loading}
-        emptyMessage="Aucune pulvérisation sur ce projet. Ajoutez une première entrée."
+        emptyMessage={t('spray.empty')}
         onEdit={(row) => {
           setEditing(row);
           setFormOpen(true);
@@ -168,7 +170,7 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
           if (!o) setEditing(null);
         }}
         entry={editing}
-        projects={projectId ? [{ id: projectId, name: projectName || 'Projet' }] : []}
+        projects={projectId ? [{ id: projectId, name: projectName || t('expenses.project') }] : []}
         users={users}
         defaultProjectId={projectId || null}
         lockProject={Boolean(projectId)}
@@ -181,19 +183,19 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer cette entrée ?</AlertDialogTitle>
+            <AlertDialogTitle>{t('spray.deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est définitive et retirera la pulvérisation du projet.
+              {t('spray.deleteDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Annuler</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-xl">{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="rounded-xl bg-red-600 hover:bg-red-700"
               onClick={handleDelete}
               disabled={deletingBusy}
             >
-              Supprimer
+              {t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
