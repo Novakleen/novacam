@@ -51,6 +51,7 @@ import ProjectTagManager from '@/components/projects/ProjectTagManager';
 import ShareGalleryDialog from '@/components/media/ShareGalleryDialog';
 import UploadWatcher from '@/components/uploads/UploadWatcher';
 import ContactAssignmentDialog from '@/components/projects/ContactAssignmentDialog';
+import ProjectHubSpotAdminPanel from '@/components/hubspot/ProjectHubSpotAdminPanel';
 import CommentsSection from '@/components/comments/CommentsSection';
 import AdvancedPhotoUploadDialog from '@/components/capture/AdvancedPhotoUploadDialog';
 import ProjectTimeSection from '@/components/time/ProjectTimeSection';
@@ -115,6 +116,26 @@ const ProjectDetailPage = () => {
   const { toast } = useToast();
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRole = async () => {
+      if (!user?.id) {
+        if (!cancelled) setIsAdmin(false);
+        return;
+      }
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (!cancelled) setIsAdmin(data?.role === 'Admin');
+    };
+    loadRole();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   const [project, setProject] = useState(null);
   const [media, setMedia] = useState([]);
   const [comparisons, setComparisons] = useState([]);
@@ -748,6 +769,7 @@ const ProjectDetailPage = () => {
 
           {/* Right sidebar */}
           <aside className="w-full xl:w-[300px] shrink-0 space-y-3 xl:sticky xl:top-20">
+            {isAdmin && (
             <SidebarCard
               title="Client"
               action={
@@ -796,7 +818,18 @@ const ProjectDetailPage = () => {
               ) : (
                 <p className="text-sm text-gray-400">Aucun client assigné.</p>
               )}
+              <ProjectHubSpotAdminPanel
+                key={`hs-inv-${project?.hubspot_contact_id || 'none'}-${project?.hubspot_invoice_id || 'none'}`}
+                compact
+                showContact={false}
+                isAdmin={isAdmin}
+                projectId={project?.id}
+                companycamProjectId={project?.companycam_project_id || null}
+                projectName={project?.name}
+                projectAddress={project?.full_address || project?.address}
+              />
             </SidebarCard>
+            )}
 
             <SidebarCard title="Utilisateur">
               <div className="flex items-center gap-2.5">

@@ -27,6 +27,9 @@ import { useToast } from '@/components/ui/use-toast';
 import { useTranslation } from 'react-i18next';
 import * as ccApi from '@/lib/companycamService';
 import { cn } from '@/lib/utils';
+import ProjectHubSpotAdminPanel from '@/components/hubspot/ProjectHubSpotAdminPanel';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { supabase } from '@/lib/customSupabaseClient';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -111,6 +114,27 @@ const CompanyCamProjectDetailPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRole = async () => {
+      if (!user?.id) {
+        if (!cancelled) setIsAdmin(false);
+        return;
+      }
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (!cancelled) setIsAdmin(data?.role === 'Admin');
+    };
+    loadRole();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
 
   const [project, setProject] = useState(null);
   const [media, setMedia] = useState([]);
@@ -491,6 +515,12 @@ const CompanyCamProjectDetailPage = () => {
                   Ouvrir dans CompanyCam
                 </Button>
               )}
+              <ProjectHubSpotAdminPanel
+                isAdmin={isAdmin}
+                companycamProjectId={String(ccId)}
+                projectName={projectName}
+                projectAddress={address}
+              />
             </SidebarCard>
 
             <SidebarCard title="Adresse">
