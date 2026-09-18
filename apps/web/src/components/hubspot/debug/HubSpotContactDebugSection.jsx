@@ -87,7 +87,7 @@ const HubSpotContactDebugSection = () => {
                                 <div className="col-span-2 truncate text-muted-foreground">{c.company}</div>
                                 <div className="col-span-2 text-right font-mono text-xs flex items-center justify-end gap-1">
                                     {c.id}
-                                    <a href={`https://app.hubspot.com/contacts/46368862/contact/${c.id}`} target="_blank" rel="noopener noreferrer">
+                                    <a href={`https://app-eu1.hubspot.com/contacts/144564857/contact/${c.id}`} target="_blank" rel="noopener noreferrer">
                                         <ExternalLink className="h-3 w-3 text-blue-400 hover:text-blue-600" />
                                     </a>
                                 </div>

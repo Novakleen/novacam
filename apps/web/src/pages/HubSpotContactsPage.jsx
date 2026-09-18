@@ -71,7 +71,7 @@ const HubSpotContactsPage = () => {
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 Refresh List
               </Button>
-              <Button className="bg-[#ff7a59] hover:bg-[#ff8f73] text-white" onClick={() => window.open('https://app.hubspot.com/contacts/46368862/contacts/list/view/all/', '_blank')}>
+              <Button className="bg-[#ff7a59] hover:bg-[#ff8f73] text-white" onClick={() => window.open('https://app-eu1.hubspot.com/contacts/144564857/contacts/list/view/all/', '_blank')}>
                  Open HubSpot CRM
               </Button>
           </div>
