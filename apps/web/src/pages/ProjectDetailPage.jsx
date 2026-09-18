@@ -24,6 +24,7 @@ import {
   ClipboardList,
   Clock,
   Droplets,
+  Wallet,
   Image as ImageIcon,
   Plus,
   Pencil,
@@ -56,6 +57,7 @@ import CommentsSection from '@/components/comments/CommentsSection';
 import AdvancedPhotoUploadDialog from '@/components/capture/AdvancedPhotoUploadDialog';
 import ProjectTimeSection from '@/components/time/ProjectTimeSection';
 import ProjectSpraySection from '@/components/spray/ProjectSpraySection';
+import ProjectExpenseSection from '@/components/expenses/ProjectExpenseSection';
 import { archiveProject } from '@/lib/projectUtils';
 import { useAssignCustomer } from '@/hooks/useAssignCustomer';
 import {
@@ -704,6 +706,13 @@ const ProjectDetailPage = () => {
                     companycamProjectId={project?.companycam_project_id || null}
                   />
                 </div>
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                  <ProjectExpenseSection
+                    projectId={id}
+                    projectName={project?.name}
+                    companycamProjectId={project?.companycam_project_id || null}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="beforeafter" className="mt-0 space-y-5 focus-visible:outline-none">
@@ -867,6 +876,21 @@ const ProjectDetailPage = () => {
                     Pulvérisations
                   </p>
                   <p className="text-xs text-gray-400">Spray tracker</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('suivi')}
+                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group"
+              >
+                <span className="h-8 w-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600">
+                  <Wallet className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600">
+                    Autres dépenses
+                  </p>
+                  <p className="text-xs text-gray-400">Expense tracker</p>
                 </div>
               </button>
             </SidebarCard>
