@@ -205,7 +205,7 @@
     "invoiceNumberOptional": "Numéro (optionnel)",
     "saveInvoice": "Enregistrer la facture",
     "invoiceLinkedTitle": "Facture liée",
-    "invoiceLinkedDesc": "Facture {{number}} enregistrée sur le projet.",
+    "invoiceLinkedDesc": "Facture {{number}} enregistrée (montant HT pour les marges).",
     "invoiceClearedTitle": "Facture retirée",
     "invoiceClearedDesc": "Le lien facture HubSpot a été effacé.",
     "contactClearedTitle": "Contact retiré",
@@ -218,6 +218,8 @@
     "missingScopesHint": "En attendant, vous pouvez coller manuellement l’ID de facture HubSpot ci-dessous.",
     "searchByInvoiceNumber": "Rechercher par numéro",
     "searchByInvoiceNumberPlaceholder": "Ex. INV-2026-001",
-    "searchInvoiceButton": "Rechercher"
+    "searchInvoiceButton": "Rechercher",
+    "amountHtSuffix": "HT",
+    "amountTtcOnlyWarning": "TTC (HT indisponible)"
   }
 }

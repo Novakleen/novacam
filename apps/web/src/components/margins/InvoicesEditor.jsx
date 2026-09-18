@@ -40,7 +40,7 @@ const InvoicesEditor = ({ invoices = [], onChange }) => {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-semibold">Factures (HT)</Label>
+        <Label className="text-sm font-semibold">Factures (HTVA)</Label>
         <Button type="button" variant="outline" size="sm" onClick={add}>
           <Plus className="h-4 w-4 mr-1" /> Ajouter une facture
         </Button>
@@ -65,7 +65,7 @@ const InvoicesEditor = ({ invoices = [], onChange }) => {
               />
             </div>
             <div className="md:col-span-2">
-              <Label className="text-xs">CA HT (€)</Label>
+              <Label className="text-xs">CA HT / HTVA (€)</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -119,7 +119,7 @@ const InvoicesEditor = ({ invoices = [], onChange }) => {
       </div>
 
       <p className="text-sm font-medium">
-        Total CA HT : <span className="tabular-nums">{formatMoney(total)}</span>
+        Total CA HT (HTVA) : <span className="tabular-nums">{formatMoney(total)}</span>
       </p>
     </div>
   );

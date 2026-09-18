@@ -37,7 +37,7 @@ const DossierList = ({ dossiers = [], calcs = {}, loading, onNew, onOpen }) => {
               <th className="text-left font-semibold px-4 py-3">Client</th>
               <th className="text-left font-semibold px-3 py-3">Mix</th>
               <th className="text-left font-semibold px-3 py-3">Closer</th>
-              <th className="text-right font-semibold px-3 py-3">CA HT</th>
+              <th className="text-right font-semibold px-3 py-3">CA HT (HTVA)</th>
               <th className="text-right font-semibold px-3 py-3">MB</th>
               <th className="text-right font-semibold px-3 py-3">MA</th>
               <th className="text-right font-semibold px-3 py-3">MA %</th>

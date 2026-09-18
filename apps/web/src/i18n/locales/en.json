@@ -205,7 +205,7 @@
     "invoiceNumberOptional": "Number (optional)",
     "saveInvoice": "Save invoice",
     "invoiceLinkedTitle": "Invoice linked",
-    "invoiceLinkedDesc": "Invoice {{number}} saved on the project.",
+    "invoiceLinkedDesc": "Invoice {{number}} saved (amount excl. VAT for margins).",
     "invoiceClearedTitle": "Invoice removed",
     "invoiceClearedDesc": "The HubSpot invoice link was cleared.",
     "contactClearedTitle": "Contact removed",
@@ -218,6 +218,8 @@
     "missingScopesHint": "Meanwhile, you can paste a HubSpot invoice ID manually below.",
     "searchByInvoiceNumber": "Search by number",
     "searchByInvoiceNumberPlaceholder": "e.g. INV-2026-001",
-    "searchInvoiceButton": "Search"
+    "searchInvoiceButton": "Search",
+    "amountHtSuffix": "excl. VAT",
+    "amountTtcOnlyWarning": "incl. VAT (excl. VAT unavailable)"
   }
 }
