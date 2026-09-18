@@ -13,13 +13,16 @@ import {
  * personHours = sum all people hours
  * productCost = sum liters * price[slug]
  * mo = personHours * eur_h
- * fuel: for each unique work_date in hours:
+ * dieselFuel (trip): for each unique work_date in hours:
  *   driver = first person that day
  *   km = one-way (provided via fuelByDate[date].km)
  *   if km null → incomplete, that day adds nothing (no €/h fallback)
- *   else fuel += tripFactor * km * (consumption_l100/100) * dieselEurL
+ *   else dieselFuel += tripFactor * km * (consumption_l100/100) * dieselEurL
  *     tripFactor = 2 if round_trip else 1
- * direct = productCost + mo + (fuel||0)
+ * essenceHours = sum person hours on lines whose service ∈ params.essence_services
+ * essenceFuel = essenceHours * essence_l_h * essence_eur_l
+ * fuel (total) = (dieselFuel||0) + (essenceFuel||0)
+ * direct = productCost + mo + fuel
  * if caHt null: mb/ma null, com=0, ads=0
  * else:
  *   com = closer in commercial_closers ? caHt * com_rate : 0
@@ -54,7 +57,7 @@ export function calculateProjectMargin({
   const consumption = Number(params.consumption_l100) || 0;
   const tripFactor = params.round_trip === false ? 1 : 2;
 
-  const fuelResult = computeFuel({
+  const fuelResult = computeDieselFuel({
     hourLines,
     fuelByDate,
     diesel,
@@ -63,8 +66,13 @@ export function calculateProjectMargin({
     clientAddress: dossier.client_address,
   });
 
-  const fuel = fuelResult.fuel;
-  const direct = productCost + mo + (fuel || 0);
+  const dieselFuel = fuelResult.fuel;
+  const essenceHours = sumEssenceHours(hourLines, params.essence_services);
+  const essenceLh = Number(params.essence_l_h) || 0;
+  const essenceEurL = Number(params.essence_eur_l) || 0;
+  const essenceFuel = essenceHours * essenceLh * essenceEurL;
+  const fuel = (dieselFuel || 0) + (essenceFuel || 0);
+  const direct = productCost + mo + fuel;
 
   const caHt = toNumberOrNull(dossier.ca_ht);
   const closer = dossier.closer || '';
@@ -104,7 +112,10 @@ export function calculateProjectMargin({
     personHours: roundHours(personHours),
     productCost: roundMoney(productCost),
     mo: roundMoney(mo),
-    fuel: fuel == null ? null : roundMoney(fuel),
+    dieselFuel: dieselFuel == null ? null : roundMoney(dieselFuel),
+    essenceHours: roundHours(essenceHours),
+    essenceFuel: roundMoney(essenceFuel),
+    fuel: roundMoney(fuel),
     fuelIncomplete: fuelResult.incomplete,
     fuelDays: fuelResult.days,
     direct: roundMoney(direct),
@@ -124,6 +135,27 @@ export function calculateProjectMargin({
 export function sumPersonHours(hourLines) {
   let total = 0;
   for (const line of hourLines || []) {
+    for (const person of line.people || []) {
+      const h = Number(person.hours);
+      if (Number.isFinite(h)) total += h;
+    }
+  }
+  return total;
+}
+
+/** Hours on services listed in essence_services (case-insensitive). */
+export function sumEssenceHours(hourLines, essenceServices) {
+  const set = new Set(
+    (Array.isArray(essenceServices) ? essenceServices : ['nettoyage', 'sc']).map((s) =>
+      String(s).trim().toLowerCase()
+    )
+  );
+  let total = 0;
+  for (const line of hourLines || []) {
+    const svc = String(line.service || '')
+      .trim()
+      .toLowerCase();
+    if (!svc || !set.has(svc)) continue;
     for (const person of line.people || []) {
       const h = Number(person.hours);
       if (Number.isFinite(h)) total += h;
@@ -152,7 +184,7 @@ export function effectiveDiesel(params = {}) {
   return fallback != null && fallback > 0 ? fallback : 2.47;
 }
 
-function computeFuel({ hourLines, fuelByDate, diesel, consumption, tripFactor, clientAddress }) {
+function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFactor, clientAddress }) {
   const dates = uniqueWorkDates(hourLines);
   const days = [];
   let fuelSum = 0;

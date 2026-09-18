@@ -33,12 +33,47 @@ export async function fetchProductPrices() {
 }
 
 export async function updateProductPrice(row, patch) {
-  let query = supabase.from('margin_product_prices').update(patch);
+  const payload = { ...patch, updated_at: new Date().toISOString() };
+  if ('price' in payload && payload.price_eur_l == null) {
+    payload.price_eur_l = payload.price;
+    delete payload.price;
+  }
+  let query = supabase.from('margin_product_prices').update(payload);
   if (row?.id) query = query.eq('id', row.id);
   else query = query.eq('slug', row.slug || row);
   const { data, error } = await query.select().maybeSingle();
   if (error) throw error;
   return data;
+}
+
+export async function createProductPrice({ slug, name, price_eur_l }) {
+  const { data, error } = await supabase
+    .from('margin_product_prices')
+    .insert({
+      slug,
+      name,
+      price_eur_l: Number(price_eur_l),
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteProductPrice(slug) {
+  const { error } = await supabase.from('margin_product_prices').delete().eq('slug', slug);
+  if (error) throw error;
+}
+
+/** Soft check: count dossier product lines using this slug. */
+export async function countProductUsage(slug) {
+  const { count, error } = await supabase
+    .from('margin_product_lines')
+    .select('*', { count: 'exact', head: true })
+    .eq('product', slug);
+  if (error) throw error;
+  return count || 0;
 }
 
 export function pricesMap(rows) {
