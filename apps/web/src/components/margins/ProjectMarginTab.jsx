@@ -482,12 +482,20 @@ const ProjectMarginTab = ({
         <Row
           label={
             calc?.fuelIncomplete
-              ? 'Diesel trajet (incomplet)'
+              ? 'Diesel trajet (adresses manquantes)'
               : calc?.fuelRoutingFailed
-                ? 'Diesel trajet (géocode)'
+                ? 'Diesel trajet (échec géocode)'
                 : 'Diesel trajet'
           }
-          value={formatMoney(calc?.dieselFuel)}
+          value={
+            calc?.dieselFuel != null
+              ? formatMoney(calc.dieselFuel)
+              : calc?.fuelRoutingFailed
+                ? 'échec géocode'
+                : calc?.fuelIncomplete
+                  ? 'adresses manquantes'
+                  : formatMoney(calc?.dieselFuel)
+          }
           muted
         />
         <Row
@@ -541,7 +549,11 @@ const ProjectMarginTab = ({
                 ) : null}
               </span>
               <span className="tabular-nums shrink-0">
-                {d.km == null ? 'km indisponible' : `${formatKm(d.km)} · ${formatMoney(d.cost)}`}
+                {d.km == null
+                  ? d.homeAddress && dossier.client_address
+                    ? 'échec géocode'
+                    : 'adresses / km indisponible'
+                  : `${formatKm(d.km)} · ${formatMoney(d.cost)}`}
               </span>
             </div>
           ))}
