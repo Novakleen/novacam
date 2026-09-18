@@ -65,7 +65,7 @@ const DossierDetail = ({
             <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
               Décomposition
             </p>
-            <Row label="CA HT" value={formatMoney(calc?.caHt)} />
+            <Row label="CA HT (HTVA)" value={formatMoney(calc?.caHt)} />
             <Row label="Coût produits" value={formatMoney(calc?.productCost)} muted />
             <Row
               label={`Main d’œuvre (${formatHours(calc?.personHours)})`}

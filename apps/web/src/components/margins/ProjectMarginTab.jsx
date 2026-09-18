@@ -245,7 +245,7 @@ const ProjectMarginTab = ({
       toast({
         title: dossier ? 'Marge régénérée' : 'Marge générée',
         description: imported.ca_ht != null
-          ? `CA HT HubSpot : ${formatMoney(imported.ca_ht)}`
+          ? `CA HT (HTVA) HubSpot : ${formatMoney(imported.ca_ht)}`
           : 'Pas de facture HubSpot liée — CA HT manquant.',
       });
       setEditingCloser(false);
@@ -472,7 +472,7 @@ const ProjectMarginTab = ({
         <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
           Décomposition
         </p>
-        <Row label="CA HT" value={formatMoney(calc?.caHt ?? dossier.ca_ht)} />
+        <Row label="CA HT (HTVA)" value={formatMoney(calc?.caHt ?? dossier.ca_ht)} />
         <Row label="Coût produits" value={formatMoney(calc?.productCost)} muted />
         <Row
           label={`Main d’œuvre (${formatHours(calc?.personHours ?? dossier.person_hours)})`}

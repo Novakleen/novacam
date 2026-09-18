@@ -166,6 +166,8 @@ async function fetchScoped(supabase, table, projectId, companycamProjectId, { se
 
 function buildInvoicesFromProject(project) {
   if (!project) return [];
+  // hubspot_invoice_amount is stored as HTVA (excl. VAT) when linked via Source panel
+  // (hs_amount_billed_pre_tax). Do not treat it as TTC.
   const amount = toNumberOrNull(project.hubspot_invoice_amount);
   if (amount == null || amount <= 0) return [];
   return [

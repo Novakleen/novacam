@@ -205,7 +205,7 @@
     "invoiceNumberOptional": "Nummer (optioneel)",
     "saveInvoice": "Factuur opslaan",
     "invoiceLinkedTitle": "Factuur gekoppeld",
-    "invoiceLinkedDesc": "Factuur {{number}} opgeslagen op het project.",
+    "invoiceLinkedDesc": "Factuur {{number}} opgeslagen (bedrag excl. btw voor marges).",
     "invoiceClearedTitle": "Factuur verwijderd",
     "invoiceClearedDesc": "De HubSpot-factuurkoppeling is gewist.",
     "contactClearedTitle": "Contact verwijderd",
@@ -218,6 +218,8 @@
     "missingScopesHint": "Intussen kunt u hieronder handmatig een HubSpot-factuur-ID plakken.",
     "searchByInvoiceNumber": "Zoeken op nummer",
     "searchByInvoiceNumberPlaceholder": "bv. INV-2026-001",
-    "searchInvoiceButton": "Zoeken"
+    "searchInvoiceButton": "Zoeken",
+    "amountHtSuffix": "excl. btw",
+    "amountTtcOnlyWarning": "incl. btw (excl. btw niet beschikbaar)"
   }
 }

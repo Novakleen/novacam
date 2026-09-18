@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import ContactAssignmentDialog from '@/components/projects/ContactAssignmentDialog';
+import { resolveInvoiceAmountHt } from '@/lib/hubspotInvoiceAmount';
 
 const HUBSPOT_PORTAL_ID = '144564857';
 const HUBSPOT_APP_BASE = `https://app-eu1.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}`;
@@ -34,6 +35,8 @@ const INVOICE_PROPERTIES = [
   'hs_number',
   'hs_invoice_number',
   'hs_amount_billed',
+  'hs_amount_billed_pre_tax',
+  'hs_taxes_total',
   'hs_currency',
   'hs_invoice_status',
   'hs_title',
@@ -190,6 +193,8 @@ const normalizeInvoice = (raw) => {
   const props = raw.properties || raw;
   const id = String(raw.id || props.hs_object_id || props.id || '');
   if (!id) return null;
+  // Margin CA must use HTVA (excl. VAT). Prefer hs_amount_billed_pre_tax.
+  const resolved = resolveInvoiceAmountHt(props);
   return {
     id,
     number:
@@ -198,12 +203,12 @@ const normalizeInvoice = (raw) => {
       props.hs_invoice_status_label ||
       props.hs_title ||
       id,
-    amount:
-      props.hs_amount_billed ??
-      props.hs_balance_due ??
-      props.hs_invoice_total_amount ??
-      props.amount ??
-      null,
+    /** Amount excl. VAT (HT) — stored as hubspot_invoice_amount / margin ca_ht */
+    amount: resolved.amountHt,
+    amountHt: resolved.amountHt,
+    amountTtc: resolved.amountTtc,
+    taxesTotal: resolved.taxesTotal,
+    amountSource: resolved.source,
     currency: props.hs_currency || props.hs_invoice_currency_code || props.currency || 'EUR',
     status: props.hs_invoice_status || props.hs_status || props.status || null,
   };
@@ -544,7 +549,13 @@ const ProjectHubSpotAdminPanel = ({
                   {linked.hubspot_invoice_number || `#${linked.hubspot_invoice_id}`}
                 </p>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
-                  {amountLabel && <span>{amountLabel}</span>}
+                  {amountLabel && (
+                    <span>
+                      {amountLabel}
+                      {' '}
+                      <span className="text-gray-400">{t('hubspotAdmin.amountHtSuffix')}</span>
+                    </span>
+                  )}
                   {linked.hubspot_invoice_status && (
                     <span className="capitalize">{linked.hubspot_invoice_status}</span>
                   )}
@@ -893,7 +904,14 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
                 <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
                   {inv.amount != null && (
                     <span>
-                      {formatMoney(inv.amount, inv.currency, 'fr-BE')}
+                      {formatMoney(inv.amount, inv.currency, 'fr-BE')}{' '}
+                      {t('hubspotAdmin.amountHtSuffix')}
+                    </span>
+                  )}
+                  {inv.amount == null && inv.amountTtc != null && (
+                    <span className="text-amber-600">
+                      {formatMoney(inv.amountTtc, inv.currency, 'fr-BE')}{' '}
+                      {t('hubspotAdmin.amountTtcOnlyWarning')}
                     </span>
                   )}
                   {inv.status && <span className="capitalize">{inv.status}</span>}
