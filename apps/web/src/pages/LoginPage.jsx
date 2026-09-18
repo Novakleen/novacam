@@ -9,11 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 const LoginPage = () => {
   const { signIn } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,8 +29,8 @@ const LoginPage = () => {
 
     if (!error) {
       toast({
-        title: "Success",
-        description: "Logged in successfully!",
+        title: t('login.successTitle'),
+        description: t('login.successDesc'),
       });
       navigate('/dashboard');
     }
@@ -41,8 +44,8 @@ const LoginPage = () => {
     if (!email) {
       toast({
         variant: "destructive",
-        title: "Email required",
-        description: "Please enter your email address first, then click \"Forgot password?\".",
+        title: t('login.emailRequiredTitle'),
+        description: t('login.emailRequiredDesc'),
       });
       return;
     }
@@ -54,13 +57,13 @@ const LoginPage = () => {
     if (error) {
       toast({
         variant: "destructive",
-        title: "Error",
+        title: t('common.error'),
         description: error.message,
       });
     } else {
       toast({
-        title: "Reset email sent",
-        description: "Check your inbox for a password reset link.",
+        title: t('login.resetSentTitle'),
+        description: t('login.resetSentDesc'),
       });
     }
   };
@@ -76,16 +79,19 @@ const LoginPage = () => {
     if (error) {
       toast({
         variant: "destructive",
-        title: "Error",
+        title: t('common.error'),
         description: error.message,
       });
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4 relative">
+      <div className="absolute top-4 right-4 z-10">
+        <LanguageSwitcher />
+      </div>
       <Helmet>
-        <title>Login - Novakleen</title>
+        <title>{t('login.title')}</title>
         <meta name="description" content="Login to Novakleen project management system" />
       </Helmet>
       
@@ -105,17 +111,17 @@ const LoginPage = () => {
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
           <div className="text-center mb-8">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Welcome Back
+              {t('login.welcome')}
             </h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm">
-              Please sign in to your account
+              {t('login.subtitle')}
             </p>
           </div>
 
           <form onSubmit={handleEmailLogin} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-gray-700 dark:text-gray-300">
-                Email
+                {t('login.email')}
               </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -134,14 +140,14 @@ const LoginPage = () => {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <Label htmlFor="password" className="text-gray-700 dark:text-gray-300">
-                  Password
+                  {t('login.password')}
                 </Label>
                 <a
                   href="#"
                   onClick={handleForgotPassword}
                   className="text-xs text-blue-600 hover:underline dark:text-blue-400"
                 >
-                  Forgot password?
+                  {t('login.forgotPassword')}
                 </a>
               </div>
               <div className="relative">
@@ -166,12 +172,12 @@ const LoginPage = () => {
               {loading ? (
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Signing in...
+                  {t('login.signingIn')}
                 </div>
               ) : (
                 <>
                   <LogIn className="mr-2 h-5 w-5" />
-                  Sign In
+                  {t('login.signIn')}
                 </>
               )}
             </Button>
@@ -184,7 +190,7 @@ const LoginPage = () => {
               </div>
               <div className="relative flex justify-center text-sm">
                 <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">
-                  Or continue with
+                  {t('login.orContinueWith')}
                 </span>
               </div>
             </div>
@@ -213,7 +219,7 @@ const LoginPage = () => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Sign in with Google
+              {t('login.signInGoogle')}
             </Button>
           </div>
         </div>
@@ -222,8 +228,8 @@ const LoginPage = () => {
           <p className="text-sm text-gray-500 dark:text-gray-400 bg-white/50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700 flex items-start gap-3 text-left">
             <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
             <span>
-              Don't have an account? <br/>
-              <span className="font-medium text-gray-700 dark:text-gray-300">Check your email for an invitation link or contact your administrator.</span>
+              {t('login.noAccount')} <br/>
+              <span className="font-medium text-gray-700 dark:text-gray-300">{t('login.inviteHint')}</span>
             </span>
           </p>
         </div>

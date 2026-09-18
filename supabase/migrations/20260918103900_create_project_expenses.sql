@@ -1,6 +1,8 @@
 -- project_expenses: nacelle / hotel / parking / materiel / other costs per project
 -- Already applied on novaquote (live Supabase). This file documents the schema in git only.
 -- Do not re-apply via CLI unless recreating an empty environment.
+-- IMPORTANT: user_id must reference public.profiles(id) (not auth.users) so PostgREST
+-- can embed profiles:user_id(...). See also 20260918105000_fix_project_expenses_user_fk.sql.
 
 create table if not exists public.project_expenses (
   id uuid primary key default gen_random_uuid(),

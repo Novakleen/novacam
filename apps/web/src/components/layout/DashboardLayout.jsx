@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { 
   Home, Image as ImageIcon, Users, Briefcase, Bell, Monitor, Map as MapIcon, 
   Menu, X, LogOut, Moon, Sun, User, UserPlus, UploadCloud, Link as LinkIcon,
@@ -19,8 +20,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
+import { APP_VERSION } from '@/lib/appVersion';
 
-const SidebarItem = ({ icon: Icon, label, path, isNew, isActive, onClick, isComingSoon }) => (
+const SidebarItem = ({ icon: Icon, label, path, isNew, isActive, onClick, isComingSoon, badgeNew, badgeSoon }) => (
   <motion.div 
     whileHover={{ scale: 1.02, x: 4 }}
     whileTap={{ scale: 0.98 }}
@@ -38,13 +41,13 @@ const SidebarItem = ({ icon: Icon, label, path, isNew, isActive, onClick, isComi
     
     {isNew && (
       <Badge variant="default" className="text-[10px] h-5 px-1.5 bg-blue-500/10 text-blue-600 border-blue-200 dark:border-blue-900 shadow-none">
-        NEW
+        {badgeNew}
       </Badge>
     )}
     
     {isComingSoon && (
       <Badge variant="secondary" className="text-[10px] h-5 px-1.5 opacity-70">
-        SOON
+        {badgeSoon}
       </Badge>
     )}
     
@@ -60,8 +63,17 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { t, i18n } = useTranslation();
   const [profile, setProfile] = React.useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const lang = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2);
+  const releasedLabel =
+    APP_VERSION.releasedLabel[lang] || APP_VERSION.releasedLabel.fr;
+  const versionLine = t('app.versionLine', {
+    version: APP_VERSION.version,
+    month: releasedLabel,
+  });
 
   React.useEffect(() => {
     if (user) {
@@ -88,15 +100,15 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
     await signOut();
     navigate('/login');
     toast({
-      title: "Signed out",
-      description: "You have been signed out successfully",
+      title: t('nav.signedOutTitle'),
+      description: t('nav.signedOutDesc'),
     });
   };
   
   const handleComingSoon = () => {
     toast({
-       title: "Coming Soon 🚀",
-       description: "Integration features are launching soon!",
+       title: t('nav.comingSoonTitle'),
+       description: t('nav.comingSoonDesc'),
        duration: 3000,
     });
   };
@@ -104,6 +116,30 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
   const isAdmin = profile?.role === 'Admin';
   const isAdminOrManager = profile?.role === 'Admin' || profile?.role === 'Manager';
   const isMemberLike = profile?.role === 'Member' || profile?.role === 'Viewer';
+
+  const pageTitle = (() => {
+    if (location.pathname === '/dashboard') return t('nav.overview');
+    if (location.pathname.includes('/project/')) return t('nav.projectDetails');
+    if (location.pathname === '/admin/users') return t('nav.userManagement');
+    if (location.pathname === '/crm-hubspot') return t('nav.hubspotCrm');
+    if (location.pathname === '/hubspot-debug') return t('nav.hubspotDebugger');
+    if (location.pathname === '/hubspot-dashboard') return t('nav.hubspotDashboard');
+    if (location.pathname === '/companycam-explorer') return t('nav.companyCam');
+    if (location.pathname === '/direct7-debug') return t('nav.direct7Sms');
+    if (location.pathname === '/margins') return t('nav.margins');
+    if (location.pathname === '/bug-hunter') return t('nav.bugHunter');
+    if (location.pathname === '/time-tracker') return t('nav.timeTracker');
+    if (location.pathname === '/spray-tracker') return t('nav.sprayTracker');
+    if (location.pathname === '/map') return t('nav.mapView');
+    if (location.pathname === '/photos') return t('nav.photos');
+    if (location.pathname === '/users') return t('nav.teamMembers');
+    if (location.pathname === '/portfolio') return t('nav.publicPortfolio');
+    if (location.pathname === '/upload-large') return t('nav.largeFileUpload');
+    return (
+      location.pathname.replace('/', '').charAt(0).toUpperCase() +
+      location.pathname.slice(2)
+    );
+  })();
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900/95 backdrop-blur-xl border-r border-gray-100 dark:border-gray-800">
@@ -114,14 +150,14 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           </div>
           <div>
             <h1 className="font-bold text-xl tracking-tight text-gray-900 dark:text-white leading-none">Novakleen</h1>
-            <p className="text-xs text-gray-500 font-medium mt-1">Project Management</p>
+            <p className="text-xs text-gray-500 font-medium mt-1">{t('nav.projectManagement')}</p>
           </div>
         </div>
         
         <div className="relative mb-2">
           <input 
             type="text" 
-            placeholder="Search..." 
+            placeholder={t('nav.searchPlaceholder')}
             className="w-full bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm pl-4 pr-4 py-3 rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder-gray-400 transition-all shadow-sm"
           />
         </div>
@@ -129,114 +165,136 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
 
       <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 scrollbar-hide">
         <div className="px-4 mb-2 mt-2">
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Main Menu</h3>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t('nav.mainMenu')}</h3>
         </div>
 
         <SidebarItem 
-          icon={Home} label="Dashboard" path="/dashboard" 
+          icon={Home} label={t('nav.dashboard')} path="/dashboard" 
           isActive={location.pathname === '/dashboard'} onClick={() => navigate('/dashboard')}
+          badgeNew={t('common.new')} badgeSoon={t('common.soon')}
         />
         <SidebarItem 
-          icon={MapIcon} label="Map View" path="/map" 
+          icon={MapIcon} label={t('nav.mapView')} path="/map" 
           isActive={location.pathname === '/map'} onClick={() => navigate('/map')}
+          badgeNew={t('common.new')} badgeSoon={t('common.soon')}
         />
         <SidebarItem 
-          icon={ImageIcon} label="Photos" path="/photos" 
+          icon={ImageIcon} label={t('nav.photos')} path="/photos" 
           isActive={location.pathname === '/photos'} onClick={() => navigate('/photos')}
+          badgeNew={t('common.new')} badgeSoon={t('common.soon')}
         />
         {isAdmin && (
           <SidebarItem 
-            icon={Users} label="Team Members" path="/users"
-            isActive={location.pathname === '/users'} onClick={() => navigate('/users')} 
+            icon={Users} label={t('nav.teamMembers')} path="/users"
+            isActive={location.pathname === '/users'} onClick={() => navigate('/users')}
+            badgeNew={t('common.new')} badgeSoon={t('common.soon')}
           />
         )}
         <SidebarItem 
-          icon={Clock} label="Time Tracker" path="/time-tracker"
+          icon={Clock} label={t('nav.timeTracker')} path="/time-tracker"
           isActive={location.pathname === '/time-tracker'} onClick={() => navigate('/time-tracker')}
           isNew
+          badgeNew={t('common.new')} badgeSoon={t('common.soon')}
         />
         <SidebarItem 
-          icon={Droplets} label="Spray Tracker" path="/spray-tracker"
+          icon={Droplets} label={t('nav.sprayTracker')} path="/spray-tracker"
           isActive={location.pathname === '/spray-tracker'} onClick={() => navigate('/spray-tracker')}
           isNew
+          badgeNew={t('common.new')} badgeSoon={t('common.soon')}
         />
         {isAdmin && (
           <SidebarItem 
-            icon={PieChart} label="Marges" path="/margins"
+            icon={PieChart} label={t('nav.margins')} path="/margins"
             isActive={location.pathname === '/margins'} onClick={() => navigate('/margins')}
+            badgeNew={t('common.new')} badgeSoon={t('common.soon')}
           />
         )}
 
         {!isMemberLike && isAdminOrManager && (
           <>
             <div className="px-4 mb-2 mt-6">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tools</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t('nav.tools')}</h3>
             </div>
 
             <SidebarItem 
-              icon={BarChart3} label="HubSpot Dashboard" path="/hubspot-dashboard" 
+              icon={BarChart3} label={t('nav.hubspotDashboard')} path="/hubspot-dashboard" 
               isActive={location.pathname === '/hubspot-dashboard'} onClick={() => navigate('/hubspot-dashboard')}
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
 
             <SidebarItem 
-              icon={LinkIcon} label="HubSpot CRM" path="/crm-hubspot" 
+              icon={LinkIcon} label={t('nav.hubspotCrm')} path="/crm-hubspot" 
               isActive={location.pathname === '/crm-hubspot'} onClick={handleComingSoon} isComingSoon
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
 
             <SidebarItem 
-              icon={UploadCloud} label="Large File Upload" path="/upload-large"
-              isActive={location.pathname === '/upload-large'} onClick={() => navigate('/upload-large')} 
+              icon={UploadCloud} label={t('nav.largeFileUpload')} path="/upload-large"
+              isActive={location.pathname === '/upload-large'} onClick={() => navigate('/upload-large')}
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
             
             {isAdmin && (
               <SidebarItem 
-                icon={UserPlus} label="User Management" path="/admin/users"
-                isActive={location.pathname === '/admin/users'} onClick={() => navigate('/admin/users')} 
+                icon={UserPlus} label={t('nav.userManagement')} path="/admin/users"
+                isActive={location.pathname === '/admin/users'} onClick={() => navigate('/admin/users')}
+                badgeNew={t('common.new')} badgeSoon={t('common.soon')}
               />
             )}
             
             <div className="mt-6 px-4 mb-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Marketing</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t('nav.marketing')}</h3>
             </div>
             
             <SidebarItem 
-              icon={Briefcase} label="Public Portfolio" path="/portfolio" 
+              icon={Briefcase} label={t('nav.publicPortfolio')} path="/portfolio" 
               isActive={location.pathname === '/portfolio'} onClick={() => navigate('/portfolio')}
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
             
             <div className="mt-6 px-4 mb-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Debug</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t('nav.debug')}</h3>
             </div>
 
             <SidebarItem 
-              icon={Bug} label="Bug Hunter" path="/bug-hunter" 
+              icon={Bug} label={t('nav.bugHunter')} path="/bug-hunter" 
               isActive={location.pathname === '/bug-hunter'} onClick={() => navigate('/bug-hunter')}
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
             <SidebarItem 
-              icon={Camera} label="CompanyCam" path="/companycam-explorer" 
+              icon={Camera} label={t('nav.companyCam')} path="/companycam-explorer" 
               isActive={location.pathname === '/companycam-explorer'} onClick={() => navigate('/companycam-explorer')} isNew
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
             <SidebarItem 
-              icon={Bug} label="HubSpot Debugger" path="/hubspot-debug" 
+              icon={Bug} label={t('nav.hubspotDebugger')} path="/hubspot-debug" 
               isActive={location.pathname === '/hubspot-debug'} onClick={() => navigate('/hubspot-debug')}
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
             <SidebarItem 
-              icon={MessageSquare} label="Direct7 SMS" path="/direct7-debug" 
+              icon={MessageSquare} label={t('nav.direct7Sms')} path="/direct7-debug" 
               isActive={location.pathname === '/direct7-debug'} onClick={() => navigate('/direct7-debug')}
+              badgeNew={t('common.new')} badgeSoon={t('common.soon')}
             />
           </>
         )}
       </div>
 
-      <div className="p-4 border-t border-gray-100 dark:border-gray-800 md:hidden bg-gray-50/50 dark:bg-gray-900/50">
+      <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 space-y-3">
         <div className="flex items-center justify-between gap-2">
+          <LanguageSwitcher />
+          <p className="text-[11px] text-gray-400 font-medium tabular-nums truncate" title={versionLine}>
+            {versionLine}
+          </p>
+        </div>
+        <div className="flex items-center justify-between gap-2 md:hidden">
           <Button variant="ghost" className="flex-1 rounded-xl" onClick={toggleTheme}>
             {theme === 'dark' ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
-            Theme
+            {t('common.theme')}
           </Button>
           <Button variant="ghost" className="flex-1 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-xl" onClick={handleSignOut}>
             <LogOut className="h-4 w-4 mr-2" />
-            Logout
+            {t('common.logout')}
           </Button>
         </div>
       </div>
@@ -257,6 +315,7 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           <span className="font-bold text-lg text-gray-900 dark:text-white tracking-tight">Novakleen</span>
         </div>
         <div className="flex items-center gap-2">
+          <LanguageSwitcher size="icon" className="h-9 w-9" />
           <Avatar className="h-9 w-9 cursor-pointer ring-2 ring-white dark:ring-gray-800 shadow-sm" onClick={() => navigate('/profile')}>
             <AvatarFallback className="bg-gradient-to-tr from-primary to-blue-400 text-white text-xs font-bold">
               {profile?.initials || 'ME'}
@@ -303,21 +362,12 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
                 </Button>
              )}
              <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-               {location.pathname === '/dashboard' ? 'Overview' : 
-                location.pathname.includes('/project/') ? 'Project Details' :
-                location.pathname === '/admin/users' ? 'User Management' :
-                location.pathname === '/crm-hubspot' ? 'HubSpot Contacts' :
-                location.pathname === '/hubspot-debug' ? 'HubSpot Debugger' :
-                location.pathname === '/hubspot-dashboard' ? 'HubSpot Dashboard' :
-                location.pathname === '/companycam-explorer' ? 'CompanyCam Explorer' :
-                location.pathname === '/direct7-debug' ? 'Direct7 SMS Debug' :
-                location.pathname === '/margins' ? 'Marge chantiers' :
-                location.pathname === '/bug-hunter' ? 'Bug Hunter' :
-                location.pathname.replace('/', '').charAt(0).toUpperCase() + location.pathname.slice(2)}
+               {pageTitle}
              </h2>
           </div>
           
           <div className="flex items-center gap-4">
+             <LanguageSwitcher />
              <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all hover:scale-105">
                <Bell className="h-5 w-5" />
              </Button>
@@ -346,15 +396,15 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
                       <p className="text-xs text-gray-500">{profile?.email}</p>
                     </div>
                     <DropdownMenuItem onClick={() => navigate('/profile')} className="rounded-xl cursor-pointer py-2.5 font-medium">
-                      <User className="mr-2 h-4 w-4 text-gray-400" /> Profile
+                      <User className="mr-2 h-4 w-4 text-gray-400" /> {t('common.profile')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={toggleTheme} className="rounded-xl cursor-pointer py-2.5 font-medium">
                       {theme === 'dark' ? <Sun className="mr-2 h-4 w-4 text-gray-400" /> : <Moon className="mr-2 h-4 w-4 text-gray-400" />}
-                      Appearance
+                      {t('common.appearance')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator className="my-1 bg-gray-100 dark:bg-gray-800" />
                     <DropdownMenuItem onClick={handleSignOut} className="rounded-xl cursor-pointer py-2.5 text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/10 font-medium">
-                      <LogOut className="mr-2 h-4 w-4" /> Sign Out
+                      <LogOut className="mr-2 h-4 w-4" /> {t('common.signOut')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                </DropdownMenu>
