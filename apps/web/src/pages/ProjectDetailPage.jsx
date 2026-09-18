@@ -197,6 +197,13 @@ const ProjectDetailPage = () => {
         .single();
 
       if (error) throw error;
+
+      // HubSpot→CC assignment upserts a shadow Novacam row; redirect to the real CC project.
+      if (data.companycam_project_id) {
+        navigate(`/project-cc/${data.companycam_project_id}`, { replace: true });
+        return;
+      }
+
       setProject(data);
 
       let resolvedContact = null;
@@ -230,6 +237,26 @@ const ProjectDetailPage = () => {
             id: directContact.hubspot_contact_id,
           };
         }
+      }
+
+      // Fallback: fields denormalized on the projects row (contacts table miss).
+      if (!resolvedContact && (data.hubspot_contact_id || data.hubspot_contact_name)) {
+        const nameParts = String(data.hubspot_contact_name || '')
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        const firstname = nameParts[0] || '';
+        const lastname = nameParts.slice(1).join(' ');
+        resolvedContact = {
+          id: data.hubspot_contact_id,
+          hubspot_contact_id: data.hubspot_contact_id,
+          first_name: firstname,
+          last_name: lastname,
+          firstname,
+          lastname,
+          email: data.hubspot_contact_email || null,
+          name: data.hubspot_contact_name || null,
+        };
       }
 
       setHubspotContact(resolvedContact);
