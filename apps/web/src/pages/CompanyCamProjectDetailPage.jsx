@@ -93,7 +93,7 @@ const formatAddress = (project) => {
     a.postal_code,
     a.country,
   ].filter(Boolean);
-  return parts.join(' · ') || '—';
+  return parts.join(', ') || '—';
 };
 
 const SidebarCard = ({ title, action, children, className }) => (

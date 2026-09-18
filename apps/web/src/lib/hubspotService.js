@@ -414,3 +414,48 @@ export const getAvailableMonths = async () => {
   const uniqueMonths = [...new Set(data.map(d => d.month))].sort().reverse();
   return uniqueMonths;
 };
+/**
+ * Map HubSpot owner id → display name (sales team).
+ * First token is used as margin "closer" (matches commercial_closers).
+ */
+export const HUBSPOT_SALES_REPS = SALES_REPS;
+
+/**
+ * Resolve margin closer from the HubSpot contact owner (propriétaire du contact).
+ * Returns first name when known in SALES_REPS, else owner firstName from Owners API.
+ * @param {string|number} contactId
+ * @returns {Promise<string|null>}
+ */
+export async function resolveCloserFromContactOwner(contactId) {
+  const id = contactId != null ? String(contactId).trim() : '';
+  if (!id) return null;
+
+  try {
+    const contact = await invokeHubSpotProxy(
+      `/crm/v3/objects/contacts/${encodeURIComponent(id)}?properties=hubspot_owner_id`
+    );
+    const ownerId = contact?.properties?.hubspot_owner_id
+      ? String(contact.properties.hubspot_owner_id)
+      : '';
+    if (!ownerId) return null;
+
+    if (SALES_REPS[ownerId]) {
+      const full = SALES_REPS[ownerId];
+      return full.split(/\s+/)[0] || full;
+    }
+
+    try {
+      const owner = await invokeHubSpotProxy(`/crm/v3/owners/${encodeURIComponent(ownerId)}`);
+      const first = owner?.firstName || owner?.first_name || '';
+      const last = owner?.lastName || owner?.last_name || '';
+      const name = `${first} ${last}`.trim();
+      if (first) return first;
+      return name || null;
+    } catch {
+      return null;
+    }
+  } catch (err) {
+    console.warn('[HubSpot] resolveCloserFromContactOwner failed:', err?.message || err);
+    return null;
+  }
+}
