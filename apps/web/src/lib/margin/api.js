@@ -231,3 +231,183 @@ export async function deleteDossier(id) {
   const { error } = await supabase.from('margin_dossiers').delete().eq('id', id);
   if (error) throw error;
 }
+
+/** Load the single margin dossier linked to a Novacam and/or CompanyCam project. */
+export async function fetchDossierForProject({ projectId, companycamProjectId } = {}) {
+  if (!projectId && !companycamProjectId) return null;
+
+  let dossier = null;
+  if (projectId) {
+    const { data, error } = await supabase
+      .from('margin_dossiers')
+      .select('*')
+      .eq('project_id', projectId)
+      .maybeSingle();
+    if (error) throw error;
+    dossier = data;
+  }
+  if (!dossier && companycamProjectId) {
+    const { data, error } = await supabase
+      .from('margin_dossiers')
+      .select('*')
+      .eq('companycam_project_id', String(companycamProjectId))
+      .maybeSingle();
+    if (error) throw error;
+    dossier = data;
+  }
+  if (!dossier) return null;
+
+  const [hRes, pRes] = await Promise.all([
+    supabase.from('margin_hour_lines').select('*').eq('dossier_id', dossier.id),
+    supabase.from('margin_product_lines').select('*').eq('dossier_id', dossier.id),
+  ]);
+  if (hRes.error) throw hRes.error;
+  if (pRes.error) throw pRes.error;
+
+  return {
+    ...dossier,
+    hour_lines: hRes.data || [],
+    product_lines: pRes.data || [],
+  };
+}
+
+/**
+ * Upsert one dossier per project (unique on project_id / companycam_project_id).
+ * Also persists snapshot columns (ma, mb, ma_pct, …) and source_fingerprint.
+ */
+export async function upsertProjectDossier({
+  dossier,
+  hourLines,
+  productLines,
+  calc = null,
+  fingerprint = null,
+  existingId = null,
+}) {
+  const invoices = Array.isArray(dossier.invoices) ? dossier.invoices : [];
+  const caHt = sumInvoiceCaHt(invoices);
+  const now = new Date().toISOString();
+  const payload = {
+    project_id: dossier.project_id || null,
+    companycam_project_id: dossier.companycam_project_id
+      ? String(dossier.companycam_project_id)
+      : null,
+    client_name: dossier.client_name || null,
+    mix: dossier.mix || null,
+    ca_ht: caHt,
+    closer: dossier.closer || null,
+    exception: dossier.exception ?? false,
+    client_address: dossier.client_address || null,
+    invoices,
+    notes: dossier.notes || null,
+    generated_at: now,
+    source_fingerprint: fingerprint || dossier.source_fingerprint || null,
+    ma: calc?.ma ?? null,
+    mb: calc?.mb ?? null,
+    ma_pct: calc?.maPct ?? null,
+    direct_cost: calc?.direct ?? null,
+    person_hours: calc?.personHours ?? null,
+  };
+
+  let row;
+  let id = existingId;
+  if (!id) {
+    const existing = await fetchDossierForProject({
+      projectId: payload.project_id,
+      companycamProjectId: payload.companycam_project_id,
+    });
+    id = existing?.id || null;
+  }
+
+  if (id) {
+    const { data, error } = await supabase
+      .from('margin_dossiers')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    row = data;
+    const [hDel, pDel] = await Promise.all([
+      supabase.from('margin_hour_lines').delete().eq('dossier_id', id),
+      supabase.from('margin_product_lines').delete().eq('dossier_id', id),
+    ]);
+    if (hDel.error) throw hDel.error;
+    if (pDel.error) throw pDel.error;
+  } else {
+    const { data, error } = await supabase
+      .from('margin_dossiers')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    row = data;
+  }
+
+  const dossierId = row.id;
+  const hoursPayload = (hourLines || [])
+    .filter((l) => l.work_date)
+    .map((l) => ({
+      dossier_id: dossierId,
+      work_date: l.work_date,
+      service: l.service || null,
+      people: l.people || [],
+    }));
+  const productsPayload = (productLines || [])
+    .filter((l) => l.work_date && l.product)
+    .map((l) => ({
+      dossier_id: dossierId,
+      work_date: l.work_date,
+      product: l.product,
+      liters: l.liters === '' || l.liters == null ? null : Number(l.liters),
+      m2: l.m2 === '' || l.m2 == null ? null : Number(l.m2),
+    }));
+
+  if (hoursPayload.length) {
+    const { error } = await supabase.from('margin_hour_lines').insert(hoursPayload);
+    if (error) throw error;
+  }
+  if (productsPayload.length) {
+    const { error } = await supabase.from('margin_product_lines').insert(productsPayload);
+    if (error) throw error;
+  }
+
+  return { id: dossierId, row };
+}
+
+/** Lightweight snapshots for dashboard STATS (keyed by project uuid / CC id). */
+export async function fetchMarginSnapshots({ projectIds = [], companycamProjectIds = [] } = {}) {
+  const byProject = {};
+  const byCc = {};
+
+  const select =
+    'id, project_id, companycam_project_id, ma, mb, ma_pct, direct_cost, person_hours, generated_at, source_fingerprint, ca_ht';
+
+  if (projectIds.length) {
+    const { data, error } = await supabase
+      .from('margin_dossiers')
+      .select(select)
+      .in('project_id', projectIds);
+    if (error) throw error;
+    for (const row of data || []) {
+      if (row.project_id) byProject[row.project_id] = row;
+      if (row.companycam_project_id) byCc[String(row.companycam_project_id)] = row;
+    }
+  }
+
+  const remainingCc = (companycamProjectIds || [])
+    .map(String)
+    .filter((id) => id && !byCc[id]);
+  if (remainingCc.length) {
+    const { data, error } = await supabase
+      .from('margin_dossiers')
+      .select(select)
+      .in('companycam_project_id', remainingCc);
+    if (error) throw error;
+    for (const row of data || []) {
+      if (row.companycam_project_id) byCc[String(row.companycam_project_id)] = row;
+      if (row.project_id && !byProject[row.project_id]) byProject[row.project_id] = row;
+    }
+  }
+
+  return { byProject, byCc };
+}

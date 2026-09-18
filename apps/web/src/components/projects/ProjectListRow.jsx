@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow, format, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import MaPercentBadge from '@/components/margins/MaPercentBadge';
+import { formatMoney } from '@/lib/margin/format';
 
 const formatRelative = (dateString) => {
   if (!dateString) return '—';
@@ -109,6 +111,9 @@ const ProjectListRow = ({ project, onClick }) => {
   const hours = project.stats?.hours ?? 0;
   const productQty = project.stats?.product_qty ?? 0;
   const surface = project.stats?.surface_m2 ?? 0;
+  const maPct = project.stats?.ma_pct;
+  const ma = project.stats?.ma;
+  const hasMa = maPct != null && Number.isFinite(Number(maPct));
 
   return (
     <button
@@ -216,6 +221,19 @@ const ProjectListRow = ({ project, onClick }) => {
               m²
             </span>
           </div>
+          {hasMa && (
+            <div className="col-span-2 flex items-center gap-2 min-w-0 pt-0.5">
+              <span className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">
+                MA
+              </span>
+              <MaPercentBadge maPct={Number(maPct)} />
+              {ma != null && Number.isFinite(Number(ma)) && (
+                <span className="text-xs text-gray-500 tabular-nums truncate">
+                  {formatMoney(Number(ma))}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Recent photos */}
