@@ -10,9 +10,6 @@ import {
   Calendar,
   Loader2,
   AlertCircle,
-  Clock,
-  Droplets,
-  Wallet,
   Image as ImageIcon,
   ClipboardList,
   MoreHorizontal,
@@ -22,6 +19,7 @@ import MediaGrid from '@/components/media/MediaGrid';
 import ProjectTimeSection from '@/components/time/ProjectTimeSection';
 import ProjectSpraySection from '@/components/spray/ProjectSpraySection';
 import ProjectExpenseSection from '@/components/expenses/ProjectExpenseSection';
+import SuiviSidebarLinks from '@/components/suivi/SuiviSidebarLinks';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -517,51 +515,11 @@ const CompanyCamProjectDetailPage = () => {
             ) : null}
 
             <SidebarCard title={t('suivi.title')}>
-              <button
-                type="button"
-                onClick={() => setActiveTab('suivi')}
-                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group"
-              >
-                <span className="h-8 w-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600">
-                  <Clock className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600">
-                    {t('suivi.hoursWorked')}
-                  </p>
-                  <p className="text-xs text-gray-400">{t('suivi.timeTrackerSubtitle')}</p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('suivi')}
-                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group"
-              >
-                <span className="h-8 w-8 rounded-lg bg-sky-50 dark:bg-sky-950/40 flex items-center justify-center text-sky-600">
-                  <Droplets className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600">
-                    {t('suivi.sprays')}
-                  </p>
-                  <p className="text-xs text-gray-400">{t('suivi.sprayTrackerSubtitle')}</p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('suivi')}
-                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group"
-              >
-                <span className="h-8 w-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600">
-                  <Wallet className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600">
-                    {t('suivi.otherExpenses')}
-                  </p>
-                  <p className="text-xs text-gray-400">{t('suivi.expenseTrackerSubtitle')}</p>
-                </div>
-              </button>
+              <SuiviSidebarLinks
+                projectId={null}
+                companycamProjectId={String(ccId)}
+                onOpenSuivi={() => setActiveTab('suivi')}
+              />
             </SidebarCard>
 
             <SidebarCard title="Photos">

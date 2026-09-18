@@ -98,7 +98,9 @@
     "sprays": "Besproeiingen",
     "sprayTrackerSubtitle": "Sproeiregistratie",
     "otherExpenses": "Overige kosten",
-    "expenseTrackerSubtitle": "Kostenregistratie"
+    "expenseTrackerSubtitle": "Kostenregistratie",
+    "loadingSummary": "…",
+    "emptySummary": "—"
   },
   "expenses": {
     "title": "Overige kosten",
