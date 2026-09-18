@@ -292,7 +292,7 @@ const ParamsTab = ({ params, prices, onReload }) => {
                   onCheckedChange={(v) => set('round_trip', v)}
                   id="round-trip"
                 />
-                <Label htmlFor="round-trip">Aller-retour (×2 sur le km one-way)</Label>
+                <Label htmlFor="round-trip">Aller-retour (trajet = 2 × distance route)</Label>
               </div>
               <div className="md:col-span-2 flex flex-wrap items-center gap-3 text-sm">
                 <span

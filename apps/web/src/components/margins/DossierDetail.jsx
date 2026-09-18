@@ -75,10 +75,10 @@ const DossierDetail = ({
             <Row
               label={
                 calc?.fuelIncomplete
-                  ? 'Diesel trajet (adresses manquantes)'
+                  ? `Diesel trajet (adresses manquantes)${calc?.roundTrip !== false ? ' · A/R' : ''}`
                   : calc?.fuelRoutingFailed
-                    ? 'Diesel trajet (échec géocode)'
-                    : 'Diesel trajet'
+                    ? `Diesel trajet (échec géocode)${calc?.roundTrip !== false ? ' · A/R' : ''}`
+                    : `Diesel trajet${calc?.roundTrip !== false ? ' (A/R)' : ''}`
               }
               value={
                 calc?.dieselFuel != null
@@ -130,7 +130,7 @@ const DossierDetail = ({
                     {d.date} · {d.driverName || '—'}
                   </span>
                   <span className="tabular-nums">
-                    {d.km == null ? 'km indisponible' : `${formatKm(d.km)} · ${formatMoney(d.cost)}`}
+                    {d.km == null ? 'km indisponible' : `${formatKm(d.km)}${d.roundTrip ? ' A/R' : ''} · ${formatMoney(d.cost)}`}
                   </span>
                 </div>
               ))}

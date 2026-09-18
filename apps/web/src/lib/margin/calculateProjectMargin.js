@@ -124,6 +124,7 @@ export function calculateProjectMargin({
     fuelIncomplete: fuelResult.missingAddresses,
     fuelRoutingFailed: fuelResult.routingFailed,
     fuelDays: fuelResult.days,
+    roundTrip: tripFactor === 2,
     otherExpenses: roundMoney(otherExp || 0),
     direct: roundMoney(direct),
     caHt: caHt == null ? null : roundMoney(caHt),
@@ -220,7 +221,9 @@ function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFac
       date,
       driverName: driver?.name || null,
       homeAddress: home || null,
-      km: kmNum,
+      oneWayKm: kmNum,
+      km: kmNum == null ? null : kmNum * tripFactor, // billed km (A/R if round_trip)
+      roundTrip: tripFactor === 2,
       cost: null,
     };
 
@@ -240,7 +243,7 @@ function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFac
       continue;
     }
 
-    const cost = tripFactor * kmNum * litersPerKm * (Number(diesel) || 0);
+    const cost = day.km * litersPerKm * (Number(diesel) || 0);
     day.cost = cost;
     fuelSum += cost;
     anySuccess = true;

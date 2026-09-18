@@ -482,10 +482,10 @@ const ProjectMarginTab = ({
         <Row
           label={
             calc?.fuelIncomplete
-              ? 'Diesel trajet (adresses manquantes)'
+              ? `Diesel trajet (adresses manquantes)${calc?.roundTrip !== false ? ' · A/R' : ''}`
               : calc?.fuelRoutingFailed
-                ? 'Diesel trajet (échec géocode)'
-                : 'Diesel trajet'
+                ? `Diesel trajet (échec géocode)${calc?.roundTrip !== false ? ' · A/R' : ''}`
+                : `Diesel trajet${calc?.roundTrip !== false ? ' (A/R)' : ''}`
           }
           value={
             calc?.dieselFuel != null
@@ -553,7 +553,7 @@ const ProjectMarginTab = ({
                   ? d.homeAddress && dossier.client_address
                     ? 'échec géocode'
                     : 'adresses / km indisponible'
-                  : `${formatKm(d.km)} · ${formatMoney(d.cost)}`}
+                  : `${formatKm(d.km)}${d.roundTrip ? ' A/R' : ''} · ${formatMoney(d.cost)}`}
               </span>
             </div>
           ))}
