@@ -149,13 +149,27 @@ export async function fetchTeamProfiles() {
   return data || [];
 }
 
+
+/** mix is NOT NULL in DB — derive from hour-line services or keep existing / autre. */
+function resolveMix(dossier, hourLines = []) {
+  const existing = String(dossier?.mix || '').trim();
+  if (existing) return existing;
+  const services = [];
+  for (const line of hourLines || []) {
+    const s = String(line?.service || '').trim().toLowerCase();
+    if (s && !services.includes(s)) services.push(s);
+  }
+  if (services.length) return services.join('+');
+  return 'autre';
+}
+
 export async function saveDossier({ dossier, hourLines, productLines, existingId }) {
   const invoices = Array.isArray(dossier.invoices) ? dossier.invoices : [];
   const caHt = sumInvoiceCaHt(invoices);
   const payload = {
     project_id: dossier.project_id || null,
     client_name: dossier.client_name || null,
-    mix: dossier.mix || null,
+    mix: resolveMix(dossier, hourLines),
     ca_ht: caHt,
     closer: dossier.closer || null,
     exception: dossier.exception ?? false,
@@ -292,7 +306,7 @@ export async function upsertProjectDossier({
       ? String(dossier.companycam_project_id)
       : null,
     client_name: dossier.client_name || null,
-    mix: dossier.mix || null,
+    mix: resolveMix(dossier, hourLines),
     ca_ht: caHt,
     closer: dossier.closer || null,
     exception: dossier.exception ?? false,

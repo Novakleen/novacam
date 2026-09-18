@@ -203,7 +203,10 @@ const ProjectMarginTab = ({
         client_name: name,
         client_address: address,
         closer: chosenCloser || null,
-        mix: dossier?.mix || null,
+        mix:
+          dossier?.mix ||
+          [...new Set((hourLines || []).map((l) => String(l.service || '').trim().toLowerCase()).filter(Boolean))].join('+') ||
+          'autre',
         exception: dossier?.exception ?? false,
         invoices,
         notes: dossier?.notes || null,
