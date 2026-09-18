@@ -33,8 +33,8 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
       orderBy: 'work_date',
     }),
     fetchScoped(supabase, 'project_expenses', project?.id, companycamProjectId || project?.companycam_project_id, {
-      select: 'id, amount_ht, work_date, updated_at, label, category',
-      orderBy: 'work_date',
+      select: 'id, amount_ht, expense_date, updated_at, label, category',
+      orderBy: 'expense_date',
     }),
   ]);
 
