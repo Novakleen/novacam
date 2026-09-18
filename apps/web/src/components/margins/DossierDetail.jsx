@@ -25,6 +25,7 @@ const Row = ({ label, value, muted }) => (
 const DossierDetail = ({
   dossier,
   calc,
+  prices,
   open,
   onOpenChange,
   onEdit,
@@ -74,9 +75,23 @@ const DossierDetail = ({
             <Row
               label={
                 calc?.fuelIncomplete
-                  ? 'Carburant (incomplet)'
-                  : 'Carburant'
+                  ? 'Diesel trajet (incomplet)'
+                  : 'Diesel trajet'
               }
+              value={formatMoney(calc?.dieselFuel)}
+              muted
+            />
+            <Row
+              label={
+                calc?.essenceHours
+                  ? `Essence HP/SC (${formatHours(calc.essenceHours)})`
+                  : 'Essence HP/SC'
+              }
+              value={formatMoney(calc?.essenceFuel)}
+              muted
+            />
+            <Row
+              label={calc?.fuelIncomplete ? 'Carburant total (incomplet)' : 'Carburant total'}
               value={formatMoney(calc?.fuel)}
               muted
             />
@@ -138,7 +153,7 @@ const DossierDetail = ({
               {productLines.map((l) => (
                 <div key={l.id || `${l.work_date}-${l.product}`} className="text-sm flex justify-between">
                   <span>
-                    {l.work_date} · {productLabel(l.product)}
+                    {l.work_date} · {productLabel(l.product, prices)}
                   </span>
                   <span className="tabular-nums">
                     {l.liters} L{l.m2 ? ` · ${l.m2} m²` : ''}

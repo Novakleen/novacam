@@ -10,17 +10,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PRODUCT_SLUGS } from '@/lib/margin/constants';
+import { productOptions } from '@/lib/margin/constants';
 import { todayISODate } from '@/lib/timeTracking';
 
-const emptyLine = () => ({
+const emptyLine = (defaultSlug = 'biomix') => ({
   work_date: todayISODate(),
-  product: 'biomix',
+  product: defaultSlug,
   liters: '',
   m2: '',
 });
 
-const ProductLinesEditor = ({ lines = [], onChange }) => {
+const ProductLinesEditor = ({ lines = [], onChange, prices }) => {
+  const options = productOptions(prices);
+  const defaultSlug = options[0]?.slug || 'biomix';
   const update = (index, patch) => {
     onChange(lines.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   };
@@ -29,7 +31,7 @@ const ProductLinesEditor = ({ lines = [], onChange }) => {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <Label className="text-sm font-semibold">Lignes produits</Label>
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...lines, emptyLine()])}>
+        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...lines, emptyLine(defaultSlug)])}>
           <Plus className="h-4 w-4 mr-1" /> Produit
         </Button>
       </div>
@@ -55,14 +57,14 @@ const ProductLinesEditor = ({ lines = [], onChange }) => {
             <div className="md:col-span-3">
               <Label className="text-xs">Produit</Label>
               <Select
-                value={line.product || 'biomix'}
+                value={line.product || defaultSlug}
                 onValueChange={(v) => update(idx, { product: v })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PRODUCT_SLUGS.map((p) => (
+                  {options.map((p) => (
                     <SelectItem key={p.slug} value={p.slug}>
                       {p.label}
                     </SelectItem>

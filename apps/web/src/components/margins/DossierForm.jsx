@@ -75,6 +75,7 @@ const DossierForm = ({
   projects = [],
   profiles = [],
   closers = [],
+  prices = [],
   onSaved,
 }) => {
   const { toast } = useToast();
@@ -322,6 +323,7 @@ const DossierForm = ({
           <ProductLinesEditor
             lines={form.productLines}
             onChange={(productLines) => setField('productLines', productLines)}
+            prices={prices}
           />
 
           <div className="space-y-2">

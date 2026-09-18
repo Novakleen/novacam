@@ -225,12 +225,14 @@ const MarginsPage = () => {
         projects={projects}
         profiles={profiles}
         closers={params?.commercial_closers || []}
+        prices={prices}
         onSaved={load}
       />
 
       <DossierDetail
         dossier={detail}
         calc={detail ? calcs[detail.id] : null}
+        prices={prices}
         open={Boolean(detail)}
         onOpenChange={(o) => {
           if (!o) setDetail(null);

@@ -6,6 +6,7 @@ export const SERVICE_CODES = [
   { code: 'kleenkup', label: 'Kleenkup', needsSpray: true },
   { code: 'amphiclean', label: 'Amphiclean', needsSpray: true },
   { code: 'nettoyage', label: 'Nettoyage', needsSpray: false },
+  { code: 'sc', label: 'SC', needsSpray: false },
   { code: 'hydrogommage', label: 'Hydrogommage', needsSpray: false },
   { code: 'peinture', label: 'Peinture', needsSpray: false },
   { code: 'demoussage', label: 'Démoussage', needsSpray: false },
@@ -69,8 +70,33 @@ export function serviceLabel(code) {
   return SERVICE_BY_CODE[code]?.label || code || '—';
 }
 
-export function productLabel(slug) {
+/** Prefer DB product name from prices rows when provided. */
+export function productLabel(slug, prices) {
+  if (Array.isArray(prices)) {
+    const row = prices.find((p) => (p.slug || p.product) === slug);
+    if (row?.name) return row.name;
+  }
   return PRODUCT_SLUGS.find((p) => p.slug === slug)?.label || slug || '—';
+}
+
+/** Build product options from DB prices, falling back to PRODUCT_SLUGS. */
+export function productOptions(prices) {
+  if (Array.isArray(prices) && prices.length) {
+    return prices.map((p) => ({
+      slug: p.slug || p.product,
+      label: p.name || productLabel(p.slug || p.product),
+    })).filter((p) => p.slug);
+  }
+  return PRODUCT_SLUGS.map((p) => ({ slug: p.slug, label: p.label }));
+}
+
+export function slugifyProductName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 /** TTC → HT. vatRate is 0.06 or 0.21 (not 6/21). */
