@@ -75,10 +75,20 @@ const DossierDetail = ({
             <Row
               label={
                 calc?.fuelIncomplete
-                  ? 'Diesel trajet (incomplet)'
-                  : 'Diesel trajet'
+                  ? 'Diesel trajet (adresses manquantes)'
+                  : calc?.fuelRoutingFailed
+                    ? 'Diesel trajet (échec géocode)'
+                    : 'Diesel trajet'
               }
-              value={formatMoney(calc?.dieselFuel)}
+              value={
+                calc?.dieselFuel != null
+                  ? formatMoney(calc.dieselFuel)
+                  : calc?.fuelRoutingFailed
+                    ? 'échec géocode'
+                    : calc?.fuelIncomplete
+                      ? 'adresses manquantes'
+                      : formatMoney(calc?.dieselFuel)
+              }
               muted
             />
             <Row

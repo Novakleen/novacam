@@ -308,9 +308,9 @@ export function buildCompletenessFlags({
   }
 
   if (fuelIncomplete) {
-    flags.push({ key: 'fuel', label: 'Adresses carburant incomplètes' });
+    flags.push({ key: 'fuel', label: 'Adresses carburant manquantes' });
   } else if (fuelRoutingFailed) {
-    flags.push({ key: 'fuel_route', label: 'Trajet non calculable (géocode)' });
+    flags.push({ key: 'fuel_route', label: 'Échec géocode trajet diesel' });
   }
 
   const servicesWithHours = new Set();
