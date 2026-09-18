@@ -211,6 +211,13 @@
     "contactClearedTitle": "Contact removed",
     "contactClearedDesc": "The HubSpot contact and invoice were cleared.",
     "saveError": "Could not save HubSpot data.",
-    "noProjectRow": "Could not create the linked project row."
+    "noProjectRow": "Could not create the linked project row.",
+    "missingScopesTitle": "Missing HubSpot scopes",
+    "missingScopesShort": "Invoice scopes missing on the HubSpot private app.",
+    "missingScopesBody": "Reading invoices needs extra scopes on the HubSpot private app (EU portal 144564857). Add these scopes, then regenerate the token if needed:",
+    "missingScopesHint": "Meanwhile, you can paste a HubSpot invoice ID manually below.",
+    "searchByInvoiceNumber": "Search by number",
+    "searchByInvoiceNumberPlaceholder": "e.g. INV-2026-001",
+    "searchInvoiceButton": "Search"
   }
 }

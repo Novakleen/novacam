@@ -26,8 +26,19 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import ContactAssignmentDialog from '@/components/projects/ContactAssignmentDialog';
 
-const HUBSPOT_PORTAL_ID = '46368862';
+const HUBSPOT_PORTAL_ID = '144564857';
+const HUBSPOT_APP_BASE = `https://app-eu1.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}`;
 const INVOICE_OBJECT_TYPE = '0-53';
+const INVOICE_READ_SCOPES = ['crm.objects.invoices.read', 'crm.schemas.invoices.read'];
+const INVOICE_PROPERTIES = [
+  'hs_number',
+  'hs_invoice_number',
+  'hs_amount_billed',
+  'hs_currency',
+  'hs_invoice_status',
+  'hs_title',
+  'hs_balance_due',
+];
 
 const PROJECT_HS_FIELDS = `
   id,
@@ -48,15 +59,106 @@ const PROJECT_HS_FIELDS = `
 const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
 
+class HubSpotMissingScopesError extends Error {
+  constructor(scopes = INVOICE_READ_SCOPES, message) {
+    super(message || 'MISSING_SCOPES');
+    this.name = 'HubSpotMissingScopesError';
+    this.category = 'MISSING_SCOPES';
+    this.requiredGranularScopes = scopes.length ? scopes : INVOICE_READ_SCOPES;
+  }
+}
+
+const collectScopes = (payload) => {
+  if (!payload || typeof payload !== 'object') return [];
+  const raw =
+    payload.requiredGranularScopes ||
+    payload.context?.requiredGranularScopes ||
+    payload.error?.requiredGranularScopes ||
+    payload.error?.context?.requiredGranularScopes ||
+    [];
+  return Array.isArray(raw) ? raw.map(String).filter(Boolean) : [];
+};
+
+const detectMissingScopes = (payload) => {
+  if (!payload || typeof payload !== 'object') return null;
+  const category =
+    payload.category ||
+    payload.error?.category ||
+    (typeof payload.error === 'object' ? payload.error?.category : null);
+  const scopes = collectScopes(payload);
+  const blob = typeof payload.error === 'string'
+    ? payload.error
+    : JSON.stringify(payload);
+  if (
+    category === 'MISSING_SCOPES' ||
+    /MISSING_SCOPES/i.test(blob) ||
+    /requiredGranularScopes/i.test(blob)
+  ) {
+    return scopes.length ? scopes : INVOICE_READ_SCOPES;
+  }
+  return null;
+};
+
 const invokeHubSpotProxy = async (path, method = 'GET', body = null) => {
   const { data, error } = await supabase.functions.invoke('hubspot-proxy', {
     body: { path, method, body },
   });
-  if (error) throw new Error(error.message);
+
+  // Edge function may surface HubSpot JSON in data even on non-2xx
+  const missingFromData = detectMissingScopes(data);
+  if (missingFromData) {
+    throw new HubSpotMissingScopesError(
+      missingFromData,
+      'Scopes HubSpot manquants pour les factures (crm.objects.invoices.read, crm.schemas.invoices.read).'
+    );
+  }
+
+  if (error) {
+    let ctx = null;
+    try {
+      if (error.context && typeof error.context.clone === 'function') {
+        ctx = await error.context.clone().json();
+      } else if (error.context && typeof error.context.json === 'function') {
+        ctx = await error.context.json();
+      } else if (error.context && typeof error.context === 'object') {
+        ctx = error.context;
+      }
+    } catch {
+      ctx = null;
+    }
+    const missingFromErr =
+      detectMissingScopes(ctx) ||
+      detectMissingScopes(data) ||
+      detectMissingScopes({ message: error.message });
+    if (missingFromErr) {
+      throw new HubSpotMissingScopesError(
+        missingFromErr,
+        'Scopes HubSpot manquants pour les factures (crm.objects.invoices.read, crm.schemas.invoices.read).'
+      );
+    }
+    // Prefer HubSpot message from body when available
+    const hsMsg = ctx?.message || (typeof ctx?.error === 'string' ? ctx.error : null);
+    throw new Error(hsMsg || error.message);
+  }
+
   if (data?.error) {
+    const missing = detectMissingScopes(typeof data.error === 'object' ? data.error : data);
+    if (missing) {
+      throw new HubSpotMissingScopesError(
+        missing,
+        'Scopes HubSpot manquants pour les factures (crm.objects.invoices.read, crm.schemas.invoices.read).'
+      );
+    }
     throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
   }
   if (data?.status === 'error' || data?.message === 'An error occurred.') {
+    const missing = detectMissingScopes(data);
+    if (missing) {
+      throw new HubSpotMissingScopesError(
+        missing,
+        'Scopes HubSpot manquants pour les factures (crm.objects.invoices.read, crm.schemas.invoices.read).'
+      );
+    }
     throw new Error(data?.message || 'HubSpot API error');
   }
   return data;
@@ -78,10 +180,10 @@ const formatMoney = (amount, currency, locale) => {
 };
 
 const invoiceHubSpotUrl = (invoiceId) =>
-  `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/${INVOICE_OBJECT_TYPE}/${invoiceId}`;
+  `${HUBSPOT_APP_BASE}/record/${INVOICE_OBJECT_TYPE}/${invoiceId}`;
 
 const contactHubSpotUrl = (contactId) =>
-  `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/contact/${contactId}`;
+  `${HUBSPOT_APP_BASE}/contact/${contactId}`;
 
 const normalizeInvoice = (raw) => {
   if (!raw) return null;
@@ -428,8 +530,7 @@ const ProjectHubSpotAdminPanel = ({
                 <button
                   type="button"
                   onClick={() => setShowInvoiceDialog(true)}
-                  disabled={!hasContact}
-                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-40 disabled:pointer-events-none"
+                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
                   title={t('hubspotAdmin.linkInvoice')}
                 >
                   <Link2 className="h-3.5 w-3.5" />
@@ -465,9 +566,7 @@ const ProjectHubSpotAdminPanel = ({
                   size="sm"
                   variant="outline"
                   className="h-7 text-xs rounded-lg"
-                  disabled={!hasContact}
                   onClick={() => setShowInvoiceDialog(true)}
-                  title={!hasContact ? t('hubspotAdmin.needContactFirst') : undefined}
                 >
                   <Link2 className="h-3.5 w-3.5 mr-1" />
                   {t('hubspotAdmin.linkInvoice')}
@@ -504,32 +603,46 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
   const { toast } = useToast();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [searchingNumber, setSearchingNumber] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [missingScopes, setMissingScopes] = useState(null);
   const [manualId, setManualId] = useState('');
   const [manualNumber, setManualNumber] = useState('');
+  const [numberQuery, setNumberQuery] = useState('');
 
-  const fetchInvoices = useCallback(async () => {
+  const fetchAssociatedInvoices = useCallback(async () => {
     if (!contactId) return;
     setLoading(true);
     setSearchError(null);
+    setMissingScopes(null);
     setInvoices([]);
     try {
-      // Prefer associations API (v4), then batch-read invoice properties
       let invoiceIds = [];
-      try {
-        const assoc = await invokeHubSpotProxy(
-          `/crm/v4/objects/contacts/${contactId}/associations/invoices`
-        );
-        const results = Array.isArray(assoc?.results) ? assoc.results : [];
-        invoiceIds = results
-          .map((r) => String(r.toObjectId || r.id || r.to?.id || ''))
-          .filter(Boolean);
-      } catch (assocErr) {
-        console.warn('[InvoiceLink] associations failed, trying search:', assocErr?.message);
+      let sawMissingScopes = null;
+
+      const assocPaths = [
+        `/crm/v4/objects/contacts/${contactId}/associations/${INVOICE_OBJECT_TYPE}`,
+        `/crm/v4/objects/contacts/${contactId}/associations/invoices`,
+      ];
+
+      for (const assocPath of assocPaths) {
+        if (invoiceIds.length) break;
+        try {
+          const assoc = await invokeHubSpotProxy(assocPath);
+          const results = Array.isArray(assoc?.results) ? assoc.results : [];
+          invoiceIds = results
+            .map((r) => String(r.toObjectId || r.id || r.to?.id || ''))
+            .filter(Boolean);
+        } catch (assocErr) {
+          if (assocErr instanceof HubSpotMissingScopesError) {
+            sawMissingScopes = assocErr.requiredGranularScopes;
+          } else {
+            console.warn('[InvoiceLink] associations failed:', assocPath, assocErr?.message);
+          }
+        }
       }
 
-      if (!invoiceIds.length) {
-        // Fallback: CRM search with association filter (may require scopes)
+      if (!invoiceIds.length && !sawMissingScopes) {
         const searchBody = {
           filterGroups: [
             {
@@ -542,37 +655,64 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
               ],
             },
           ],
-          properties: [
-            'hs_number',
-            'hs_invoice_number',
-            'hs_amount_billed',
-            'hs_currency',
-            'hs_invoice_status',
-            'hs_title',
-            'hs_balance_due',
-          ],
+          properties: INVOICE_PROPERTIES,
           limit: 50,
         };
-        const search = await invokeHubSpotProxy(
-          '/crm/v3/objects/invoices/search',
-          'POST',
-          searchBody
-        );
-        const results = Array.isArray(search?.results) ? search.results : [];
-        setInvoices(results.map(normalizeInvoice).filter(Boolean));
+        try {
+          const search = await invokeHubSpotProxy(
+            '/crm/v3/objects/invoices/search',
+            'POST',
+            searchBody
+          );
+          const results = Array.isArray(search?.results) ? search.results : [];
+          setInvoices(results.map(normalizeInvoice).filter(Boolean));
+          return;
+        } catch (searchErr) {
+          if (searchErr instanceof HubSpotMissingScopesError) {
+            sawMissingScopes = searchErr.requiredGranularScopes;
+          } else {
+            throw searchErr;
+          }
+        }
+      }
+
+      if (sawMissingScopes && !invoiceIds.length) {
+        setMissingScopes(sawMissingScopes);
+        setSearchError(t('hubspotAdmin.missingScopesShort'));
+        setInvoices([]);
         return;
       }
 
-      const props =
-        'hs_number,hs_invoice_number,hs_amount_billed,hs_currency,hs_invoice_status,hs_title,hs_balance_due';
-      const batch = await invokeHubSpotProxy('/crm/v3/objects/invoices/batch/read', 'POST', {
-        properties: props.split(','),
-        inputs: invoiceIds.slice(0, 50).map((id) => ({ id })),
-      });
-      const results = Array.isArray(batch?.results) ? batch.results : [];
-      setInvoices(results.map(normalizeInvoice).filter(Boolean));
+      if (!invoiceIds.length) {
+        setInvoices([]);
+        return;
+      }
+
+      try {
+        const batch = await invokeHubSpotProxy('/crm/v3/objects/invoices/batch/read', 'POST', {
+          properties: INVOICE_PROPERTIES,
+          inputs: invoiceIds.slice(0, 50).map((id) => ({ id })),
+        });
+        const results = Array.isArray(batch?.results) ? batch.results : [];
+        setInvoices(results.map(normalizeInvoice).filter(Boolean));
+      } catch (batchErr) {
+        if (batchErr instanceof HubSpotMissingScopesError) {
+          setMissingScopes(batchErr.requiredGranularScopes);
+          setSearchError(t('hubspotAdmin.missingScopesShort'));
+          setInvoices([]);
+          return;
+        }
+        throw batchErr;
+      }
     } catch (err) {
       console.warn('[InvoiceLink] invoice fetch failed:', err?.message || err);
+      if (err instanceof HubSpotMissingScopesError) {
+        setMissingScopes(err.requiredGranularScopes);
+        setSearchError(t('hubspotAdmin.missingScopesShort'));
+        setInvoices([]);
+        // Calm inline panel only — no destructive toast on open
+        return;
+      }
       setSearchError(err?.message || t('hubspotAdmin.invoiceSearchFailed'));
       setInvoices([]);
       toast({
@@ -585,13 +725,80 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
     }
   }, [contactId, t, toast]);
 
+  const searchByInvoiceNumber = useCallback(async () => {
+    const q = numberQuery.trim();
+    if (!q) return;
+    setSearchingNumber(true);
+    setSearchError(null);
+    try {
+      const searchBody = {
+        filterGroups: [
+          {
+            filters: [
+              {
+                propertyName: 'hs_number',
+                operator: 'EQ',
+                value: q,
+              },
+            ],
+          },
+          {
+            filters: [
+              {
+                propertyName: 'hs_number',
+                operator: 'CONTAINS_TOKEN',
+                value: q,
+              },
+            ],
+          },
+        ],
+        properties: INVOICE_PROPERTIES,
+        limit: 25,
+      };
+      const search = await invokeHubSpotProxy(
+        '/crm/v3/objects/invoices/search',
+        'POST',
+        searchBody
+      );
+      const results = Array.isArray(search?.results) ? search.results : [];
+      const normalized = results.map(normalizeInvoice).filter(Boolean);
+      setInvoices(normalized);
+      setMissingScopes(null);
+      if (!normalized.length) {
+        setSearchError(t('hubspotAdmin.noInvoicesFound'));
+      }
+    } catch (err) {
+      console.warn('[InvoiceLink] number search failed:', err?.message || err);
+      if (err instanceof HubSpotMissingScopesError) {
+        setMissingScopes(err.requiredGranularScopes);
+        setSearchError(t('hubspotAdmin.missingScopesShort'));
+        setInvoices([]);
+        return;
+      }
+      setSearchError(err?.message || t('hubspotAdmin.invoiceSearchFailed'));
+      toast({
+        variant: 'destructive',
+        title: t('hubspotAdmin.invoiceSearchFailedTitle'),
+        description: err?.message || t('hubspotAdmin.invoiceSearchFailedDesc'),
+      });
+    } finally {
+      setSearchingNumber(false);
+    }
+  }, [numberQuery, t, toast]);
+
   useEffect(() => {
-    if (open && contactId) {
+    if (open) {
       setManualId('');
       setManualNumber('');
-      fetchInvoices();
+      setNumberQuery('');
+      setMissingScopes(null);
+      setSearchError(null);
+      setInvoices([]);
+      if (contactId) {
+        fetchAssociatedInvoices();
+      }
     }
-  }, [open, contactId, fetchInvoices]);
+  }, [open, contactId, fetchAssociatedInvoices]);
 
   const handleManualSave = () => {
     const id = manualId.trim();
@@ -605,6 +812,8 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
     });
   };
 
+  const scopesToShow = missingScopes?.length ? missingScopes : INVOICE_READ_SCOPES;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
@@ -616,7 +825,55 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
           <DialogDescription>{t('hubspotAdmin.linkInvoiceDesc')}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-2 min-h-[180px] p-1">
+        {missingScopes && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 px-3 py-3 text-sm text-amber-900 dark:text-amber-100 space-y-2">
+            <p className="font-medium">{t('hubspotAdmin.missingScopesTitle')}</p>
+            <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-200/90">
+              {t('hubspotAdmin.missingScopesBody')}
+            </p>
+            <ul className="text-xs font-mono list-disc pl-4 space-y-0.5 text-amber-900 dark:text-amber-100">
+              {scopesToShow.map((scope) => (
+                <li key={scope}>{scope}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-amber-700 dark:text-amber-300/80">
+              {t('hubspotAdmin.missingScopesHint')}
+            </p>
+          </div>
+        )}
+
+        <div className="border rounded-xl p-3 space-y-2 bg-gray-50/80 dark:bg-gray-900/40">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            {t('hubspotAdmin.searchByInvoiceNumber')}
+          </p>
+          <div className="flex gap-2">
+            <Input
+              value={numberQuery}
+              onChange={(e) => setNumberQuery(e.target.value)}
+              placeholder={t('hubspotAdmin.searchByInvoiceNumberPlaceholder')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  searchByInvoiceNumber();
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={searchByInvoiceNumber}
+              disabled={!numberQuery.trim() || searchingNumber || saving}
+            >
+              {searchingNumber ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                t('hubspotAdmin.searchInvoiceButton')
+              )}
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-2 min-h-[140px] p-1">
           {loading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -646,7 +903,15 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
             ))
           ) : (
             <div className="text-center py-6 text-sm text-gray-500 space-y-1">
-              <p>{searchError ? t('hubspotAdmin.invoiceSearchFailed') : t('hubspotAdmin.noInvoicesFound')}</p>
+              {!missingScopes && (
+                <p>
+                  {searchError
+                    ? searchError
+                    : contactId
+                      ? t('hubspotAdmin.noInvoicesFound')
+                      : t('hubspotAdmin.pasteInvoiceHint')}
+                </p>
+              )}
               <p className="text-xs text-gray-400">{t('hubspotAdmin.pasteInvoiceHint')}</p>
             </div>
           )}
@@ -693,5 +958,4 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
     </Dialog>
   );
 };
-
 export default ProjectHubSpotAdminPanel;

@@ -211,6 +211,13 @@
     "contactClearedTitle": "Contact verwijderd",
     "contactClearedDesc": "Het HubSpot-contact en de factuur zijn gewist.",
     "saveError": "HubSpot-gegevens konden niet worden opgeslagen.",
-    "noProjectRow": "Gekoppelde projectrij kon niet worden aangemaakt."
+    "noProjectRow": "Gekoppelde projectrij kon niet worden aangemaakt.",
+    "missingScopesTitle": "Ontbrekende HubSpot-scopes",
+    "missingScopesShort": "Factuurscope ontbreekt op de privé-app van HubSpot.",
+    "missingScopesBody": "Facturen lezen vereist extra scopes op de HubSpot privé-app (EU-portaal 144564857). Voeg deze scopes toe en vernieuw indien nodig het token:",
+    "missingScopesHint": "Intussen kunt u hieronder handmatig een HubSpot-factuur-ID plakken.",
+    "searchByInvoiceNumber": "Zoeken op nummer",
+    "searchByInvoiceNumberPlaceholder": "bv. INV-2026-001",
+    "searchInvoiceButton": "Zoeken"
   }
 }

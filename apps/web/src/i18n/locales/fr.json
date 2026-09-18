@@ -211,6 +211,13 @@
     "contactClearedTitle": "Contact retiré",
     "contactClearedDesc": "Le contact et la facture HubSpot ont été effacés.",
     "saveError": "Impossible d'enregistrer les données HubSpot.",
-    "noProjectRow": "Impossible de créer la ligne projet liée."
+    "noProjectRow": "Impossible de créer la ligne projet liée.",
+    "missingScopesTitle": "Scopes HubSpot manquants",
+    "missingScopesShort": "Scopes factures manquants sur l’app privée HubSpot.",
+    "missingScopesBody": "La lecture des factures nécessite des scopes supplémentaires sur l’application privée HubSpot (portail EU 144564857). Ajoutez ces scopes, puis régénérez le token si besoin :",
+    "missingScopesHint": "En attendant, vous pouvez coller manuellement l’ID de facture HubSpot ci-dessous.",
+    "searchByInvoiceNumber": "Rechercher par numéro",
+    "searchByInvoiceNumberPlaceholder": "Ex. INV-2026-001",
+    "searchInvoiceButton": "Rechercher"
   }
 }
