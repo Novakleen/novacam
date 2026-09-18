@@ -98,7 +98,9 @@
     "sprays": "Pulvérisations",
     "sprayTrackerSubtitle": "Suivi pulvérisation",
     "otherExpenses": "Autres dépenses",
-    "expenseTrackerSubtitle": "Suivi des dépenses"
+    "expenseTrackerSubtitle": "Suivi des dépenses",
+    "loadingSummary": "…",
+    "emptySummary": "—"
   },
   "expenses": {
     "title": "Autres dépenses",

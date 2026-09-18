@@ -98,7 +98,9 @@
     "sprays": "Spray applications",
     "sprayTrackerSubtitle": "Spray tracker",
     "otherExpenses": "Other expenses",
-    "expenseTrackerSubtitle": "Expense tracker"
+    "expenseTrackerSubtitle": "Expense tracker",
+    "loadingSummary": "…",
+    "emptySummary": "—"
   },
   "expenses": {
     "title": "Other expenses",
