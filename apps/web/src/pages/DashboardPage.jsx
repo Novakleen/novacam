@@ -460,23 +460,11 @@ const DashboardPage = () => {
     localStorage.removeItem(STORAGE_KEY);
   };
 
-  const linkedCcIds = useMemo(() => {
-    const set = new Set();
-    novacamProjects.forEach((p) => {
-      if (p.companycam_project_id) set.add(String(p.companycam_project_id));
-    });
-    return set;
-  }, [novacamProjects]);
-
   const unifiedList = useMemo(() => {
-    let nova = [...novacamProjects];
+    // Shadow Novacam rows (HubSpot/link stubs with companycam_project_id) are metadata only —
+    // keep showing the real CompanyCam project with photos instead.
+    let nova = novacamProjects.filter((p) => !p.companycam_project_id);
     let cc = [...ccProjects];
-
-    // When showing all, keep both; if a Novacam project is linked to CC, still show Novacam
-    // and hide the duplicate CC row to avoid double entries (stats already merged on Novacam).
-    if (sourceFilter === 'all') {
-      cc = cc.filter((p) => !linkedCcIds.has(String(p.id)));
-    }
 
     let list = [];
     if (sourceFilter === 'novacam') list = nova;
@@ -537,15 +525,12 @@ const DashboardPage = () => {
     sourceFilter,
     debouncedSearch,
     selectedTags,
-    linkedCcIds,
   ]);
 
   const handleProjectClick = (project) => {
+    // CompanyCam rows always open the CC detail route — never route via supabase_id
+    // (HubSpot link stubs upsert empty Novacam projects with 0 photos).
     if (project.source === 'companycam') {
-      if (project.supabase_id) {
-        navigate(`/project/${project.supabase_id}`);
-        return;
-      }
       navigate(`/project-cc/${project.id}`);
       return;
     }
