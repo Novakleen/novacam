@@ -6,6 +6,7 @@ import {
   serviceLabel,
   toNumberOrNull,
 } from './constants';
+import { normalizeFuelAddress, pickDriverForDate } from './fuel';
 
 /**
  * Pure margin calculation.
@@ -107,7 +108,8 @@ export function calculateProjectMargin({
     hourLines,
     productLines,
     mixAtoms,
-    fuelIncomplete: fuelResult.incomplete,
+    fuelIncomplete: fuelResult.missingAddresses,
+    fuelRoutingFailed: fuelResult.routingFailed,
     caHt,
   });
 
@@ -119,7 +121,8 @@ export function calculateProjectMargin({
     essenceHours: roundHours(essenceHours),
     essenceFuel: roundMoney(essenceFuel),
     fuel: roundMoney(fuel),
-    fuelIncomplete: fuelResult.incomplete,
+    fuelIncomplete: fuelResult.missingAddresses,
+    fuelRoutingFailed: fuelResult.routingFailed,
     fuelDays: fuelResult.days,
     otherExpenses: roundMoney(otherExp || 0),
     direct: roundMoney(direct),
@@ -193,33 +196,36 @@ function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFac
   const days = [];
   let fuelSum = 0;
   let anySuccess = false;
-  let incomplete = false;
+  let missingAddresses = false;
+  let routingFailed = false;
 
   if (!dates.length) {
-    return { fuel: null, incomplete: false, days };
+    return { fuel: null, incomplete: false, missingAddresses: false, routingFailed: false, days };
   }
 
-  if (!clientAddress) {
-    incomplete = true;
+  const client = normalizeFuelAddress(clientAddress);
+  if (!client) {
+    missingAddresses = true;
   }
 
   const litersPerKm = (Number(consumption) || 0) / 100;
 
   for (const date of dates) {
-    const driver = firstPersonOnDate(hourLines, date);
+    const driver = pickDriverForDate(hourLines, date) || firstPersonOnDate(hourLines, date);
+    const home = normalizeFuelAddress(driver?.homeAddress);
     const resolved = Boolean(fuelByDate) && Object.prototype.hasOwnProperty.call(fuelByDate, date);
     const km = resolved ? fuelByDate[date]?.km : undefined;
     const kmNum = toNumberOrNull(km);
     const day = {
       date,
       driverName: driver?.name || null,
-      homeAddress: driver?.homeAddress || null,
+      homeAddress: home || null,
       km: kmNum,
       cost: null,
     };
 
-    if (!driver?.homeAddress || !clientAddress) {
-      incomplete = true;
+    if (!home || !client) {
+      missingAddresses = true;
       days.push(day);
       continue;
     }
@@ -228,7 +234,8 @@ function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFac
       continue;
     }
     if (kmNum == null || kmNum < 0) {
-      incomplete = true;
+      // Addresses present but geocode/route failed — not "incomplete addresses"
+      routingFailed = true;
       days.push(day);
       continue;
     }
@@ -242,7 +249,9 @@ function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFac
 
   return {
     fuel: anySuccess ? fuelSum : null,
-    incomplete,
+    incomplete: missingAddresses,
+    missingAddresses,
+    routingFailed,
     days,
   };
 }
@@ -270,6 +279,7 @@ export function buildCompletenessFlags({
   productLines,
   mixAtoms,
   fuelIncomplete,
+  fuelRoutingFailed,
   caHt,
 }) {
   const flags = [];
@@ -299,6 +309,8 @@ export function buildCompletenessFlags({
 
   if (fuelIncomplete) {
     flags.push({ key: 'fuel', label: 'Adresses carburant incomplètes' });
+  } else if (fuelRoutingFailed) {
+    flags.push({ key: 'fuel_route', label: 'Trajet non calculable (géocode)' });
   }
 
   const servicesWithHours = new Set();

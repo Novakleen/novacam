@@ -14,6 +14,31 @@ function normAddress(address) {
   return String(address || '').trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * Usable postal address for fuel geocoding.
+ * Rejects placeholders (—, N/A) and normalizes CC-style " · " separators.
+ */
+export function normalizeFuelAddress(address) {
+  if (address == null) return '';
+  let s = String(address).trim();
+  if (!s) return '';
+  // CompanyCam UI joins with middle-dot; Nominatim prefers commas/spaces
+  s = s.replace(/\s*·\s*/g, ', ').replace(/\s+/g, ' ').trim();
+  const lower = s.toLowerCase();
+  if (
+    s === '—' ||
+    s === '-' ||
+    s === '–' ||
+    lower === 'n/a' ||
+    lower === 'na' ||
+    lower === 'unknown' ||
+    lower === 'inconnu'
+  ) {
+    return '';
+  }
+  return s;
+}
+
 export function clearFuelCaches() {
   geocodeCache.clear();
   routeCache.clear();
@@ -24,7 +49,8 @@ export function clearFuelCaches() {
  * @returns {Promise<{ lat: number, lon: number, displayName: string }|null>}
  */
 export async function geocodeAddress(address) {
-  const key = normAddress(address).toLowerCase();
+  const usable = normalizeFuelAddress(address);
+  const key = normAddress(usable).toLowerCase();
   if (!key) return null;
   if (geocodeCache.has(key)) return geocodeCache.get(key);
 
@@ -90,6 +116,19 @@ export async function routeDistanceKm(from, to) {
   return km;
 }
 
+/** First person on a work date who has a usable home address (fallback: first person). */
+export function pickDriverForDate(hourLines, date) {
+  let fallback = null;
+  for (const line of hourLines || []) {
+    if (line.work_date !== date) continue;
+    for (const person of line.people || []) {
+      if (!fallback) fallback = person;
+      if (normalizeFuelAddress(person.homeAddress)) return person;
+    }
+  }
+  return fallback;
+}
+
 /**
  * For each unique work_date, geocode driver home → client and compute one-way km.
  * @returns {Promise<Record<string, { km: number|null }>>}
@@ -105,16 +144,17 @@ export async function resolveFuelByDate({ hourLines = [], clientAddress } = {}) 
     dates.push(line.work_date);
   }
 
-  if (!dates.length || !clientAddress) {
+  const client = normalizeFuelAddress(clientAddress);
+  if (!dates.length || !client) {
     for (const date of dates) fuelByDate[date] = { km: null };
     return fuelByDate;
   }
 
-  const clientGeo = await geocodeAddress(clientAddress);
+  const clientGeo = await geocodeAddress(client);
 
   for (const date of dates) {
-    const driver = hourLines.find((l) => l.work_date === date && (l.people || []).length)?.people?.[0];
-    const home = driver?.homeAddress;
+    const driver = pickDriverForDate(hourLines, date);
+    const home = normalizeFuelAddress(driver?.homeAddress);
     if (!home || !clientGeo) {
       fuelByDate[date] = { km: null };
       continue;

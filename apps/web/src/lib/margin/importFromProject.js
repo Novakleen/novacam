@@ -1,5 +1,7 @@
 import { computeWorkedMinutes, minutesToHoursDecimal } from '@/lib/timeTracking';
+import { resolveCloserFromContactOwner } from '@/lib/hubspotService';
 import { mapSprayProductToSlug, mapTaskLabelToService, roundMoney, toNumberOrNull } from './constants';
+import { normalizeFuelAddress } from './fuel';
 
 /**
  * Pull Suivi data (time + spray + expenses) + HubSpot invoice into dossier form fields.
@@ -15,6 +17,7 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
   const companycamProjectId = opts.companycamProjectId
     ? String(opts.companycamProjectId)
     : null;
+  const clientAddressHint = normalizeFuelAddress(opts.clientAddressHint || opts.clientAddress || '');
 
   if (!projectId && !companycamProjectId) {
     return { error: 'Aucun projet sélectionné' };
@@ -46,7 +49,8 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
   const sprayEntries = sprayRes.data || [];
   const expenses = expenseRes.data || [];
 
-  const hourLines = buildHourLines(timeEntries);
+  let hourLines = buildHourLines(timeEntries);
+  hourLines = await enrichHourLinesAddresses(supabase, hourLines, timeEntries);
   const productLines = buildProductLines(sprayEntries);
   const otherExpenses = sumExpensesHt(expenses);
 
@@ -63,14 +67,28 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
     hubspotInvoiceAmount: project?.hubspot_invoice_amount ?? null,
   });
 
+  const fromProject = normalizeFuelAddress(project?.full_address || project?.address || '');
+  const client_address = fromProject || clientAddressHint || '';
+
+  let closer = '';
+  const hsContactId = project?.hubspot_contact_id
+    ? String(project.hubspot_contact_id)
+    : opts.hubspotContactId
+      ? String(opts.hubspotContactId)
+      : null;
+  if (hsContactId) {
+    closer = (await resolveCloserFromContactOwner(hsContactId)) || '';
+  }
+
   return {
     client_name: project?.name || '',
-    client_address: project?.full_address || project?.address || '',
+    client_address,
     project_id: project?.id || projectId || null,
     companycam_project_id:
       companycamProjectId ||
       (project?.companycam_project_id ? String(project.companycam_project_id) : null),
-    closer: '',
+    hubspot_contact_id: hsContactId,
+    closer,
     hourLines,
     productLines,
     invoices,
@@ -90,7 +108,7 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
 
 async function resolveProject(supabase, projectId, companycamProjectId) {
   const cols =
-    'id, name, address, full_address, companycam_project_id, created_by, hubspot_invoice_id, hubspot_invoice_number, hubspot_invoice_amount, hubspot_invoice_currency, hubspot_invoice_status';
+    'id, name, address, full_address, companycam_project_id, created_by, hubspot_contact_id, hubspot_invoice_id, hubspot_invoice_number, hubspot_invoice_amount, hubspot_invoice_currency, hubspot_invoice_status';
 
   if (projectId) {
     const { data, error } = await supabase
@@ -120,6 +138,7 @@ async function resolveProject(supabase, projectId, companycamProjectId) {
       address: '',
       full_address: '',
       companycam_project_id: String(companycamProjectId),
+      hubspot_contact_id: null,
       hubspot_invoice_id: null,
       hubspot_invoice_amount: null,
       hubspot_invoice_number: null,
@@ -194,7 +213,7 @@ function buildHourLines(entries) {
     groups.get(key).people.push({
       name,
       hours,
-      homeAddress: e.profiles?.address || '',
+      homeAddress: normalizeFuelAddress(e.profiles?.address || ''),
       profileId: e.user_id || e.profiles?.id || null,
     });
   }
@@ -235,6 +254,47 @@ function buildProductLines(entries) {
     liters: Math.round(l.liters * 1000) / 1000,
     m2: l.m2 == null ? null : Math.round(l.m2 * 100) / 100,
   }));
+}
+
+/**
+ * Re-fetch profiles.address when the time_entries embed left homeAddress empty
+ * (RLS/join gaps). Mutates people in hourLines.
+ */
+async function enrichHourLinesAddresses(supabase, hourLines, timeEntries) {
+  const missingIds = new Set();
+  for (const line of hourLines || []) {
+    for (const p of line.people || []) {
+      if (!normalizeFuelAddress(p.homeAddress) && p.profileId) {
+        missingIds.add(p.profileId);
+      }
+    }
+  }
+  // Also catch entries whose embed failed entirely
+  for (const e of timeEntries || []) {
+    if (e.user_id && !normalizeFuelAddress(e.profiles?.address)) {
+      missingIds.add(e.user_id);
+    }
+  }
+  if (!missingIds.size) return hourLines;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, address')
+    .in('id', [...missingIds]);
+  if (error || !data?.length) return hourLines;
+
+  const byId = Object.fromEntries(
+    data.map((r) => [r.id, normalizeFuelAddress(r.address || '')])
+  );
+
+  for (const line of hourLines || []) {
+    for (const p of line.people || []) {
+      if (!normalizeFuelAddress(p.homeAddress) && p.profileId && byId[p.profileId]) {
+        p.homeAddress = byId[p.profileId];
+      }
+    }
+  }
+  return hourLines;
 }
 
 /** Stable SHA-256 of sorted ids+updated_at for Suivi sources + HubSpot invoice. */

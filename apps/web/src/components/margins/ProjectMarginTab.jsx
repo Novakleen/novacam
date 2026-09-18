@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Fuel,
   Loader2,
   PieChart,
   RefreshCw,
@@ -29,7 +30,7 @@ import {
 import { calculateProjectMargin, effectiveDiesel } from '@/lib/margin/calculateProjectMargin';
 import { importFromProject, computeLiveFingerprint } from '@/lib/margin/importFromProject';
 import { resolveFuelByDate } from '@/lib/margin/fuel';
-import { formatHours, formatMoney, formatPct } from '@/lib/margin/format';
+import { formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
 import { productLabel, serviceLabel } from '@/lib/margin/constants';
 import MaPercentBadge from './MaPercentBadge';
 import CompletenessFlags from './CompletenessFlags';
@@ -182,13 +183,19 @@ const ProjectMarginTab = ({
       const imported = await importFromProject(supabase, {
         projectId,
         companycamProjectId,
+        clientAddressHint: projectAddress,
       });
       if (imported.error) throw new Error(imported.error);
 
       const address =
         imported.client_address || projectAddress || dossier?.client_address || '';
       const name = imported.client_name || projectName || dossier?.client_name || '';
-      const chosenCloser = closer || dossier?.closer || '';
+      // Prefer HubSpot contact owner (from import); keep manual override if already set in UI
+      const chosenCloser =
+        (imported.closer && imported.closer.trim()) ||
+        (closer && closer.trim()) ||
+        (dossier?.closer && String(dossier.closer).trim()) ||
+        '';
 
       const hourLines = imported.hourLines || [];
       const productLines = imported.productLines || [];
@@ -234,6 +241,7 @@ const ProjectMarginTab = ({
         existingId: dossier?.id || null,
       });
 
+      if (chosenCloser) setCloser(chosenCloser);
       toast({
         title: dossier ? 'Marge régénérée' : 'Marge générée',
         description: imported.ca_ht != null
@@ -472,7 +480,31 @@ const ProjectMarginTab = ({
           muted
         />
         <Row
-          label={calc?.fuelIncomplete ? 'Carburant (incomplet)' : 'Carburant total'}
+          label={
+            calc?.fuelIncomplete
+              ? 'Diesel trajet (incomplet)'
+              : calc?.fuelRoutingFailed
+                ? 'Diesel trajet (géocode)'
+                : 'Diesel trajet'
+          }
+          value={formatMoney(calc?.dieselFuel)}
+          muted
+        />
+        <Row
+          label={
+            calc?.essenceHours
+              ? `Essence HP/SC (${formatHours(calc.essenceHours)})`
+              : 'Essence HP/SC'
+          }
+          value={formatMoney(calc?.essenceFuel)}
+          muted
+        />
+        <Row
+          label={
+            calc?.fuelIncomplete
+              ? 'Carburant total (incomplet)'
+              : 'Carburant total'
+          }
           value={formatMoney(calc?.fuel)}
           muted
         />
@@ -492,6 +524,34 @@ const ProjectMarginTab = ({
         <Row label="Marge après acquisition (MA)" value={formatMoney(calc?.ma ?? dossier.ma)} />
         <Row label="MA %" value={formatPct(calc?.maPct ?? dossier.ma_pct)} />
       </div>
+
+      {calc?.fuelDays?.length > 0 && (
+        <div className="rounded-2xl border border-gray-100 dark:border-gray-800 p-4 space-y-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 flex items-center gap-1">
+            <Fuel className="h-3.5 w-3.5" /> Trajets diesel
+          </p>
+          {calc.fuelDays.map((d) => (
+            <div key={d.date} className="text-sm flex justify-between gap-2">
+              <span className="text-muted-foreground">
+                {d.date} · {d.driverName || '—'}
+                {d.homeAddress ? (
+                  <span className="block text-[11px] opacity-70 truncate max-w-[240px]">
+                    {d.homeAddress}
+                  </span>
+                ) : null}
+              </span>
+              <span className="tabular-nums shrink-0">
+                {d.km == null ? 'km indisponible' : `${formatKm(d.km)} · ${formatMoney(d.cost)}`}
+              </span>
+            </div>
+          ))}
+          {dossier.client_address ? (
+            <p className="text-[11px] text-muted-foreground pt-1">
+              Client : {dossier.client_address}
+            </p>
+          ) : null}
+        </div>
+      )}
 
       {hourLines.length > 0 && (
         <div className="space-y-2">

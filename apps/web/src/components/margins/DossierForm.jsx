@@ -142,6 +142,7 @@ const DossierForm = ({
         ...prev,
         client_name: result.client_name || prev.client_name,
         client_address: result.client_address || prev.client_address,
+        closer: result.closer || prev.closer,
         project_id: result.project_id || prev.project_id,
         hourLines: result.hourLines?.length ? result.hourLines : prev.hourLines,
         productLines: result.productLines?.length ? result.productLines : prev.productLines,
