@@ -217,7 +217,8 @@ export function pickDriverForDate(hourLines, date) {
 }
 
 /**
- * For each unique work_date, geocode driver home → client and compute one-way km.
+ * For each unique work_date, geocode driver home → client and compute one-way km
+ * (billing applies round_trip ×2 in calculateProjectMargin).
  * @returns {Promise<Record<string, { km: number|null }>>}
  */
 export async function resolveFuelByDate({ hourLines = [], clientAddress } = {}) {
