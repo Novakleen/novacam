@@ -20,6 +20,7 @@ import {
   formatHoursDecimal,
   sumHours,
   buildQuoteLineItemProgress,
+  fetchProjectQuoteSnapshot,
 } from '@/lib/timeTracking';
 
 const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubspotContactId = null }) => {
@@ -39,9 +40,12 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
     hubspot_quote_line_items: [],
   });
 
+  const [resolvedProjectId, setResolvedProjectId] = useState(projectId || null);
+
   useEffect(() => {
-    if (!projectId) {
-      setResolvedHsContactId(hubspotContactId || null);
+    setResolvedProjectId(projectId || null);
+    if (!projectId && !companycamProjectId && !hubspotContactId) {
+      setResolvedHsContactId(null);
       setProjectHs({
         hubspot_quote_id: null,
         hubspot_quote_title: null,
@@ -51,14 +55,16 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
     }
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from('projects')
-        .select(
-          'hubspot_contact_id, hubspot_quote_id, hubspot_quote_title, hubspot_quote_line_items'
-        )
-        .eq('id', projectId)
-        .maybeSingle();
+      const { data, error } = await fetchProjectQuoteSnapshot(supabase, {
+        projectId: projectId || null,
+        companycamProjectId: companycamProjectId || null,
+        hubspotContactId: hubspotContactId || null,
+      });
       if (cancelled) return;
+      if (error) {
+        console.warn('ProjectTimeSection quote resolve failed', error);
+      }
+      if (data?.id) setResolvedProjectId(data.id);
       setResolvedHsContactId(
         hubspotContactId || data?.hubspot_contact_id || null
       );
@@ -73,7 +79,7 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
     return () => {
       cancelled = true;
     };
-  }, [projectId, hubspotContactId]);
+  }, [projectId, companycamProjectId, hubspotContactId]);
 
   const quoteProgress = useMemo(
     () =>
@@ -85,7 +91,8 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
   );
 
   const fetchEntries = useCallback(async () => {
-    if (!projectId && !companycamProjectId) return;
+    const novaId = resolvedProjectId || projectId || null;
+    if (!novaId && !companycamProjectId) return;
     setLoading(true);
     try {
       let query = supabase
@@ -96,14 +103,14 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
           projects:project_id(id, name)
         `);
 
-      if (projectId && companycamProjectId) {
+      if (novaId && companycamProjectId) {
         query = query.or(
-          `project_id.eq.${projectId},companycam_project_id.eq.${companycamProjectId}`
+          `project_id.eq.${novaId},companycam_project_id.eq.${companycamProjectId}`
         );
       } else if (companycamProjectId) {
         query = query.eq('companycam_project_id', companycamProjectId);
       } else {
-        query = query.eq('project_id', projectId);
+        query = query.eq('project_id', novaId);
       }
 
       const { data, error } = await query
@@ -122,7 +129,7 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
     } finally {
       setLoading(false);
     }
-  }, [projectId, companycamProjectId, toast, t]);
+  }, [projectId, resolvedProjectId, companycamProjectId, toast, t]);
 
   const fetchUsers = useCallback(async () => {
     const { data } = await supabase
@@ -271,11 +278,12 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
         }}
         entry={editing}
         projects={
-          projectId
+          (resolvedProjectId || projectId)
             ? [
                 {
-                  id: projectId,
+                  id: resolvedProjectId || projectId,
                   name: projectName || t('expenses.project'),
+                  companycam_project_id: companycamProjectId || null,
                   hubspot_contact_id: resolvedHsContactId,
                   hubspot_quote_id: projectHs.hubspot_quote_id,
                   hubspot_quote_title: projectHs.hubspot_quote_title,
@@ -285,6 +293,8 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
             : []
         }
         users={users}
+        // Keep locks keyed on the *prop* projectId so an async resolve of the
+        // Novacam UUID (CC → shadow row) does not remount / reset the open form.
         defaultProjectId={projectId || null}
         lockProject={Boolean(projectId)}
         lockCompanyCam={!projectId && Boolean(companycamProjectId)}

@@ -143,3 +143,133 @@ export function defaultQuantityDoneForLineItem(progressItem) {
   if (Number.isFinite(planned) && planned > 0) return planned;
   return 1;
 }
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isNovacamProjectUuid(value) {
+  return Boolean(value) && UUID_RE.test(String(value));
+}
+
+/** Prefer the row that actually holds a devis snapshot (line items > quote id > first). */
+export function pickPreferredQuoteProject(rows = []) {
+  const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  if (list.length === 0) return null;
+  const withLines = list.find(
+    (p) => Array.isArray(p.hubspot_quote_line_items) && p.hubspot_quote_line_items.length > 0
+  );
+  if (withLines) return withLines;
+  const withQuoteId = list.find((p) => p.hubspot_quote_id);
+  if (withQuoteId) return withQuoteId;
+  return list[0];
+}
+
+const QUOTE_SNAPSHOT_COLS =
+  'id, name, companycam_project_id, hubspot_contact_id, hubspot_quote_id, hubspot_quote_title, hubspot_quote_line_items';
+
+function emptyQuoteSnapshot() {
+  return {
+    id: null,
+    name: null,
+    companycam_project_id: null,
+    hubspot_contact_id: null,
+    hubspot_quote_id: null,
+    hubspot_quote_title: null,
+    hubspot_quote_line_items: [],
+  };
+}
+
+function normalizeQuoteSnapshot(row) {
+  if (!row) return emptyQuoteSnapshot();
+  return {
+    id: row.id || null,
+    name: row.name || null,
+    companycam_project_id: row.companycam_project_id
+      ? String(row.companycam_project_id)
+      : null,
+    hubspot_contact_id: row.hubspot_contact_id ? String(row.hubspot_contact_id) : null,
+    hubspot_quote_id: row.hubspot_quote_id || null,
+    hubspot_quote_title: row.hubspot_quote_title || null,
+    hubspot_quote_line_items: Array.isArray(row.hubspot_quote_line_items)
+      ? row.hubspot_quote_line_items
+      : [],
+  };
+}
+
+function rowHasQuoteSnapshot(row) {
+  if (!row) return false;
+  if (row.hubspot_quote_id) return true;
+  return Array.isArray(row.hubspot_quote_line_items) && row.hubspot_quote_line_items.length > 0;
+}
+
+/**
+ * Resolve the Novacam `projects` row that holds hubspot_quote_* for a time-entry
+ * client / chantier selection.
+ *
+ * Looks up by Novacam UUID, companycam_project_id, and/or hubspot_contact_id.
+ * When several rows match (CC stub vs HubSpot shadow), prefer the one with a
+ * devis snapshot; if a CC id is known, prefer matching that CC project.
+ */
+export async function fetchProjectQuoteSnapshot(
+  supabase,
+  { projectId = null, companycamProjectId = null, hubspotContactId = null } = {}
+) {
+  const empty = emptyQuoteSnapshot();
+  const pid = projectId ? String(projectId) : '';
+  const ccId = companycamProjectId ? String(companycamProjectId) : '';
+  const hsId = hubspotContactId ? String(hubspotContactId) : '';
+  if (!pid && !ccId && !hsId) return { data: empty, error: null };
+
+  const candidates = [];
+  const seen = new Set();
+  const pushAll = (rows) => {
+    for (const row of rows || []) {
+      if (!row?.id || seen.has(row.id)) continue;
+      seen.add(row.id);
+      candidates.push(row);
+    }
+  };
+
+  if (isNovacamProjectUuid(pid)) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(QUOTE_SNAPSHOT_COLS)
+      .eq('id', pid)
+      .maybeSingle();
+    if (error) return { data: empty, error };
+    if (data) pushAll([data]);
+  }
+
+  if (ccId) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(QUOTE_SNAPSHOT_COLS)
+      .eq('companycam_project_id', ccId)
+      .order('updated_at', { ascending: false })
+      .limit(10);
+    if (error) return { data: empty, error };
+    pushAll(data);
+  }
+
+  if (hsId && !candidates.some(rowHasQuoteSnapshot)) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(QUOTE_SNAPSHOT_COLS)
+      .eq('hubspot_contact_id', hsId)
+      .order('updated_at', { ascending: false })
+      .limit(10);
+    if (error) return { data: empty, error };
+    pushAll(data);
+  }
+
+  let pool = candidates;
+  if (ccId) {
+    const matchingCc = candidates.filter(
+      (p) => String(p.companycam_project_id || '') === ccId
+    );
+    if (matchingCc.length) pool = matchingCc;
+  }
+
+  const preferred = pickPreferredQuoteProject(pool);
+  return { data: normalizeQuoteSnapshot(preferred), error: null };
+}
