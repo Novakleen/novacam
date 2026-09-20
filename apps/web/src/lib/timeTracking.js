@@ -134,6 +134,17 @@ export function buildQuoteLineItemProgress(lineItems = [], entries = [], exclude
   });
 }
 
+/** Join selected devis postes into a compact task_label (first name, or first + « +N »). */
+export function formatQuoteLineItemTaskLabel(items = []) {
+  const names = (Array.isArray(items) ? items : [])
+    .map((x) => (x?.name || x?.task_label || '').trim())
+    .filter(Boolean);
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} + ${names[1]}`;
+  return `${names[0]} +${names.length - 1}`;
+}
+
 /** Sensible default for quantity_done when picking a poste: remaining (editable). */
 export function defaultQuantityDoneForLineItem(progressItem) {
   if (!progressItem) return '';
