@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Check, ChevronsUpDown, FileSpreadsheet, ListChecks, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,11 +23,16 @@ import {
 
 /**
  * Multi-select postes from the project's linked HubSpot devis snapshot.
- * Keep the popover open while toggling; confirm to close.
+ * Keep the popover open while toggling; Terminer commits draft → parent.
  * Selected postes render as compact rows: qté faite editable + tiny /planned reste.
  *
  * Nested inside TimeEntryFormDialog (Radix Dialog): Popover must be modal +
  * CommandItem must toggle on pointerdown — same pattern as HubSpotTaskPicker.
+ *
+ * Critical multi-select detail: cmdk fires onClick → onSelect AFTER our
+ * onPointerDown. Calling toggle in both handlers add-then-removes (no checkmarks).
+ * Guard: toggle on pointerdown, skip the trailing onSelect; keyboard Enter still
+ * reaches onSelect alone.
  */
 const QuoteLineItemPicker = ({
   lineItems = [],
@@ -41,10 +46,16 @@ const QuoteLineItemPicker = ({
   className,
 }) => {
   const [open, setOpen] = useState(false);
+  /** Draft while the popover is open; Terminer commits to parent. */
+  const [draftPostes, setDraftPostes] = useState(selectedPostes);
+  /** Skip cmdk onSelect when the same gesture already toggled via pointerdown. */
+  const skipSelectRef = useRef(false);
+
+  const workingPostes = open && allowMulti ? draftPostes : selectedPostes;
 
   const selectedIds = useMemo(
-    () => new Set(selectedPostes.map((p) => String(p.hubspot_line_item_id)).filter(Boolean)),
-    [selectedPostes]
+    () => new Set(workingPostes.map((p) => String(p.hubspot_line_item_id)).filter(Boolean)),
+    [workingPostes]
   );
 
   const emit = useCallback(
@@ -54,15 +65,21 @@ const QuoteLineItemPicker = ({
     [onChange]
   );
 
+  const handleOpenChange = useCallback(
+    (next) => {
+      if (next) {
+        setDraftPostes(Array.isArray(selectedPostes) ? selectedPostes : []);
+      }
+      setOpen(next);
+    },
+    [selectedPostes]
+  );
+
   const toggleItem = useCallback(
     (item) => {
       const id = item.id ? String(item.id) : '';
       if (!id) return;
-      const already = selectedIds.has(id);
-      if (already) {
-        emit(selectedPostes.filter((p) => String(p.hubspot_line_item_id) !== id));
-        return;
-      }
+
       const qtyDone = defaultQuantityDoneForLineItem(item);
       const nextPoste = {
         hubspot_line_item_id: id,
@@ -70,16 +87,51 @@ const QuoteLineItemPicker = ({
         quote_quantity: item.planned ?? item.quantity ?? null,
         quantity_done: qtyDone,
       };
+
       if (!allowMulti) {
         emit([nextPoste]);
         setOpen(false);
         return;
       }
-      emit([...selectedPostes, nextPoste]);
-      // keep open for multi
+
+      // Functional update so rapid toggles accumulate correctly
+      setDraftPostes((prev) => {
+        const already = prev.some((p) => String(p.hubspot_line_item_id) === id);
+        if (already) {
+          return prev.filter((p) => String(p.hubspot_line_item_id) !== id);
+        }
+        return [...prev, nextPoste];
+      });
     },
-    [allowMulti, emit, selectedIds, selectedPostes]
+    [allowMulti, emit]
   );
+
+  const handleItemPointerDown = useCallback(
+    (e, item) => {
+      // Keep focus out of Dialog traps; ensure pointer events commit the toggle
+      e.preventDefault();
+      skipSelectRef.current = true;
+      toggleItem(item);
+    },
+    [toggleItem]
+  );
+
+  const handleItemSelect = useCallback(
+    (item) => {
+      // cmdk onClick → onSelect after pointerdown would double-toggle and cancel
+      if (skipSelectRef.current) {
+        skipSelectRef.current = false;
+        return;
+      }
+      toggleItem(item);
+    },
+    [toggleItem]
+  );
+
+  const commitAndClose = useCallback(() => {
+    emit(draftPostes);
+    setOpen(false);
+  }, [draftPostes, emit]);
 
   const updateQty = useCallback(
     (id, value) => {
@@ -104,18 +156,22 @@ const QuoteLineItemPicker = ({
   const clearAll = useCallback(() => emit([]), [emit]);
 
   const triggerLabel = useMemo(() => {
-    if (selectedPostes.length === 0) {
+    const list = open && allowMulti ? draftPostes : selectedPostes;
+    if (list.length === 0) {
       return allowMulti ? 'Choisir des postes du devis…' : 'Choisir un poste du devis…';
     }
     return formatQuoteLineItemTaskLabel(
-      selectedPostes.map((p) => ({ name: p.task_label || p.hubspot_line_item_id }))
+      list.map((p) => ({ name: p.task_label || p.hubspot_line_item_id }))
     );
-  }, [allowMulti, selectedPostes]);
+  }, [allowMulti, draftPostes, open, selectedPostes]);
+
+  const footerCount = open && allowMulti ? draftPostes.length : selectedPostes.length;
 
   return (
     <div className={cn('space-y-2', className)}>
       <div className="space-y-1.5">
-        <Popover modal open={open} onOpenChange={setOpen}>
+        {/* modal={true} required so pointer events work inside parent Dialog */}
+        <Popover modal open={open} onOpenChange={handleOpenChange}>
           <PopoverTrigger asChild>
             <Button
               type="button"
@@ -130,7 +186,8 @@ const QuoteLineItemPicker = ({
                 <span
                   className={cn(
                     'truncate',
-                    selectedPostes.length === 0 && 'text-muted-foreground'
+                    (open && allowMulti ? draftPostes : selectedPostes).length === 0 &&
+                      'text-muted-foreground'
                   )}
                 >
                   {triggerLabel}
@@ -176,19 +233,23 @@ const QuoteLineItemPicker = ({
                         key={li.id || li.name}
                         value={`${li.id || ''} ${li.name || ''}`}
                         keywords={[li.name, li.sku, li.id].filter(Boolean)}
-                        onSelect={() => toggleItem(li)}
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          toggleItem(li);
-                        }}
+                        onSelect={() => handleItemSelect(li)}
+                        onPointerDown={(e) => handleItemPointerDown(e, li)}
                         className="rounded-lg cursor-pointer"
+                        data-checked={isSelected ? 'true' : 'false'}
+                        aria-checked={isSelected}
                       >
-                        <Check
+                        <span
                           className={cn(
-                            'mr-2 h-4 w-4 shrink-0',
-                            isSelected ? 'opacity-100' : 'opacity-0'
+                            'mr-2 flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                            isSelected
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-muted-foreground/40 bg-background'
                           )}
-                        />
+                          aria-hidden
+                        >
+                          {isSelected ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+                        </span>
                         <div className="min-w-0 flex-1 flex items-center gap-2">
                           <div className="truncate font-medium flex-1">{li.name}</div>
                           {progressHint && (
@@ -218,15 +279,15 @@ const QuoteLineItemPicker = ({
             {allowMulti && (
               <div className="border-t p-2 flex items-center justify-between gap-2">
                 <span className="text-[11px] text-muted-foreground px-1">
-                  {selectedPostes.length === 0
+                  {footerCount === 0
                     ? 'Sélectionnez un ou plusieurs postes'
-                    : `${selectedPostes.length} poste${selectedPostes.length > 1 ? 's' : ''} sélectionné${selectedPostes.length > 1 ? 's' : ''}`}
+                    : `${footerCount} poste${footerCount > 1 ? 's' : ''} sélectionné${footerCount > 1 ? 's' : ''}`}
                 </span>
                 <Button
                   type="button"
                   size="sm"
                   className="rounded-lg h-8"
-                  onClick={() => setOpen(false)}
+                  onClick={commitAndClose}
                 >
                   Terminer
                 </Button>
