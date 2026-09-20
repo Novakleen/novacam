@@ -1240,3 +1240,314 @@ export async function fetchHubSpotContactLatestDealSurface(contactId) {
     dealName: latest?.properties?.dealname || null,
   };
 }
+
+/** Scopes needed to read HubSpot quotes (devis). */
+export const HUBSPOT_QUOTE_READ_SCOPES = [
+  'crm.objects.quotes.read',
+  'crm.schemas.quotes.read',
+];
+
+export const HUBSPOT_DEAL_READ_SCOPES = [
+  'crm.objects.deals.read',
+  'crm.schemas.deals.read',
+];
+
+const DEAL_LIST_PROPERTIES = [
+  'dealname',
+  'amount',
+  'dealstage',
+  'closedate',
+  'createdate',
+  'hs_lastmodifieddate',
+  'pipeline',
+  'hs_object_id',
+];
+
+const QUOTE_LIST_PROPERTIES = [
+  'hs_title',
+  'hs_quote_number',
+  'hs_status',
+  'hs_quote_amount',
+  'hs_quote_total_price',
+  'hs_currency',
+  'hs_expiration_date',
+  'hs_createdate',
+  'hs_lastmodifieddate',
+  'hs_object_id',
+];
+
+const LINE_ITEM_SNAPSHOT_PROPERTIES = [
+  'name',
+  'description',
+  'quantity',
+  'price',
+  'amount',
+  'hs_sku',
+  'hs_product_id',
+  'hs_line_item_currency_code',
+  'hs_position_on_quote',
+];
+
+const toNullableNumber = (value) => {
+  if (value === '' || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Normalize a HubSpot deal for the project admin picker.
+ */
+export const normalizeHubSpotDeal = (raw) => {
+  if (!raw) return null;
+  const props = raw.properties || raw;
+  const id = String(raw.id || props.hs_object_id || props.id || '');
+  if (!id) return null;
+  return {
+    id,
+    name: props.dealname || props.name || id,
+    amount: toNullableNumber(props.amount),
+    stage: props.dealstage || props.hs_deal_stage || null,
+    closedate: props.closedate || null,
+    createdate: props.createdate || null,
+    pipeline: props.pipeline || null,
+  };
+};
+
+/**
+ * Normalize a HubSpot quote (devis) for the project admin picker.
+ */
+export const normalizeHubSpotQuote = (raw) => {
+  if (!raw) return null;
+  const props = raw.properties || raw;
+  const id = String(raw.id || props.hs_object_id || props.id || '');
+  if (!id) return null;
+  const amount =
+    toNullableNumber(props.hs_quote_amount) ??
+    toNullableNumber(props.hs_quote_total_price) ??
+    toNullableNumber(props.hs_amount) ??
+    null;
+  return {
+    id,
+    title:
+      props.hs_title ||
+      props.hs_quote_number ||
+      props.hs_quote_name ||
+      id,
+    number: props.hs_quote_number || null,
+    status: props.hs_status || props.hs_quote_status || null,
+    amount,
+    currency: props.hs_currency || 'EUR',
+    expirationDate: props.hs_expiration_date || null,
+  };
+};
+
+/**
+ * Normalize a HubSpot line item for persistence / display (postes du devis).
+ */
+export const normalizeHubSpotLineItem = (raw) => {
+  if (!raw) return null;
+  const props = raw.properties || raw;
+  const id = String(raw.id || props.hs_object_id || props.id || '');
+  const name = String(
+    props.name || props.description || props.hs_sku || ''
+  ).trim();
+  if (!id && !name) return null;
+  const qty = toNullableNumber(props.quantity);
+  const price = toNullableNumber(props.price);
+  let amount = toNullableNumber(props.amount);
+  if (amount == null && qty != null && price != null) {
+    amount = Math.round(qty * price * 100) / 100;
+  }
+  return {
+    id: id || null,
+    name: name || id,
+    quantity: qty,
+    price,
+    amount,
+    sku: props.hs_sku || null,
+    productId: props.hs_product_id || null,
+    currency: props.hs_line_item_currency_code || null,
+    position: toNullableNumber(props.hs_position_on_quote),
+    description: props.description || null,
+  };
+};
+
+/**
+ * Deals associated with a HubSpot contact (newest first).
+ * @returns {Promise<{ deals: object[], missingScopes: string[]|null }>}
+ */
+export async function fetchHubSpotContactDeals(contactId, { limit = 50 } = {}) {
+  const id = contactId != null ? String(contactId).trim() : '';
+  if (!id) return { deals: [], missingScopes: null };
+
+  let dealIds = [];
+  try {
+    const assoc = await invokeHubSpotProxy(
+      `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/deals`
+    );
+    dealIds = associationObjectIds(assoc).slice(0, 100);
+  } catch (err) {
+    if (err instanceof HubSpotApiError && err.isMissingScopes) {
+      return {
+        deals: [],
+        missingScopes: err.requiredScopes?.length
+          ? err.requiredScopes
+          : HUBSPOT_DEAL_READ_SCOPES,
+      };
+    }
+    throw err;
+  }
+
+  if (!dealIds.length) return { deals: [], missingScopes: null };
+
+  try {
+    const ranked = await batchReadDealsRanked(dealIds, ['amount', 'dealstage', 'pipeline']);
+    const deals = ranked
+      .slice(0, limit)
+      .map(normalizeHubSpotDeal)
+      .filter(Boolean);
+    return { deals, missingScopes: null };
+  } catch (err) {
+    if (err instanceof HubSpotApiError && err.isMissingScopes) {
+      return {
+        deals: [],
+        missingScopes: err.requiredScopes?.length
+          ? err.requiredScopes
+          : HUBSPOT_DEAL_READ_SCOPES,
+      };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Quotes associated with a contact and/or a selected deal.
+ * Prefer deal associations when dealId is set; always merge contact-level quotes.
+ * @returns {Promise<{ quotes: object[], missingScopes: string[]|null }>}
+ */
+export async function fetchHubSpotQuotesForContactOrDeal(
+  contactId,
+  { dealId = null, limit = 50 } = {}
+) {
+  const cid = contactId != null ? String(contactId).trim() : '';
+  const did = dealId != null ? String(dealId).trim() : '';
+  if (!cid && !did) return { quotes: [], missingScopes: null };
+
+  const quoteIdSet = new Set();
+  let missingScopes = null;
+
+  const collectAssoc = async (path, label) => {
+    try {
+      const assoc = await invokeHubSpotProxy(path);
+      for (const qid of associationObjectIds(assoc)) {
+        quoteIdSet.add(qid);
+      }
+    } catch (err) {
+      if (err instanceof HubSpotApiError && err.isMissingScopes) {
+        missingScopes = err.requiredScopes?.length
+          ? err.requiredScopes
+          : HUBSPOT_QUOTE_READ_SCOPES;
+        return;
+      }
+      console.warn(`[HubSpot] ${label} failed:`, err?.message || err);
+    }
+  };
+
+  if (did) {
+    await collectAssoc(
+      `/crm/v3/objects/deals/${encodeURIComponent(did)}/associations/quotes`,
+      'deal→quotes'
+    );
+  }
+  if (cid) {
+    await collectAssoc(
+      `/crm/v3/objects/contacts/${encodeURIComponent(cid)}/associations/quotes`,
+      'contact→quotes'
+    );
+  }
+
+  const quoteIds = [...quoteIdSet].slice(0, 100);
+  if (!quoteIds.length) {
+    return { quotes: [], missingScopes };
+  }
+
+  try {
+    const batch = await invokeHubSpotProxy('/crm/v3/objects/quotes/batch/read', 'POST', {
+      properties: QUOTE_LIST_PROPERTIES,
+      inputs: quoteIds.map((qid) => ({ id: qid })),
+    });
+    const results = Array.isArray(batch?.results) ? batch.results : [];
+    // Prefer quotes linked to the selected deal when both sources contributed
+    const quotes = results
+      .map(normalizeHubSpotQuote)
+      .filter(Boolean)
+      .sort((a, b) => String(b.id).localeCompare(String(a.id)))
+      .slice(0, limit);
+    return { quotes, missingScopes: null };
+  } catch (err) {
+    if (err instanceof HubSpotApiError && err.isMissingScopes) {
+      return {
+        quotes: [],
+        missingScopes: err.requiredScopes?.length
+          ? err.requiredScopes
+          : HUBSPOT_QUOTE_READ_SCOPES,
+      };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Fetch line items (postes) for a HubSpot quote and return a reusable snapshot.
+ * @returns {Promise<{ lineItems: object[], missingScopes: string[]|null }>}
+ */
+export async function fetchHubSpotQuoteLineItems(quoteId) {
+  const id = quoteId != null ? String(quoteId).trim() : '';
+  if (!id) return { lineItems: [], missingScopes: null };
+
+  let lineIds = [];
+  try {
+    const assoc = await invokeHubSpotProxy(
+      `/crm/v3/objects/quotes/${encodeURIComponent(id)}/associations/line_items`
+    );
+    lineIds = associationObjectIds(assoc);
+  } catch (err) {
+    if (err instanceof HubSpotApiError && err.isMissingScopes) {
+      const scopes = err.requiredScopes?.length
+        ? err.requiredScopes
+        : [...HUBSPOT_QUOTE_READ_SCOPES, ...HUBSPOT_LINE_ITEM_READ_SCOPES];
+      return { lineItems: [], missingScopes: scopes };
+    }
+    throw err;
+  }
+
+  if (!lineIds.length) return { lineItems: [], missingScopes: null };
+
+  try {
+    const batch = await invokeHubSpotProxy('/crm/v3/objects/line_items/batch/read', 'POST', {
+      properties: LINE_ITEM_SNAPSHOT_PROPERTIES,
+      inputs: lineIds.slice(0, 100).map((lid) => ({ id: lid })),
+    });
+    const results = Array.isArray(batch?.results) ? batch.results : [];
+    const lineItems = results
+      .map(normalizeHubSpotLineItem)
+      .filter(Boolean)
+      .sort((a, b) => {
+        const pa = a.position == null ? 9999 : a.position;
+        const pb = b.position == null ? 9999 : b.position;
+        if (pa !== pb) return pa - pb;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'fr');
+      });
+    return { lineItems, missingScopes: null };
+  } catch (err) {
+    if (err instanceof HubSpotApiError && err.isMissingScopes) {
+      return {
+        lineItems: [],
+        missingScopes: err.requiredScopes?.length
+          ? err.requiredScopes
+          : HUBSPOT_LINE_ITEM_READ_SCOPES,
+      };
+    }
+    throw err;
+  }
+}
