@@ -33,7 +33,6 @@ import {
 } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
-import HubSpotTaskPicker from '@/components/time/HubSpotTaskPicker';
 import QuoteLineItemPicker from '@/components/time/QuoteLineItemPicker';
 
 const emptyForm = (defaults = {}) => ({
@@ -65,7 +64,7 @@ const TimeEntryFormDialog = ({
   lockCompanyCam = false,
   ccProjectId = null,
   ccProjectName = null,
-  hubspotContactId: hubspotContactIdProp = null,
+  hubspotContactId: _hubspotContactIdProp = null,
   /** Existing project time entries — used to compute remaining qty per devis poste */
   progressEntries = [],
   onSuccess,
@@ -73,12 +72,16 @@ const TimeEntryFormDialog = ({
   const { user } = useAuth();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  /** Live quote snapshot when projects[] is stale / incomplete (TimeTrackerPage). */
+  const [quoteOverride, setQuoteOverride] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [form, setForm] = useState(() =>
     emptyForm({ user_id: user?.id, project_id: defaultProjectId || '' })
   );
 
   useEffect(() => {
     if (!open) return;
+    setQuoteOverride(null);
     if (entry) {
       const hasCc = Boolean(entry.companycam_project_id);
       const hasApp = Boolean(entry.project_id);
@@ -139,13 +142,8 @@ const TimeEntryFormDialog = ({
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const resolvedHubspotContactId = useMemo(() => {
-    if (hubspotContactIdProp) return String(hubspotContactIdProp);
-    const pid = form.project_id;
-    if (!pid) return null;
-    const proj = projects.find((x) => x.id === pid);
-    return proj?.hubspot_contact_id ? String(proj.hubspot_contact_id) : null;
-  }, [hubspotContactIdProp, form.project_id, projects]);
+  // _hubspotContactIdProp kept for API compat (ProjectTimeSection); devis postes
+  // come from project hubspot_quote_line_items, not the contact catalog.
 
   const selectedProject = useMemo(() => {
     const pid = form.project_id;
@@ -153,14 +151,74 @@ const TimeEntryFormDialog = ({
     return projects.find((x) => x.id === pid) || null;
   }, [form.project_id, projects]);
 
+  // Refresh devis snapshot whenever the chosen project changes (covers TimeTrackerPage
+  // where the projects list may be stale, or ProjectTimeSection before its own fetch lands).
+  useEffect(() => {
+    const pid = form.project_id;
+    if (!pid) {
+      setQuoteOverride(null);
+      setQuoteLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setQuoteOverride(null); // use projects[] until live fetch lands (avoid stale other-project postes)
+    setQuoteLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('hubspot_quote_id, hubspot_quote_title, hubspot_quote_line_items')
+        .eq('id', pid)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.warn('quote snapshot fetch failed', error);
+        setQuoteOverride(null);
+      } else {
+        setQuoteOverride({
+          hubspot_quote_id: data?.hubspot_quote_id || null,
+          hubspot_quote_title: data?.hubspot_quote_title || null,
+          hubspot_quote_line_items: Array.isArray(data?.hubspot_quote_line_items)
+            ? data.hubspot_quote_line_items
+            : [],
+        });
+      }
+      setQuoteLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.project_id]);
+
+  const effectiveQuote = useMemo(() => {
+    // Prefer live fetch; fall back to projects[] prop (ProjectTimeSection passes them).
+    if (quoteOverride) return quoteOverride;
+    if (!selectedProject) {
+      return { hubspot_quote_id: null, hubspot_quote_title: null, hubspot_quote_line_items: [] };
+    }
+    return {
+      hubspot_quote_id: selectedProject.hubspot_quote_id || null,
+      hubspot_quote_title: selectedProject.hubspot_quote_title || null,
+      hubspot_quote_line_items: Array.isArray(selectedProject.hubspot_quote_line_items)
+        ? selectedProject.hubspot_quote_line_items
+        : [],
+    };
+  }, [quoteOverride, selectedProject]);
+
+  const projectProgressEntries = useMemo(() => {
+    const pid = form.project_id;
+    if (!pid) return progressEntries || [];
+    return (progressEntries || []).filter((e) => e.project_id === pid);
+  }, [progressEntries, form.project_id]);
+
   const quoteLineItemsProgress = useMemo(() => {
-    const raw = selectedProject?.hubspot_quote_line_items;
+    const raw = effectiveQuote.hubspot_quote_line_items;
     if (!Array.isArray(raw) || raw.length === 0) return [];
-    return buildQuoteLineItemProgress(raw, progressEntries, entry?.id || null);
-  }, [selectedProject, progressEntries, entry?.id]);
+    return buildQuoteLineItemProgress(raw, projectProgressEntries, entry?.id || null);
+  }, [effectiveQuote, projectProgressEntries, entry?.id]);
 
   const hasLinkedQuotePostes = quoteLineItemsProgress.length > 0;
-  const quoteTitle = selectedProject?.hubspot_quote_title || null;
+  const hasLinkedQuoteId = Boolean(effectiveQuote.hubspot_quote_id);
+  const quoteTitle = effectiveQuote.hubspot_quote_title || null;
 
   const handleQuoteLineSelect = (payload) => {
     setForm((prev) => ({
@@ -466,51 +524,6 @@ const TimeEntryFormDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Projet / tâche</Label>
-            {hasLinkedQuotePostes ? (
-              <QuoteLineItemPicker
-                lineItems={quoteLineItemsProgress}
-                selectedLineItemId={form.hubspot_line_item_id}
-                quantityDone={form.quantity_done}
-                quoteTitle={quoteTitle}
-                onSelect={handleQuoteLineSelect}
-                onQuantityDoneChange={(v) => setField('quantity_done', v)}
-              />
-            ) : (
-              <>
-                <HubSpotTaskPicker
-                  value={form.task_label}
-                  onChange={(v) => {
-                    setForm((prev) => ({
-                      ...prev,
-                      task_label: v,
-                      hubspot_line_item_id: '',
-                      quote_quantity: '',
-                      quantity_done: '',
-                    }));
-                  }}
-                  hubspotContactId={resolvedHubspotContactId}
-                  placeholder="Service HubSpot (devis / catalogue)…"
-                />
-                {selectedProject && !selectedProject.hubspot_quote_id && (
-                  <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
-                    Astuce : liez un devis HubSpot sur le panneau Source du projet pour
-                    encoder les postes exacts avec quantités et reste.
-                  </p>
-                )}
-                {selectedProject?.hubspot_quote_id &&
-                  (!Array.isArray(selectedProject.hubspot_quote_line_items) ||
-                    selectedProject.hubspot_quote_line_items.length === 0) && (
-                    <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
-                      Devis lié mais sans postes en snapshot — reliez le devis depuis Source
-                      pour recharger les line items.
-                    </p>
-                  )}
-              </>
-            )}
-          </div>
-
-          <div className="space-y-2">
             <Label>Client</Label>
             {!lockCompanyCam && (
               <div className="flex rounded-xl border border-border overflow-hidden p-1 bg-muted/40 gap-1">
@@ -579,6 +592,57 @@ const TimeEntryFormDialog = ({
               <p className="text-xs text-muted-foreground px-1">
                 Client enregistré : <span className="font-medium text-foreground">{form.client_name}</span>
               </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Projet / tâche</Label>
+            {hasLinkedQuotePostes ? (
+              <QuoteLineItemPicker
+                lineItems={quoteLineItemsProgress}
+                selectedLineItemId={form.hubspot_line_item_id}
+                quantityDone={form.quantity_done}
+                quoteTitle={quoteTitle}
+                onSelect={handleQuoteLineSelect}
+                onQuantityDoneChange={(v) => setField('quantity_done', v)}
+              />
+            ) : quoteLoading && form.project_id ? (
+              <div className="h-11 rounded-xl border bg-muted/40 px-3 flex items-center text-sm text-muted-foreground gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Chargement des postes du devis…
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {!form.project_id && !lockCompanyCam ? (
+                  <p className="text-[11px] text-muted-foreground px-0.5">
+                    Sélectionnez d&apos;abord un client / projet pour charger les postes du devis.
+                  </p>
+                ) : hasLinkedQuoteId ? (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
+                    Devis lié mais sans postes en snapshot — reliez le devis depuis Source
+                    pour recharger les line items.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
+                    Liez un devis sur Source — les postes du devis apparaîtront ici (pas le
+                    catalogue produits HubSpot).
+                  </p>
+                )}
+                <Input
+                  className="h-11 rounded-xl"
+                  placeholder="Saisie libre (optionnel) — ex. SC + SP…"
+                  value={form.task_label}
+                  onChange={(e) => {
+                    setForm((prev) => ({
+                      ...prev,
+                      task_label: e.target.value,
+                      hubspot_line_item_id: '',
+                      quote_quantity: '',
+                      quantity_done: '',
+                    }));
+                  }}
+                />
+              </div>
             )}
           </div>
 
