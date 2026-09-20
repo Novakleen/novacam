@@ -768,10 +768,81 @@ const splitMultiSelect = (raw) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/** Same ranking as surface: closedate → createdate → hs_lastmodifieddate. */
+export const rankHubSpotDealRecency = (deal) => {
+  const props = deal?.properties || {};
+  const close = Date.parse(props.closedate || '') || 0;
+  const created = Date.parse(props.createdate || '') || 0;
+  const modified = Date.parse(props.hs_lastmodifieddate || '') || 0;
+  return close || created || modified;
+};
+
+/**
+ * Batch-read deals and return them sorted newest-first (closedate → createdate).
+ */
+async function batchReadDealsRanked(dealIds, extraProperties = []) {
+  const chunk = (dealIds || []).slice(0, 100);
+  if (!chunk.length) return [];
+  const properties = [
+    'dealname',
+    'closedate',
+    'createdate',
+    'hs_lastmodifieddate',
+    ...extraProperties,
+  ];
+  const batch = await invokeHubSpotProxy('/crm/v3/objects/deals/batch/read', 'POST', {
+    properties: [...new Set(properties)],
+    inputs: chunk.map((did) => ({ id: did })),
+  });
+  const deals = Array.isArray(batch?.results) ? batch.results : [];
+  deals.sort((a, b) => rankHubSpotDealRecency(b) - rankHubSpotDealRecency(a));
+  return deals;
+}
+
+/**
+ * Read line-item labels (name / description / sku) for a parent object.
+ * Returns { lineIds, services, readFailed }.
+ */
+async function readParentLineItemServices(parentType, parentId, { fromLatestDeal = false } = {}) {
+  const assoc = await invokeHubSpotProxy(
+    `/crm/v3/objects/${parentType}/${encodeURIComponent(parentId)}/associations/line_items`
+  );
+  const lineIds = associationObjectIds(assoc);
+  if (!lineIds.length) {
+    return { lineIds: [], services: [], readFailed: false };
+  }
+  const chunk = lineIds.slice(0, 100);
+  const batch = await invokeHubSpotProxy('/crm/v3/objects/line_items/batch/read', 'POST', {
+    properties: ['name', 'hs_product_id', 'description', 'hs_sku'],
+    inputs: chunk.map((lid) => ({ id: lid })),
+  });
+  const services = [];
+  for (const row of Array.isArray(batch?.results) ? batch.results : []) {
+    const name = String(
+      row?.properties?.name ||
+        row?.properties?.description ||
+        row?.properties?.hs_sku ||
+        ''
+    ).trim();
+    if (!name) continue;
+    services.push({
+      name,
+      source: 'line_item',
+      id: row?.id ? String(row.id) : undefined,
+      sku: row?.properties?.hs_sku || null,
+      fromLatestDeal: Boolean(fromLatestDeal),
+      parentType,
+      parentId: String(parentId),
+    });
+  }
+  return { lineIds, services, readFailed: false };
+}
+
 /**
  * Distinct service names for a contact:
- * 1) line items on deals / quotes / invoices (needs line_items read scopes)
- * 2) fallback: deal `type_of_service` multi-select (deals scopes only)
+ * 1) preferred: line items on the latest deal (closedate → createdate, same as surface)
+ * 2) then: line items on other deals / quotes / invoices
+ * 3) fallback: deal `type_of_service` multi-select (deals scopes only)
  *
  * Returns { services, source, meta } so callers can surface empty-state reasons.
  */
@@ -789,12 +860,23 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
   let dealIds = [];
   let quoteIds = [];
   let invoiceIds = [];
+  let latestDealId = null;
+  let latestDealName = null;
+  let rankedDeals = [];
 
-  const addName = (raw, source, extra = {}) => {
-    const name = String(raw || '').trim();
+  const addService = (svc) => {
+    const name = String(svc?.name || '').trim();
     if (!name) return;
     const key = name.toLowerCase();
-    if (!names.has(key)) names.set(key, { name, source, ...extra });
+    if (!names.has(key)) {
+      names.set(key, { ...svc, name });
+      return;
+    }
+    // Prefer keeping the latest-deal flag if a later add is also fromLatestDeal
+    const prev = names.get(key);
+    if (svc.fromLatestDeal && !prev.fromLatestDeal) {
+      names.set(key, { ...prev, ...svc, name, fromLatestDeal: true });
+    }
   };
 
   const noteScopeErr = (err, label) => {
@@ -815,7 +897,8 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
     const assoc = await invokeHubSpotProxy(
       `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/deals`
     );
-    dealIds = associationObjectIds(assoc).slice(0, maxParents);
+    // Keep more than maxParents for ranking, then pick latest + a few others
+    dealIds = associationObjectIds(assoc).slice(0, 100);
   } catch (err) {
     noteScopeErr(err, 'contact→deals');
   }
@@ -838,52 +921,100 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
     noteScopeErr(err, 'contact→invoices');
   }
 
+  // Rank deals (same as surface) so we prefer the latest transaction's line items
+  if (dealIds.length) {
+    try {
+      rankedDeals = await batchReadDealsRanked(dealIds, [
+        'type_of_service',
+        'hs_num_of_associated_line_items',
+      ]);
+      if (rankedDeals.length) {
+        latestDealId = rankedDeals[0]?.id ? String(rankedDeals[0].id) : null;
+        latestDealName = rankedDeals[0]?.properties?.dealname || null;
+      }
+    } catch (err) {
+      noteScopeErr(err, 'deals batch/read rank');
+      rankedDeals = [];
+    }
+  }
+
+  // 2a) Preferred path: line items on the latest deal
+  if (latestDealId) {
+    try {
+      const { lineIds, services } = await readParentLineItemServices('deals', latestDealId, {
+        fromLatestDeal: true,
+      });
+      lineItemIdsSeen += lineIds.length;
+      for (const svc of services) addService(svc);
+      if (services.length) {
+        return {
+          services: [...names.values()],
+          source: 'latest_deal_line_items',
+          meta: {
+            dealCount: dealIds.length,
+            dealId: latestDealId,
+            dealName: latestDealName,
+            lineItemIdsSeen,
+            missingScopes: [...missingScopes],
+            warnings,
+          },
+        };
+      }
+    } catch (err) {
+      lineItemReadFailed = true;
+      noteScopeErr(err, 'latest deal→line_items');
+    }
+  }
+
+  // 2b) Other deals / quotes / invoices line items
+  const otherDealIds = rankedDeals.length
+    ? rankedDeals
+        .slice(1, maxParents)
+        .map((d) => String(d.id))
+        .filter((did) => did && did !== latestDealId)
+    : dealIds.filter((did) => did !== latestDealId).slice(0, maxParents - 1);
+
   const parents = [
-    ...dealIds.map((d) => ({ type: 'deals', id: d })),
+    ...otherDealIds.map((d) => ({ type: 'deals', id: d })),
     ...quoteIds.map((q) => ({ type: 'quotes', id: q })),
     ...invoiceIds.map((inv) => ({ type: 'invoices', id: inv })),
   ];
 
-  // 2) Line-item associations (IDs work without line_items.read) + batch read names
   for (const parent of parents) {
-    let lineIds = [];
     try {
-      const assoc = await invokeHubSpotProxy(
-        `/crm/v3/objects/${parent.type}/${encodeURIComponent(parent.id)}/associations/line_items`
-      );
-      lineIds = associationObjectIds(assoc);
-    } catch (err) {
-      noteScopeErr(err, `${parent.type}→line_items`);
-      continue;
-    }
-    if (!lineIds.length) continue;
-    lineItemIdsSeen += lineIds.length;
-
-    const chunk = lineIds.slice(0, 100);
-    try {
-      const batch = await invokeHubSpotProxy('/crm/v3/objects/line_items/batch/read', 'POST', {
-        properties: ['name', 'hs_product_id', 'description', 'hs_sku'],
-        inputs: chunk.map((lid) => ({ id: lid })),
+      const { lineIds, services } = await readParentLineItemServices(parent.type, parent.id, {
+        fromLatestDeal: false,
       });
-      for (const row of Array.isArray(batch?.results) ? batch.results : []) {
-        const label =
-          row?.properties?.name ||
-          row?.properties?.description ||
-          row?.properties?.hs_sku;
-        addName(label, 'line_item', { id: row?.id ? String(row.id) : undefined });
-      }
+      lineItemIdsSeen += lineIds.length;
+      for (const svc of services) addService(svc);
     } catch (err) {
-      lineItemReadFailed = true;
-      noteScopeErr(err, 'line_items batch/read');
+      // Association failures vs batch/read failures
+      if (/line_items\/batch\/read|batch\/read/i.test(String(err?.message || ''))) {
+        lineItemReadFailed = true;
+      }
+      // Also mark read failed for MISSING_SCOPES on line item reads
+      if (err instanceof HubSpotApiError && err.isMissingScopes) {
+        lineItemReadFailed = true;
+      }
+      noteScopeErr(err, `${parent.type}→line_items`);
     }
   }
 
   if (names.size) {
+    // Latest-deal items (if any were merged later) first, then alpha
+    const services = [...names.values()].sort((a, b) => {
+      if (Boolean(a.fromLatestDeal) !== Boolean(b.fromLatestDeal)) {
+        return a.fromLatestDeal ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name, 'fr');
+    });
     return {
-      services: [...names.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+      services,
       source: 'contact_line_items',
       meta: {
         dealCount: dealIds.length,
+        dealId: latestDealId,
+        dealName: latestDealName,
         lineItemIdsSeen,
         missingScopes: [...missingScopes],
         warnings,
@@ -892,7 +1023,17 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
   }
 
   // 3) Fallback: deal.type_of_service (readable with crm.objects.deals.read)
-  if (dealIds.length) {
+  if (rankedDeals.length) {
+    for (const row of rankedDeals) {
+      for (const svc of splitMultiSelect(row?.properties?.type_of_service)) {
+        addService({
+          name: svc,
+          source: 'deal_type_of_service',
+          id: row?.id ? String(row.id) : undefined,
+        });
+      }
+    }
+  } else if (dealIds.length) {
     try {
       const batch = await invokeHubSpotProxy('/crm/v3/objects/deals/batch/read', 'POST', {
         properties: ['dealname', 'type_of_service', 'hs_num_of_associated_line_items'],
@@ -900,7 +1041,9 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
       });
       for (const row of Array.isArray(batch?.results) ? batch.results : []) {
         for (const svc of splitMultiSelect(row?.properties?.type_of_service)) {
-          addName(svc, 'deal_type_of_service', {
+          addService({
+            name: svc,
+            source: 'deal_type_of_service',
             id: row?.id ? String(row.id) : undefined,
           });
         }
@@ -916,6 +1059,8 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
       source: 'deal_type_of_service',
       meta: {
         dealCount: dealIds.length,
+        dealId: latestDealId,
+        dealName: latestDealName,
         lineItemIdsSeen,
         lineItemReadFailed,
         missingScopes: [...missingScopes],
@@ -942,6 +1087,8 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
     source: 'empty',
     meta: {
       dealCount: dealIds.length,
+      dealId: latestDealId,
+      dealName: latestDealName,
       lineItemIdsSeen,
       lineItemReadFailed,
       missingScopes: [...missingScopes],
@@ -953,7 +1100,8 @@ export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 
 
 /**
  * Services for Suivi task picker:
- * contact line-items → deal type_of_service → product catalog → type_of_service enum catalog.
+ * latest-deal line-items → other contact line-items → deal type_of_service →
+ * product catalog → type_of_service enum catalog.
  * Never silently swallow HubSpot MISSING_SCOPES — surface emptyReason + requiredScopes.
  */
 export async function fetchHubSpotServicesForTaskPicker(contactId) {
@@ -1067,47 +1215,22 @@ export async function fetchHubSpotContactLatestDealSurface(contactId) {
     const assoc = await invokeHubSpotProxy(
       `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/deals`
     );
-    dealIds = (Array.isArray(assoc?.results) ? assoc.results : [])
-      .map((r) => String(r.toObjectId || r.id || ''))
-      .filter(Boolean);
+    dealIds = associationObjectIds(assoc);
   } catch (err) {
     console.warn('[HubSpot] contact→deals for surface failed:', err?.message || err);
     return { surfaceM2: null, dealId: null, dealName: null };
   }
   if (!dealIds.length) return { surfaceM2: null, dealId: null, dealName: null };
 
-  // Batch-read deals with surface + ranking dates (max 100)
-  const chunk = dealIds.slice(0, 100);
   let deals = [];
   try {
-    const batch = await invokeHubSpotProxy('/crm/v3/objects/deals/batch/read', 'POST', {
-      properties: [
-        'dealname',
-        'closedate',
-        'createdate',
-        'hs_lastmodifieddate',
-        'total_surface_in_m2',
-        'dealstage',
-      ],
-      inputs: chunk.map((did) => ({ id: did })),
-    });
-    deals = Array.isArray(batch?.results) ? batch.results : [];
+    deals = await batchReadDealsRanked(dealIds, ['total_surface_in_m2', 'dealstage']);
   } catch (err) {
     console.warn('[HubSpot] deals batch read for surface failed:', err?.message || err);
     return { surfaceM2: null, dealId: null, dealName: null };
   }
   if (!deals.length) return { surfaceM2: null, dealId: null, dealName: null };
 
-  const rank = (d) => {
-    const props = d.properties || {};
-    const close = Date.parse(props.closedate || '') || 0;
-    const created = Date.parse(props.createdate || '') || 0;
-    const modified = Date.parse(props.hs_lastmodifieddate || '') || 0;
-    // Prefer closedate when present, else createdate, else lastmodified
-    return close || created || modified;
-  };
-
-  deals.sort((a, b) => rank(b) - rank(a));
   const latest = deals[0];
   const raw = latest?.properties?.total_surface_in_m2;
   const num = raw === '' || raw == null ? null : Number(raw);
