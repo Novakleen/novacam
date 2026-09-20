@@ -17,14 +17,118 @@ const SALES_REPS = {
   '645018992': 'Danny Joosten'
 };
 
+/** Scopes needed to read line items / product library (private app). */
+export const HUBSPOT_LINE_ITEM_READ_SCOPES = [
+  'crm.objects.line_items.read',
+  'crm.schemas.line_items.read',
+  'e-commerce',
+];
+export const HUBSPOT_PRODUCT_READ_SCOPES = [
+  'crm.objects.products.read',
+  'e-commerce',
+];
+
+/**
+ * HubSpot error payloads use { status: "error", category, message, errors[] }
+ * (not { error }). The edge proxy also forwards non-2xx HubSpot JSON bodies.
+ */
+export class HubSpotApiError extends Error {
+  constructor(message, { category = null, requiredScopes = [], payload = null } = {}) {
+    super(message || 'HubSpot API error');
+    this.name = 'HubSpotApiError';
+    this.category = category;
+    this.requiredScopes = Array.isArray(requiredScopes) ? requiredScopes : [];
+    this.payload = payload;
+  }
+
+  get isMissingScopes() {
+    return (
+      this.category === 'MISSING_SCOPES' ||
+      /MISSING_SCOPES/i.test(String(this.message || ''))
+    );
+  }
+}
+
+const collectRequiredScopes = (payload) => {
+  if (!payload || typeof payload !== 'object') return [];
+  const out = [];
+  const push = (v) => {
+    if (Array.isArray(v)) out.push(...v.map(String).filter(Boolean));
+  };
+  push(payload.requiredGranularScopes);
+  push(payload.context?.requiredGranularScopes);
+  push(payload.error?.requiredGranularScopes);
+  push(payload.error?.context?.requiredGranularScopes);
+  if (Array.isArray(payload.errors)) {
+    for (const err of payload.errors) {
+      push(err?.context?.requiredGranularScopes);
+      push(err?.requiredGranularScopes);
+    }
+  }
+  return [...new Set(out)];
+};
+
+const isHubSpotErrorPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') return false;
+  if (payload.status === 'error' || payload.category === 'MISSING_SCOPES') return true;
+  if (typeof payload.error === 'string' && payload.error) return true;
+  if (payload.error && typeof payload.error === 'object') return true;
+  return false;
+};
+
+const throwIfHubSpotError = (payload, fallbackMessage) => {
+  if (!isHubSpotErrorPayload(payload)) return;
+  const scopes = collectRequiredScopes(payload);
+  const category =
+    payload.category ||
+    payload.error?.category ||
+    (scopes.length ? 'MISSING_SCOPES' : null);
+  const message =
+    (typeof payload.message === 'string' && payload.message) ||
+    (typeof payload.error === 'string' && payload.error) ||
+    payload.error?.message ||
+    fallbackMessage ||
+    'HubSpot API error';
+  throw new HubSpotApiError(message, { category, requiredScopes: scopes, payload });
+};
+
 const invokeHubSpotProxy = async (path, method = 'GET', body = null) => {
   const { data, error } = await supabase.functions.invoke('hubspot-proxy', {
-    body: { path, method, body }
+    body: { path, method, body },
   });
-  if (error) throw new Error(error.message);
-  if (data?.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+
+  // Non-2xx: Supabase may put HubSpot JSON on error.context and/or data
+  if (error) {
+    let ctx = null;
+    try {
+      if (error.context && typeof error.context.clone === 'function') {
+        ctx = await error.context.clone().json();
+      } else if (error.context && typeof error.context.json === 'function') {
+        ctx = await error.context.json();
+      } else if (error.context && typeof error.context === 'object') {
+        ctx = error.context;
+      }
+    } catch {
+      ctx = null;
+    }
+    const payload = ctx || data;
+    if (payload) throwIfHubSpotError(payload, error.message);
+    const hsMsg =
+      payload?.message ||
+      (typeof payload?.error === 'string' ? payload.error : null);
+    throw new HubSpotApiError(hsMsg || error.message, { payload });
+  }
+
+  throwIfHubSpotError(data, 'HubSpot API error');
+  if (data?.error) {
+    throw new HubSpotApiError(
+      typeof data.error === 'string' ? data.error : JSON.stringify(data.error),
+      { payload: data, requiredScopes: collectRequiredScopes(data) }
+    );
+  }
   return data;
 };
+
 
 /**
  * Normalize stage labels/ids for matching closed-won / closed-lost variants
@@ -633,102 +737,319 @@ export async function fetchHubSpotProductCatalog({ limit = 100 } = {}) {
 }
 
 /**
- * Distinct line-item / product names from a contact's associated deals (and quotes when present).
- * Prefer recent open/won deals so Suivi tasks mirror what was sold to that client.
+ * Service labels from HubSpot deal property `type_of_service` (enumeration).
+ * Readable with deals scopes — works even when line_items / products scopes are missing.
  */
-export async function fetchHubSpotContactServiceNames(contactId, { maxDeals = 8 } = {}) {
+export async function fetchHubSpotTypeOfServiceCatalog() {
+  const prop = await invokeHubSpotProxy('/crm/v3/properties/deals/type_of_service');
+  const options = Array.isArray(prop?.options) ? prop.options : [];
+  return options
+    .map((opt) => {
+      const name = String(opt?.label || opt?.value || '').trim();
+      if (!name) return null;
+      return {
+        id: String(opt?.value || name),
+        name,
+        source: 'type_of_service',
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+}
+
+const associationObjectIds = (payload) =>
+  (Array.isArray(payload?.results) ? payload.results : [])
+    .map((r) => String(r.toObjectId || r.id || '').trim())
+    .filter(Boolean);
+
+const splitMultiSelect = (raw) =>
+  String(raw || '')
+    .split(/[;|,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/**
+ * Distinct service names for a contact:
+ * 1) line items on deals / quotes / invoices (needs line_items read scopes)
+ * 2) fallback: deal `type_of_service` multi-select (deals scopes only)
+ *
+ * Returns { services, source, meta } so callers can surface empty-state reasons.
+ */
+export async function fetchHubSpotContactServiceNames(contactId, { maxParents = 8 } = {}) {
   const id = contactId != null ? String(contactId).trim() : '';
-  if (!id) return [];
+  if (!id) {
+    return { services: [], source: 'empty', meta: { reason: 'no_contact' } };
+  }
 
   const names = new Map(); // lower → display
+  const missingScopes = new Set();
+  const warnings = [];
+  let lineItemIdsSeen = 0;
+  let lineItemReadFailed = false;
+  let dealIds = [];
+  let quoteIds = [];
+  let invoiceIds = [];
 
-  const addName = (raw, source) => {
+  const addName = (raw, source, extra = {}) => {
     const name = String(raw || '').trim();
     if (!name) return;
     const key = name.toLowerCase();
-    if (!names.has(key)) names.set(key, { name, source });
+    if (!names.has(key)) names.set(key, { name, source, ...extra });
   };
 
-  // 1) Deals associated to contact
-  let dealIds = [];
+  const noteScopeErr = (err, label) => {
+    if (err instanceof HubSpotApiError && err.isMissingScopes) {
+      (err.requiredScopes || []).forEach((s) => missingScopes.add(s));
+      if (!err.requiredScopes?.length) {
+        HUBSPOT_LINE_ITEM_READ_SCOPES.forEach((s) => missingScopes.add(s));
+      }
+      warnings.push(`${label}: MISSING_SCOPES`);
+      return true;
+    }
+    warnings.push(`${label}: ${err?.message || err}`);
+    return false;
+  };
+
+  // 1) Parent objects associated to contact
   try {
     const assoc = await invokeHubSpotProxy(
       `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/deals`
     );
-    dealIds = (Array.isArray(assoc?.results) ? assoc.results : [])
-      .map((r) => String(r.toObjectId || r.id || ''))
-      .filter(Boolean)
-      .slice(0, maxDeals);
+    dealIds = associationObjectIds(assoc).slice(0, maxParents);
   } catch (err) {
-    console.warn('[HubSpot] contact→deals associations failed:', err?.message || err);
+    noteScopeErr(err, 'contact→deals');
   }
 
-  // 2) Quotes associated to contact (best-effort)
-  let quoteIds = [];
   try {
     const assoc = await invokeHubSpotProxy(
       `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/quotes`
     );
-    quoteIds = (Array.isArray(assoc?.results) ? assoc.results : [])
-      .map((r) => String(r.toObjectId || r.id || ''))
-      .filter(Boolean)
-      .slice(0, maxDeals);
-  } catch {
-    // Quotes association may lack scopes — ignore
+    quoteIds = associationObjectIds(assoc).slice(0, maxParents);
+  } catch (err) {
+    noteScopeErr(err, 'contact→quotes');
   }
 
-  const parentIds = [
+  try {
+    const assoc = await invokeHubSpotProxy(
+      `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/invoices`
+    );
+    invoiceIds = associationObjectIds(assoc).slice(0, maxParents);
+  } catch (err) {
+    noteScopeErr(err, 'contact→invoices');
+  }
+
+  const parents = [
     ...dealIds.map((d) => ({ type: 'deals', id: d })),
     ...quoteIds.map((q) => ({ type: 'quotes', id: q })),
+    ...invoiceIds.map((inv) => ({ type: 'invoices', id: inv })),
   ];
 
-  for (const parent of parentIds) {
+  // 2) Line-item associations (IDs work without line_items.read) + batch read names
+  for (const parent of parents) {
     let lineIds = [];
     try {
       const assoc = await invokeHubSpotProxy(
         `/crm/v3/objects/${parent.type}/${encodeURIComponent(parent.id)}/associations/line_items`
       );
-      lineIds = (Array.isArray(assoc?.results) ? assoc.results : [])
-        .map((r) => String(r.toObjectId || r.id || ''))
-        .filter(Boolean);
+      lineIds = associationObjectIds(assoc);
     } catch (err) {
-      console.warn(`[HubSpot] ${parent.type}→line_items failed:`, err?.message || err);
+      noteScopeErr(err, `${parent.type}→line_items`);
       continue;
     }
     if (!lineIds.length) continue;
+    lineItemIdsSeen += lineIds.length;
 
-    // Batch read line items (max 100)
     const chunk = lineIds.slice(0, 100);
     try {
       const batch = await invokeHubSpotProxy('/crm/v3/objects/line_items/batch/read', 'POST', {
-        properties: ['name', 'hs_product_id', 'description'],
+        properties: ['name', 'hs_product_id', 'description', 'hs_sku'],
         inputs: chunk.map((lid) => ({ id: lid })),
       });
       for (const row of Array.isArray(batch?.results) ? batch.results : []) {
-        addName(row?.properties?.name, 'line_item');
+        const label =
+          row?.properties?.name ||
+          row?.properties?.description ||
+          row?.properties?.hs_sku;
+        addName(label, 'line_item', { id: row?.id ? String(row.id) : undefined });
       }
     } catch (err) {
-      console.warn('[HubSpot] line_items batch read failed:', err?.message || err);
+      lineItemReadFailed = true;
+      noteScopeErr(err, 'line_items batch/read');
     }
   }
 
-  return [...names.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (names.size) {
+    return {
+      services: [...names.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+      source: 'contact_line_items',
+      meta: {
+        dealCount: dealIds.length,
+        lineItemIdsSeen,
+        missingScopes: [...missingScopes],
+        warnings,
+      },
+    };
+  }
+
+  // 3) Fallback: deal.type_of_service (readable with crm.objects.deals.read)
+  if (dealIds.length) {
+    try {
+      const batch = await invokeHubSpotProxy('/crm/v3/objects/deals/batch/read', 'POST', {
+        properties: ['dealname', 'type_of_service', 'hs_num_of_associated_line_items'],
+        inputs: dealIds.slice(0, 100).map((did) => ({ id: did })),
+      });
+      for (const row of Array.isArray(batch?.results) ? batch.results : []) {
+        for (const svc of splitMultiSelect(row?.properties?.type_of_service)) {
+          addName(svc, 'deal_type_of_service', {
+            id: row?.id ? String(row.id) : undefined,
+          });
+        }
+      }
+    } catch (err) {
+      noteScopeErr(err, 'deals batch/read type_of_service');
+    }
+  }
+
+  if (names.size) {
+    return {
+      services: [...names.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+      source: 'deal_type_of_service',
+      meta: {
+        dealCount: dealIds.length,
+        lineItemIdsSeen,
+        lineItemReadFailed,
+        missingScopes: [...missingScopes],
+        warnings,
+        reason:
+          lineItemReadFailed && lineItemIdsSeen
+            ? 'line_items_scope_fallback_type_of_service'
+            : undefined,
+      },
+    };
+  }
+
+  let reason = 'no_services';
+  if (!dealIds.length && !quoteIds.length && !invoiceIds.length) {
+    reason = 'no_deals_quotes_invoices';
+  } else if (lineItemIdsSeen && lineItemReadFailed) {
+    reason = 'missing_line_items_scopes';
+  } else if (lineItemIdsSeen === 0) {
+    reason = 'no_line_items_and_no_type_of_service';
+  }
+
+  return {
+    services: [],
+    source: 'empty',
+    meta: {
+      dealCount: dealIds.length,
+      lineItemIdsSeen,
+      lineItemReadFailed,
+      missingScopes: [...missingScopes],
+      warnings,
+      reason,
+    },
+  };
 }
 
 /**
- * Services for Suivi task picker: contact line-items first, then product catalog fallback.
+ * Services for Suivi task picker:
+ * contact line-items → deal type_of_service → product catalog → type_of_service enum catalog.
+ * Never silently swallow HubSpot MISSING_SCOPES — surface emptyReason + requiredScopes.
  */
 export async function fetchHubSpotServicesForTaskPicker(contactId) {
-  const fromContact = contactId
-    ? await fetchHubSpotContactServiceNames(contactId).catch(() => [])
-    : [];
-  if (fromContact.length) {
-    return { services: fromContact, source: 'contact_line_items' };
+  const requiredScopes = new Set();
+  const notes = [];
+
+  if (contactId) {
+    try {
+      const fromContact = await fetchHubSpotContactServiceNames(contactId);
+      (fromContact.meta?.missingScopes || []).forEach((s) => requiredScopes.add(s));
+      if (fromContact.services?.length) {
+        return {
+          services: fromContact.services,
+          source: fromContact.source,
+          emptyReason: null,
+          requiredScopes: [...requiredScopes],
+          meta: fromContact.meta || null,
+        };
+      }
+      if (fromContact.meta?.reason) notes.push(fromContact.meta.reason);
+      (fromContact.meta?.warnings || []).forEach((w) => notes.push(w));
+    } catch (err) {
+      if (err instanceof HubSpotApiError) {
+        (err.requiredScopes || []).forEach((s) => requiredScopes.add(s));
+      }
+      notes.push(err?.message || String(err));
+    }
   }
-  const catalog = await fetchHubSpotProductCatalog().catch(() => []);
+
+  // Product library (often also missing scopes on this portal)
+  try {
+    const catalog = await fetchHubSpotProductCatalog();
+    if (catalog.length) {
+      return {
+        services: catalog.map((p) => ({ name: p.name, source: 'product', id: p.id })),
+        source: 'product_catalog',
+        emptyReason: null,
+        requiredScopes: [...requiredScopes],
+        meta: { notes },
+      };
+    }
+  } catch (err) {
+    if (err instanceof HubSpotApiError) {
+      if (err.requiredScopes?.length) {
+        err.requiredScopes.forEach((s) => requiredScopes.add(s));
+      } else if (err.isMissingScopes) {
+        HUBSPOT_PRODUCT_READ_SCOPES.forEach((s) => requiredScopes.add(s));
+      }
+    }
+    notes.push(`products: ${err?.message || err}`);
+  }
+
+  // Enum catalog from deals.type_of_service — last resort that works with current token
+  try {
+    const enumCatalog = await fetchHubSpotTypeOfServiceCatalog();
+    if (enumCatalog.length) {
+      return {
+        services: enumCatalog.map((p) => ({
+          name: p.name,
+          source: 'type_of_service',
+          id: p.id,
+        })),
+        source: 'type_of_service_catalog',
+        emptyReason: null,
+        requiredScopes: [...requiredScopes],
+        meta: {
+          notes,
+          hint: contactId
+            ? 'Aucun devis/line-item lisible — catalogue type_of_service HubSpot'
+            : 'Pas de contact — catalogue type_of_service HubSpot',
+        },
+      };
+    }
+  } catch (err) {
+    notes.push(`type_of_service catalog: ${err?.message || err}`);
+  }
+
+  let emptyReason = 'Aucun service HubSpot trouvé — saisie libre possible.';
+  if (requiredScopes.size) {
+    emptyReason =
+      'Scopes HubSpot manquants pour lire les line items / produits. ' +
+      `Ajoutez sur l'app privée : ${[...requiredScopes].slice(0, 6).join(', ')}. ` +
+      'Saisie libre possible en attendant.';
+  } else if (!contactId) {
+    emptyReason = 'Pas de contact HubSpot lié — saisie libre possible.';
+  } else if (notes.includes('no_deals_quotes_invoices')) {
+    emptyReason =
+      'Contact HubSpot lié, mais aucun deal / devis / facture associé — saisie libre possible.';
+  }
+
   return {
-    services: catalog.map((p) => ({ name: p.name, source: 'product', id: p.id })),
-    source: catalog.length ? 'product_catalog' : 'empty',
+    services: [],
+    source: 'empty',
+    emptyReason,
+    requiredScopes: [...requiredScopes],
+    meta: { notes },
   };
 }
 
