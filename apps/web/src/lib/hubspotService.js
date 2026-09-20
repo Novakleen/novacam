@@ -1,4 +1,8 @@
 import { supabase } from '@/lib/customSupabaseClient';
+import {
+  HUBSPOT_INVOICE_AMOUNT_PROPERTIES,
+  resolveInvoiceAmountHt,
+} from '@/lib/hubspotInvoiceAmount';
 
 /** Fallback IDs if pipeline metadata cannot be loaded */
 const FALLBACK_LOST_STAGE_IDS = ['582811875', '1252347088', '711292903', '607847131'];
@@ -458,4 +462,139 @@ export async function resolveCloserFromContactOwner(contactId) {
     console.warn('[HubSpot] resolveCloserFromContactOwner failed:', err?.message || err);
     return null;
   }
+}
+
+
+/**
+ * Fetch a HubSpot invoice by id and resolve HTVA (excl. VAT).
+ * @param {string|number} invoiceId
+ * @returns {Promise<{
+ *   id: string,
+ *   number: string|null,
+ *   amountHt: number|null,
+ *   amountTtc: number|null,
+ *   taxesTotal: number|null,
+ *   amountSource: string|null,
+ *   currency: string,
+ *   status: string|null,
+ * }|null>}
+ */
+export async function fetchHubSpotInvoiceById(invoiceId) {
+  const id = invoiceId != null ? String(invoiceId).trim() : '';
+  if (!id) return null;
+
+  const qs = HUBSPOT_INVOICE_AMOUNT_PROPERTIES.map(encodeURIComponent).join(',');
+  const raw = await invokeHubSpotProxy(
+    `/crm/v3/objects/invoices/${encodeURIComponent(id)}?properties=${qs}`
+  );
+  if (!raw?.id && !raw?.properties) return null;
+
+  const props = raw.properties || {};
+  const resolved = resolveInvoiceAmountHt(props);
+  return {
+    id: String(raw.id || props.hs_object_id || id),
+    number:
+      props.hs_number ||
+      props.hs_invoice_number ||
+      props.hs_title ||
+      null,
+    amountHt: resolved.amountHt,
+    amountTtc: resolved.amountTtc,
+    taxesTotal: resolved.taxesTotal,
+    amountSource: resolved.source,
+    currency: props.hs_currency || 'EUR',
+    status: props.hs_invoice_status || null,
+  };
+}
+
+/**
+ * Re-fetch HubSpot invoice HT and persist to projects.hubspot_invoice_amount.
+ * Self-heals rows that still store TTC from before v1.5.6.
+ * On HubSpot failure, returns the project unchanged (caller keeps stored amount).
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabaseClient
+ * @param {Record<string, unknown>|null|undefined} project
+ * @returns {Promise<Record<string, unknown>|null|undefined>}
+ */
+export async function refreshProjectInvoiceAmountHt(supabaseClient, project) {
+  if (!project?.hubspot_invoice_id) return project;
+
+  let invoice;
+  try {
+    invoice = await fetchHubSpotInvoiceById(project.hubspot_invoice_id);
+  } catch (err) {
+    console.warn(
+      '[HubSpot] refreshProjectInvoiceAmountHt fetch failed:',
+      err?.message || err
+    );
+    return project;
+  }
+  if (!invoice) return project;
+
+  const nextAmount = invoice.amountHt;
+  // Only persist when we resolved a real HT — never write null over a stored value
+  // if HubSpot omitted pre-tax (would wipe CA). Still merge metadata when HT known.
+  if (nextAmount == null) {
+    console.warn(
+      '[HubSpot] invoice',
+      project.hubspot_invoice_id,
+      'has no resolvable HT (pre_tax / billed−tax); keeping stored amount'
+    );
+    return project;
+  }
+
+  const prevAmount =
+    project.hubspot_invoice_amount === '' || project.hubspot_invoice_amount == null
+      ? null
+      : Number(project.hubspot_invoice_amount);
+  const amountChanged =
+    prevAmount == null || !Number.isFinite(prevAmount) || prevAmount !== nextAmount;
+  const numberChanged =
+    invoice.number &&
+    String(invoice.number) !== String(project.hubspot_invoice_number || '');
+  const statusChanged =
+    invoice.status &&
+    String(invoice.status) !== String(project.hubspot_invoice_status || '');
+  const currencyChanged =
+    invoice.currency &&
+    String(invoice.currency) !== String(project.hubspot_invoice_currency || '');
+
+  const patched = {
+    ...project,
+    hubspot_invoice_amount: nextAmount,
+    hubspot_invoice_number: invoice.number || project.hubspot_invoice_number || null,
+    hubspot_invoice_currency: invoice.currency || project.hubspot_invoice_currency || 'EUR',
+    hubspot_invoice_status: invoice.status || project.hubspot_invoice_status || null,
+  };
+
+  if (!project.id) return patched;
+  if (!amountChanged && !numberChanged && !statusChanged && !currencyChanged) {
+    return patched;
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('projects')
+      .update({
+        hubspot_invoice_amount: nextAmount,
+        hubspot_invoice_number: patched.hubspot_invoice_number,
+        hubspot_invoice_currency: patched.hubspot_invoice_currency,
+        hubspot_invoice_status: patched.hubspot_invoice_status,
+      })
+      .eq('id', project.id)
+      .select(
+        'id, hubspot_invoice_id, hubspot_invoice_number, hubspot_invoice_amount, hubspot_invoice_currency, hubspot_invoice_status'
+      )
+      .maybeSingle();
+    if (error) throw error;
+    if (data) {
+      return { ...project, ...data };
+    }
+  } catch (err) {
+    console.warn(
+      '[HubSpot] refreshProjectInvoiceAmountHt persist failed:',
+      err?.message || err
+    );
+  }
+  return patched;
 }

@@ -1,5 +1,8 @@
 import { computeWorkedMinutes, minutesToHoursDecimal } from '@/lib/timeTracking';
-import { resolveCloserFromContactOwner } from '@/lib/hubspotService';
+import {
+  refreshProjectInvoiceAmountHt,
+  resolveCloserFromContactOwner,
+} from '@/lib/hubspotService';
 import { mapSprayProductToSlug, mapTaskLabelToService, roundMoney, toNumberOrNull } from './constants';
 import { normalizeFuelAddress } from './fuel';
 
@@ -23,8 +26,14 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
     return { error: 'Aucun projet sélectionné' };
   }
 
-  const project = await resolveProject(supabase, projectId, companycamProjectId);
+  let project = await resolveProject(supabase, projectId, companycamProjectId);
   if (project?.error) return { error: project.error };
+
+  // Self-heal: re-fetch HubSpot invoice HT when an invoice is linked.
+  // projects.hubspot_invoice_amount may still hold TTC from pre-v1.5.6 links.
+  if (project?.hubspot_invoice_id) {
+    project = await refreshProjectInvoiceAmountHt(supabase, project);
+  }
 
   const [timeRes, sprayRes, expenseRes] = await Promise.all([
     fetchScoped(supabase, 'time_entries', project?.id, companycamProjectId || project?.companycam_project_id, {
@@ -166,8 +175,8 @@ async function fetchScoped(supabase, table, projectId, companycamProjectId, { se
 
 function buildInvoicesFromProject(project) {
   if (!project) return [];
-  // hubspot_invoice_amount is stored as HTVA (excl. VAT) when linked via Source panel
-  // (hs_amount_billed_pre_tax). Do not treat it as TTC.
+  // hubspot_invoice_amount must be HTVA (excl. VAT). importFromProject refreshes it
+  // from HubSpot (hs_amount_billed_pre_tax) before calling this builder.
   const amount = toNumberOrNull(project.hubspot_invoice_amount);
   if (amount == null || amount <= 0) return [];
   return [

@@ -9,6 +9,19 @@
  * Never treat hs_amount_billed alone as CA HT.
  */
 
+/** Properties needed to resolve invoice HTVA via HubSpot CRM. */
+export const HUBSPOT_INVOICE_AMOUNT_PROPERTIES = [
+  'hs_number',
+  'hs_invoice_number',
+  'hs_amount_billed',
+  'hs_amount_billed_pre_tax',
+  'hs_taxes_total',
+  'hs_currency',
+  'hs_invoice_status',
+  'hs_title',
+  'hs_balance_due',
+];
+
 function toFiniteNumber(v) {
   if (v === '' || v == null) return null;
   const n = Number(v);

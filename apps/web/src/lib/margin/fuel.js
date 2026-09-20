@@ -139,7 +139,7 @@ async function nominatimLookup(query) {
         Accept: 'application/json',
         'Accept-Language': 'fr-BE,fr;q=0.9,nl;q=0.8,en;q=0.7',
         // Nominatim requires an identifying UA (browsers already send one).
-        'User-Agent': 'NovacamMarginFuel/1.5.4 (https://github.com/Novakleen/novacam)',
+        'User-Agent': 'NovacamMarginFuel/1.5.8 (https://github.com/Novakleen/novacam)',
       },
     });
     if (!res.ok) return null;
@@ -203,23 +203,59 @@ export async function routeDistanceKm(from, to) {
   return km;
 }
 
-/** First person on a work date who has a usable home address (fallback: first person). */
-export function pickDriverForDate(hourLines, date) {
-  let fallback = null;
+/**
+ * Stable key for deduping a worker on a given day.
+ * Prefer profileId; else name + homeAddress.
+ */
+export function personFuelKey(person) {
+  if (person?.profileId) return `id:${person.profileId}`;
+  const name = String(person?.name || '').trim().toLowerCase();
+  const addr = normalizeFuelAddress(person?.homeAddress).toLowerCase();
+  return `na:${name}|${addr}`;
+}
+
+/**
+ * Distinct workers present on a work_date (same person on multiple services = one).
+ * Dedupes by profileId, else name+homeAddress. Prefers the entry with a usable address.
+ * @returns {{ personKey: string, person: object }[]}
+ */
+export function distinctWorkersOnDate(hourLines, date) {
+  const byKey = new Map();
   for (const line of hourLines || []) {
     if (line.work_date !== date) continue;
     for (const person of line.people || []) {
-      if (!fallback) fallback = person;
-      if (normalizeFuelAddress(person.homeAddress)) return person;
+      const key = personFuelKey(person);
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, person);
+        continue;
+      }
+      if (
+        !normalizeFuelAddress(existing.homeAddress) &&
+        normalizeFuelAddress(person.homeAddress)
+      ) {
+        byKey.set(key, person);
+      }
     }
+  }
+  return [...byKey.entries()].map(([personKey, person]) => ({ personKey, person }));
+}
+
+/** @deprecated Prefer distinctWorkersOnDate — kept for any external callers. */
+export function pickDriverForDate(hourLines, date) {
+  const workers = distinctWorkersOnDate(hourLines, date);
+  let fallback = null;
+  for (const { person } of workers) {
+    if (!fallback) fallback = person;
+    if (normalizeFuelAddress(person.homeAddress)) return person;
   }
   return fallback;
 }
 
 /**
- * For each unique work_date, geocode driver home → client and compute one-way km
- * (billing applies round_trip ×2 in calculateProjectMargin).
- * @returns {Promise<Record<string, { km: number|null }>>}
+ * For each unique work_date × distinct worker, geocode home → client (one-way km).
+ * Billing applies round_trip ×2 in calculateProjectMargin.
+ * @returns {Promise<Record<string, { trips: Array<{ personKey: string, name: string|null, homeAddress: string|null, profileId: string|null, km: number|null }> }>>}
  */
 export async function resolveFuelByDate({ hourLines = [], clientAddress } = {}) {
   const fuelByDate = {};
@@ -232,28 +268,41 @@ export async function resolveFuelByDate({ hourLines = [], clientAddress } = {}) 
     dates.push(line.work_date);
   }
 
-  const client = normalizeFuelAddress(clientAddress);
-  if (!dates.length || !client) {
-    for (const date of dates) fuelByDate[date] = { km: null };
-    return fuelByDate;
-  }
+  if (!dates.length) return fuelByDate;
 
-  const clientGeo = await geocodeAddress(client);
+  const client = normalizeFuelAddress(clientAddress);
+  const clientGeo = client ? await geocodeAddress(client) : null;
 
   for (const date of dates) {
-    const driver = pickDriverForDate(hourLines, date);
-    const home = normalizeFuelAddress(driver?.homeAddress);
-    if (!home || !clientGeo) {
-      fuelByDate[date] = { km: null };
-      continue;
+    const workers = distinctWorkersOnDate(hourLines, date);
+    const trips = [];
+
+    for (const { personKey, person } of workers) {
+      const home = normalizeFuelAddress(person?.homeAddress);
+      const trip = {
+        personKey,
+        name: person?.name || null,
+        homeAddress: home || null,
+        profileId: person?.profileId || null,
+        km: null,
+      };
+
+      if (!home || !client || !clientGeo) {
+        trips.push(trip);
+        continue;
+      }
+
+      const homeGeo = await geocodeAddress(home);
+      if (!homeGeo) {
+        trips.push(trip);
+        continue;
+      }
+
+      trip.km = await routeDistanceKm(homeGeo, clientGeo);
+      trips.push(trip);
     }
-    const homeGeo = await geocodeAddress(home);
-    if (!homeGeo) {
-      fuelByDate[date] = { km: null };
-      continue;
-    }
-    const km = await routeDistanceKm(homeGeo, clientGeo);
-    fuelByDate[date] = { km };
+
+    fuelByDate[date] = { trips };
   }
 
   return fuelByDate;

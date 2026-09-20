@@ -6,7 +6,7 @@ import {
   serviceLabel,
   toNumberOrNull,
 } from './constants';
-import { normalizeFuelAddress, pickDriverForDate } from './fuel';
+import { distinctWorkersOnDate, normalizeFuelAddress } from './fuel';
 
 /**
  * Pure margin calculation.
@@ -14,10 +14,10 @@ import { normalizeFuelAddress, pickDriverForDate } from './fuel';
  * personHours = sum all people hours
  * productCost = sum liters * price[slug]
  * mo = personHours * eur_h
- * dieselFuel (trip): for each unique work_date in hours:
- *   driver = first person that day
- *   km = one-way (provided via fuelByDate[date].km)
- *   if km null → incomplete, that day adds nothing (no €/h fallback)
+ * dieselFuel (trip): for each unique work_date × distinct worker:
+ *   workers = distinct by profileId (else name+homeAddress); same person multi-service = 1 trip
+ *   km = one-way (provided via fuelByDate[date].trips[].km)
+ *   if km null → that person-trip adds nothing (flag incomplete / routing failed)
  *   else dieselFuel += tripFactor * km * (consumption_l100/100) * dieselEurL
  *     tripFactor = 2 if round_trip else 1
  * essenceHours = sum person hours on lines whose service ∈ params.essence_services
@@ -38,7 +38,7 @@ import { normalizeFuelAddress, pickDriverForDate } from './fuel';
  * @param {Array} input.productLines
  * @param {object} input.params  margin_params row
  * @param {Record<string, number>} input.prices  slug → €/L
- * @param {Record<string, { km: number|null }>} [input.fuelByDate]
+ * @param {Record<string, { trips: Array<{ personKey: string, name?: string|null, homeAddress?: string|null, profileId?: string|null, km: number|null }> }>} [input.fuelByDate]
  * @param {number} [input.dieselEurL]
  */
 export function calculateProjectMargin({
@@ -212,42 +212,47 @@ function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFac
   const litersPerKm = (Number(consumption) || 0) / 100;
 
   for (const date of dates) {
-    const driver = pickDriverForDate(hourLines, date) || firstPersonOnDate(hourLines, date);
-    const home = normalizeFuelAddress(driver?.homeAddress);
     const resolved = Boolean(fuelByDate) && Object.prototype.hasOwnProperty.call(fuelByDate, date);
-    const km = resolved ? fuelByDate[date]?.km : undefined;
-    const kmNum = toNumberOrNull(km);
-    const day = {
-      date,
-      driverName: driver?.name || null,
-      homeAddress: home || null,
-      oneWayKm: kmNum,
-      km: kmNum == null ? null : kmNum * tripFactor, // billed km (A/R if round_trip)
-      roundTrip: tripFactor === 2,
-      cost: null,
-    };
+    const entry = resolved ? fuelByDate[date] : null;
+    const tripSpecs = resolveTripSpecsForDate(hourLines, date, entry);
 
-    if (!home || !client) {
-      missingAddresses = true;
-      days.push(day);
-      continue;
-    }
-    if (!resolved) {
-      days.push(day);
-      continue;
-    }
-    if (kmNum == null || kmNum < 0) {
-      // Addresses present but geocode/route failed — not "incomplete addresses"
-      routingFailed = true;
-      days.push(day);
-      continue;
-    }
+    for (const t of tripSpecs) {
+      const home = normalizeFuelAddress(t.homeAddress);
+      const kmNum = resolved ? toNumberOrNull(t.km) : null;
+      const day = {
+        date,
+        personKey: t.personKey,
+        driverName: t.name || null,
+        homeAddress: home || null,
+        profileId: t.profileId || null,
+        oneWayKm: kmNum,
+        km: kmNum == null ? null : kmNum * tripFactor, // billed km (A/R if round_trip)
+        roundTrip: tripFactor === 2,
+        cost: null,
+      };
 
-    const cost = day.km * litersPerKm * (Number(diesel) || 0);
-    day.cost = cost;
-    fuelSum += cost;
-    anySuccess = true;
-    days.push(day);
+      if (!home || !client) {
+        missingAddresses = true;
+        days.push(day);
+        continue;
+      }
+      if (!resolved) {
+        days.push(day);
+        continue;
+      }
+      if (kmNum == null || kmNum < 0) {
+        // Addresses present but geocode/route failed — not "incomplete addresses"
+        routingFailed = true;
+        days.push(day);
+        continue;
+      }
+
+      const cost = day.km * litersPerKm * (Number(diesel) || 0);
+      day.cost = cost;
+      fuelSum += cost;
+      anySuccess = true;
+      days.push(day);
+    }
   }
 
   return {
@@ -257,6 +262,49 @@ function computeDieselFuel({ hourLines, fuelByDate, diesel, consumption, tripFac
     routingFailed,
     days,
   };
+}
+
+/** Prefer resolved trips; else synthesize person list from hour lines (pre-geocode). */
+function resolveTripSpecsForDate(hourLines, date, entry) {
+  if (entry?.trips && Array.isArray(entry.trips)) {
+    return entry.trips.map((t) => ({
+      personKey: t.personKey || personFuelKeyFallback(t),
+      name: t.name || null,
+      homeAddress: t.homeAddress || null,
+      profileId: t.profileId || null,
+      km: t.km,
+    }));
+  }
+  // Legacy single-km shape (one driver per date) — treat as one trip if present
+  if (entry && Object.prototype.hasOwnProperty.call(entry, 'km') && !entry.trips) {
+    const workers = distinctWorkersOnDate(hourLines, date);
+    const first = workers[0];
+    if (first) {
+      return [
+        {
+          personKey: first.personKey,
+          name: first.person?.name || null,
+          homeAddress: first.person?.homeAddress || null,
+          profileId: first.person?.profileId || null,
+          km: entry.km,
+        },
+      ];
+    }
+  }
+  return distinctWorkersOnDate(hourLines, date).map(({ personKey, person }) => ({
+    personKey,
+    name: person?.name || null,
+    homeAddress: person?.homeAddress || null,
+    profileId: person?.profileId || null,
+    km: undefined,
+  }));
+}
+
+function personFuelKeyFallback(t) {
+  if (t?.profileId) return `id:${t.profileId}`;
+  const name = String(t?.name || '').trim().toLowerCase();
+  const addr = normalizeFuelAddress(t?.homeAddress).toLowerCase();
+  return `na:${name}|${addr}`;
 }
 
 export function uniqueWorkDates(hourLines) {

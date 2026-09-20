@@ -26,6 +26,10 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import ContactAssignmentDialog from '@/components/projects/ContactAssignmentDialog';
 import { resolveInvoiceAmountHt } from '@/lib/hubspotInvoiceAmount';
+import {
+  fetchHubSpotInvoiceById,
+  refreshProjectInvoiceAmountHt,
+} from '@/lib/hubspotService';
 
 const HUBSPOT_PORTAL_ID = '144564857';
 const HUBSPOT_APP_BASE = `https://app-eu1.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}`;
@@ -254,8 +258,20 @@ const ProjectHubSpotAdminPanel = ({
       }
       const { data, error } = await query.maybeSingle();
       if (error) throw error;
-      setLinked(data || null);
-      onLinkedProjectChange?.(data || null);
+      let row = data || null;
+      // Refresh HT from HubSpot so the invoice card never shows stale TTC.
+      if (row?.hubspot_invoice_id) {
+        try {
+          row = await refreshProjectInvoiceAmountHt(supabase, row);
+        } catch (refreshErr) {
+          console.warn(
+            '[ProjectHubSpotAdminPanel] invoice HT refresh failed:',
+            refreshErr?.message || refreshErr
+          );
+        }
+      }
+      setLinked(row);
+      onLinkedProjectChange?.(row);
     } catch (err) {
       console.warn('[ProjectHubSpotAdminPanel] load failed:', err?.message || err);
       setLinked(null);
@@ -811,15 +827,30 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
     }
   }, [open, contactId, fetchAssociatedInvoices]);
 
-  const handleManualSave = () => {
+  const handleManualSave = async () => {
     const id = manualId.trim();
     if (!id) return;
+    let amount = null;
+    let currency = 'EUR';
+    let status = null;
+    let number = manualNumber.trim() || id;
+    try {
+      const inv = await fetchHubSpotInvoiceById(id);
+      if (inv) {
+        amount = inv.amountHt;
+        currency = inv.currency || 'EUR';
+        status = inv.status || null;
+        if (!manualNumber.trim() && inv.number) number = inv.number;
+      }
+    } catch (err) {
+      console.warn('[InvoiceLink] manual id HT fetch failed:', err?.message || err);
+    }
     onSelect({
       id,
-      number: manualNumber.trim() || id,
-      amount: null,
-      currency: 'EUR',
-      status: null,
+      number,
+      amount,
+      currency,
+      status,
     });
   };
 
