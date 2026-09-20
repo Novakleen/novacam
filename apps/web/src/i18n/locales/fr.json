@@ -100,7 +100,9 @@
     "otherExpenses": "Autres dépenses",
     "expenseTrackerSubtitle": "Suivi des dépenses",
     "loadingSummary": "…",
-    "emptySummary": "—"
+    "emptySummary": "—",
+    "totalSurface": "Surface totale (m²)",
+    "totalSurfaceHint": "Depuis le dernier deal HubSpot"
   },
   "expenses": {
     "title": "Autres dépenses",
@@ -157,7 +159,15 @@
     "loadError": "Impossible de charger les heures du projet.",
     "deleteTitle": "Supprimer cette entrée ?",
     "deleteDesc": "Cette action est définitive. Les heures seront retirées du projet.",
-    "deletedDesc": "L'entrée de temps a été supprimée."
+    "deletedDesc": "L'entrée de temps a été supprimée.",
+    "taskLabel": "Projet / tâche",
+    "taskPlaceholder": "Service HubSpot (devis / catalogue)…",
+    "taskCustom": "Saisie libre…",
+    "taskBackToList": "Revenir à la liste HubSpot",
+    "taskHintContact": "Services du devis / deal HubSpot liés au contact",
+    "taskHintCatalog": "Catalogue produits HubSpot (aucun devis lié trouvé)",
+    "taskHintEmpty": "Aucun service HubSpot — saisie libre possible",
+    "taskHintNoContact": "Pas de contact HubSpot — catalogue ou saisie libre"
   },
   "spray": {
     "title": "Pulvérisations",

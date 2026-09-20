@@ -80,6 +80,7 @@ const SprayEntryFormDialog = ({
   lockCompanyCam = false,
   ccProjectId = null,
   ccProjectName = null,
+  defaultSurfaceM2 = null,
   onSuccess,
 }) => {
   const { user } = useAuth();
@@ -127,10 +128,15 @@ const SprayEntryFormDialog = ({
           companycam_project_id: lockCompanyCam ? String(ccProjectId || '') : '',
           companycam_project_name: lockCompanyCam ? ccProjectName || '' : '',
           client_name: lockCompanyCam ? ccProjectName || '' : '',
+          // Prefill from HubSpot deal « Total surface (in m2) » — editable
+          surface_m2:
+            defaultSurfaceM2 != null && Number.isFinite(Number(defaultSurfaceM2))
+              ? Number(defaultSurfaceM2)
+              : '',
         })
       );
     }
-  }, [open, entry, user?.id, defaultProjectId, lockProject, lockCompanyCam, ccProjectId, ccProjectName]);
+  }, [open, entry, user?.id, defaultProjectId, lockProject, lockCompanyCam, ccProjectId, ccProjectName, defaultSurfaceM2]);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 

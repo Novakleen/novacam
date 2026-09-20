@@ -100,7 +100,9 @@
     "otherExpenses": "Overige kosten",
     "expenseTrackerSubtitle": "Kostenregistratie",
     "loadingSummary": "…",
-    "emptySummary": "—"
+    "emptySummary": "—",
+    "totalSurface": "Totale oppervlakte (m²)",
+    "totalSurfaceHint": "Van de laatste HubSpot-deal"
   },
   "expenses": {
     "title": "Overige kosten",
@@ -157,7 +159,15 @@
     "loadError": "Uren van het project kunnen niet worden geladen.",
     "deleteTitle": "Deze entry verwijderen?",
     "deleteDesc": "Deze actie is definitief. De uren worden van het project verwijderd.",
-    "deletedDesc": "De tijdregistratie is verwijderd."
+    "deletedDesc": "De tijdregistratie is verwijderd.",
+    "taskLabel": "Project / taak",
+    "taskPlaceholder": "HubSpot-dienst (offerte / catalogus)…",
+    "taskCustom": "Vrije tekst…",
+    "taskBackToList": "Terug naar HubSpot-lijst",
+    "taskHintContact": "Diensten uit HubSpot-offerte/deal gekoppeld aan het contact",
+    "taskHintCatalog": "HubSpot-productcatalogus (geen gekoppelde offerte gevonden)",
+    "taskHintEmpty": "Geen HubSpot-dienst gevonden — vrije tekst mogelijk",
+    "taskHintNoContact": "Geen HubSpot-contact — catalogus of vrije tekst"
   },
   "spray": {
     "title": "Besproeiingen",

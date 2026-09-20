@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import SprayEntriesTable from '@/components/spray/SprayEntriesTable';
 import SprayEntryFormDialog from '@/components/spray/SprayEntryFormDialog';
+import { fetchHubSpotContactLatestDealSurface } from '@/lib/hubspotService';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -17,7 +18,7 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
 
-const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) => {
+const ProjectSpraySection = ({ projectId, projectName, companycamProjectId, hubspotContactId = null }) => {
   const { toast } = useToast();
   const { t } = useTranslation();
   const [entries, setEntries] = useState([]);
@@ -27,6 +28,26 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
+  const [defaultSurfaceM2, setDefaultSurfaceM2] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!hubspotContactId) {
+      setDefaultSurfaceM2(null);
+      return undefined;
+    }
+    (async () => {
+      try {
+        const res = await fetchHubSpotContactLatestDealSurface(hubspotContactId);
+        if (!cancelled) setDefaultSurfaceM2(res?.surfaceM2 ?? null);
+      } catch {
+        if (!cancelled) setDefaultSurfaceM2(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hubspotContactId]);
 
   const fetchEntries = useCallback(async () => {
     if (!projectId && !companycamProjectId) return;
@@ -177,6 +198,7 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId }) =>
         lockCompanyCam={!projectId && Boolean(companycamProjectId)}
         ccProjectId={companycamProjectId || null}
         ccProjectName={projectName || null}
+        defaultSurfaceM2={defaultSurfaceM2}
         onSuccess={fetchEntries}
       />
 

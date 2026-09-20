@@ -32,6 +32,7 @@ import {
 } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
+import HubSpotTaskPicker from '@/components/time/HubSpotTaskPicker';
 
 const emptyForm = (defaults = {}) => ({
   user_id: defaults.user_id || '',
@@ -59,6 +60,7 @@ const TimeEntryFormDialog = ({
   lockCompanyCam = false,
   ccProjectId = null,
   ccProjectName = null,
+  hubspotContactId: hubspotContactIdProp = null,
   onSuccess,
 }) => {
   const { user } = useAuth();
@@ -118,6 +120,14 @@ const TimeEntryFormDialog = ({
   }, [form.start_time, form.end_time, form.break_minutes]);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const resolvedHubspotContactId = useMemo(() => {
+    if (hubspotContactIdProp) return String(hubspotContactIdProp);
+    const pid = form.project_id;
+    if (!pid) return null;
+    const proj = projects.find((x) => x.id === pid);
+    return proj?.hubspot_contact_id ? String(proj.hubspot_contact_id) : null;
+  }, [hubspotContactIdProp, form.project_id, projects]);
 
   const handleClientSourceChange = (source) => {
     setForm((prev) => ({
@@ -310,28 +320,6 @@ const TimeEntryFormDialog = ({
             </Select>
           </div>
 
-          {!lockProject && !lockCompanyCam && (
-            <div className="space-y-2">
-              <Label>Projet (optionnel)</Label>
-              <Select
-                value={form.project_id || 'none'}
-                onValueChange={(v) => setField('project_id', v === 'none' ? '' : v)}
-              >
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Lier un projet app…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Aucun projet</SelectItem>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           {(lockProject || lockCompanyCam) && (
             <div className="space-y-2">
               <Label>Projet</Label>
@@ -406,11 +394,11 @@ const TimeEntryFormDialog = ({
 
           <div className="space-y-2">
             <Label>Projet / tâche</Label>
-            <Input
-              className="h-11 rounded-xl"
-              placeholder="ex. SC + SP"
+            <HubSpotTaskPicker
               value={form.task_label}
-              onChange={(e) => setField('task_label', e.target.value)}
+              onChange={(v) => setField('task_label', v)}
+              hubspotContactId={resolvedHubspotContactId}
+              placeholder="Service HubSpot (devis / catalogue)…"
             />
           </div>
 

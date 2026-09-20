@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock, Droplets, Wallet } from 'lucide-react';
+import { Clock, Droplets, Wallet, Ruler } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/customSupabaseClient';
 import { formatHoursDecimal, sumHours } from '@/lib/timeTracking';
 import { formatMoney } from '@/lib/margin/format';
+import { fetchHubSpotContactLatestDealSurface } from '@/lib/hubspotService';
 
 function applyProjectFilter(query, projectId, companycamProjectId) {
   if (projectId && companycamProjectId) {
@@ -20,13 +21,15 @@ function applyProjectFilter(query, projectId, companycamProjectId) {
 const ROW_BTN =
   'w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group';
 
-const SuiviSidebarLinks = ({ projectId, companycamProjectId, onOpenSuivi }) => {
+const SuiviSidebarLinks = ({ projectId, companycamProjectId, hubspotContactId = null, onOpenSuivi }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [timeEntries, setTimeEntries] = useState([]);
   const [sprayEntries, setSprayEntries] = useState([]);
   const [expenseEntries, setExpenseEntries] = useState([]);
+  const [hsSurfaceM2, setHsSurfaceM2] = useState(null);
+  const [hsSurfaceLoading, setHsSurfaceLoading] = useState(false);
 
   const fetchSummaries = useCallback(async () => {
     if (!projectId && !companycamProjectId) {
@@ -88,6 +91,30 @@ const SuiviSidebarLinks = ({ projectId, companycamProjectId, onOpenSuivi }) => {
   useEffect(() => {
     fetchSummaries();
   }, [fetchSummaries]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!hubspotContactId) {
+      setHsSurfaceM2(null);
+      setHsSurfaceLoading(false);
+      return undefined;
+    }
+    setHsSurfaceLoading(true);
+    (async () => {
+      try {
+        const res = await fetchHubSpotContactLatestDealSurface(hubspotContactId);
+        if (!cancelled) setHsSurfaceM2(res?.surfaceM2 ?? null);
+      } catch (err) {
+        console.warn('[Suivi] HubSpot surface fetch failed:', err?.message || err);
+        if (!cancelled) setHsSurfaceM2(null);
+      } finally {
+        if (!cancelled) setHsSurfaceLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hubspotContactId]);
 
   const hoursTotal = useMemo(() => sumHours(timeEntries), [timeEntries]);
 
@@ -178,6 +205,27 @@ const SuiviSidebarLinks = ({ projectId, companycamProjectId, onOpenSuivi }) => {
           </div>
         </div>
       </button>
+
+      <div className={ROW_BTN.replace('hover:bg-gray-50 dark:hover:bg-gray-800/60', '') + ' cursor-default'}>
+        <span className="h-8 w-8 rounded-lg bg-violet-50 dark:bg-violet-950/40 flex items-center justify-center text-violet-600 shrink-0">
+          <Ruler className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+              {t('suivi.totalSurface')}
+            </p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums shrink-0">
+              {hsSurfaceLoading
+                ? t('suivi.loadingSummary')
+                : hsSurfaceM2 != null
+                  ? `${Number(hsSurfaceM2).toLocaleString('fr-BE')} m²`
+                  : t('suivi.emptySummary')}
+            </p>
+          </div>
+          <p className="text-xs text-gray-400">{t('suivi.totalSurfaceHint')}</p>
+        </div>
+      </div>
     </div>
   );
 };

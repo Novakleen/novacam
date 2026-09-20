@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { formatHoursDecimal, sumHours } from '@/lib/timeTracking';
 
-const ProjectTimeSection = ({ projectId, projectName, companycamProjectId }) => {
+const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubspotContactId = null }) => {
   const { toast } = useToast();
   const { t } = useTranslation();
   const [entries, setEntries] = useState([]);
@@ -28,6 +28,32 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId }) => 
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
+  const [resolvedHsContactId, setResolvedHsContactId] = useState(hubspotContactId || null);
+
+  useEffect(() => {
+    if (hubspotContactId) {
+      setResolvedHsContactId(hubspotContactId);
+      return;
+    }
+    if (!projectId) {
+      setResolvedHsContactId(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('hubspot_contact_id')
+        .eq('id', projectId)
+        .maybeSingle();
+      if (!cancelled) {
+        setResolvedHsContactId(data?.hubspot_contact_id || null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, hubspotContactId]);
 
   const fetchEntries = useCallback(async () => {
     if (!projectId && !companycamProjectId) return;
@@ -156,13 +182,14 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId }) => 
           if (!o) setEditing(null);
         }}
         entry={editing}
-        projects={projectId ? [{ id: projectId, name: projectName || t('expenses.project') }] : []}
+        projects={projectId ? [{ id: projectId, name: projectName || t('expenses.project'), hubspot_contact_id: resolvedHsContactId }] : []}
         users={users}
         defaultProjectId={projectId || null}
         lockProject={Boolean(projectId)}
         lockCompanyCam={!projectId && Boolean(companycamProjectId)}
         ccProjectId={companycamProjectId || null}
         ccProjectName={projectName || null}
+        hubspotContactId={resolvedHsContactId}
         onSuccess={fetchEntries}
       />
 
