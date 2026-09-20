@@ -100,7 +100,9 @@
     "otherExpenses": "Other expenses",
     "expenseTrackerSubtitle": "Expense tracker",
     "loadingSummary": "…",
-    "emptySummary": "—"
+    "emptySummary": "—",
+    "totalSurface": "Total surface (m²)",
+    "totalSurfaceHint": "From the latest HubSpot deal"
   },
   "expenses": {
     "title": "Other expenses",
@@ -157,7 +159,15 @@
     "loadError": "Unable to load project hours.",
     "deleteTitle": "Delete this entry?",
     "deleteDesc": "This action is permanent. Hours will be removed from the project.",
-    "deletedDesc": "The time entry has been deleted."
+    "deletedDesc": "The time entry has been deleted.",
+    "taskLabel": "Project / task",
+    "taskPlaceholder": "HubSpot service (quote / catalog)…",
+    "taskCustom": "Free text…",
+    "taskBackToList": "Back to HubSpot list",
+    "taskHintContact": "Services from HubSpot quote/deal linked to the contact",
+    "taskHintCatalog": "HubSpot product catalog (no linked quote found)",
+    "taskHintEmpty": "No HubSpot service found — free text allowed",
+    "taskHintNoContact": "No HubSpot contact — catalog or free text"
   },
   "spray": {
     "title": "Spray applications",

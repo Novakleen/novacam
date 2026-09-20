@@ -80,6 +80,7 @@ const ParamsTab = ({ params, prices, onReload }) => {
         round_trip: Boolean(form.round_trip),
         essence_eur_l: numOrNull(form.essence_eur_l),
         essence_l_h: numOrNull(form.essence_l_h),
+        essence_time_factor: numOrNull(form.essence_time_factor),
         essence_services: Array.isArray(form.essence_services) ? form.essence_services : [],
         commercial_closers: form.commercial_closers,
       });
@@ -334,8 +335,8 @@ const ParamsTab = ({ params, prices, onReload }) => {
             <CardHeader>
               <CardTitle>Essence (nettoyeurs HP / SC)</CardTitle>
               <CardDescription>
-                Coût = heures sur les services cochés × conso L/h × prix €/L. Saisie manuelle du
-                prix.
+                Coût = heures × facteur temps (3/5) × conso L/h × prix €/L. Seule la part moteur
+                compte (~1/5 spray + ~1/5 setup/cleanup exclus).
               </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -353,6 +354,19 @@ const ParamsTab = ({ params, prices, onReload }) => {
                   step="0.1"
                   value={form.essence_l_h}
                   onChange={(e) => set('essence_l_h', e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Facteur temps essence"
+                hint="défaut 0,6 (= 3/5) — part des heures HP/SC qui font tourner le moteur"
+              >
+                <Input
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="1"
+                  value={form.essence_time_factor}
+                  onChange={(e) => set('essence_time_factor', e.target.value)}
                 />
               </Field>
               <div className="md:col-span-2 space-y-2">
@@ -630,6 +644,7 @@ function serialize(params) {
     round_trip: params?.round_trip !== false,
     essence_eur_l: params?.essence_eur_l ?? 1.85,
     essence_l_h: params?.essence_l_h ?? 2,
+    essence_time_factor: params?.essence_time_factor ?? 0.6,
     essence_services: Array.isArray(params?.essence_services)
       ? params.essence_services
       : ['nettoyage', 'sc'],

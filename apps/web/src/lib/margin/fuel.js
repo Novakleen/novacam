@@ -139,7 +139,7 @@ async function nominatimLookup(query) {
         Accept: 'application/json',
         'Accept-Language': 'fr-BE,fr;q=0.9,nl;q=0.8,en;q=0.7',
         // Nominatim requires an identifying UA (browsers already send one).
-        'User-Agent': 'NovacamMarginFuel/1.5.8 (https://github.com/Novakleen/novacam)',
+        'User-Agent': 'NovacamMarginFuel/1.6.0 (https://github.com/Novakleen/novacam)',
       },
     });
     if (!res.ok) return null;

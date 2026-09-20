@@ -13,6 +13,13 @@ import { productLabel, serviceLabel } from '@/lib/margin/constants';
 import MaPercentBadge from './MaPercentBadge';
 import CompletenessFlags from './CompletenessFlags';
 
+function formatEssenceFactor(factor) {
+  const f = Number(factor);
+  if (!Number.isFinite(f) || f <= 0) return '3/5';
+  if (Math.abs(f - 0.6) < 1e-9) return '3/5';
+  return String(f).replace('.', ',');
+}
+
 const Row = ({ label, value, muted }) => (
   <div className="flex items-center justify-between py-1.5 text-sm">
     <span className="text-muted-foreground">{label}</span>
@@ -94,26 +101,29 @@ const DossierDetail = ({
             <Row
               label={
                 calc?.essenceHours
-                  ? `Essence HP/SC (${formatHours(calc.essenceHours)})`
+                  ? `Essence HP/SC (${formatEssenceFactor(calc.essenceTimeFactor)} × ${formatHours(calc.essenceHours)})`
                   : 'Essence HP/SC'
               }
               value={formatMoney(calc?.essenceFuel)}
               muted
             />
-            <Row
-              label={calc?.fuelIncomplete ? 'Carburant total (incomplet)' : 'Carburant total'}
-              value={formatMoney(calc?.fuel)}
-              muted
-            />
             <div className="border-t border-dashed my-1" />
             <Row label="Coût direct" value={formatMoney(calc?.direct)} />
             <Row label="Marge brute (MB)" value={formatMoney(calc?.mb)} />
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-2 pb-1">
+              Coût d&apos;acquisition
+            </p>
             <Row
               label={calc?.commercial ? 'Commission closer' : 'Commission (non closer)'}
               value={formatMoney(calc?.com)}
               muted
             />
             <Row label="Acquisition (CAC)" value={formatMoney(calc?.ads)} muted />
+            <Row
+              label="Total acquisition"
+              value={formatMoney((Number(calc?.com) || 0) + (Number(calc?.ads) || 0))}
+              muted
+            />
             <div className="border-t my-1" />
             <Row label="Marge après acquisition (MA)" value={formatMoney(calc?.ma)} />
             <Row label="MA %" value={formatPct(calc?.maPct)} />

@@ -598,3 +598,201 @@ export async function refreshProjectInvoiceAmountHt(supabaseClient, project) {
   }
   return patched;
 }
+
+/**
+ * Active HubSpot product catalog (portal product library).
+ * Used as fallback for Suivi task picker when no contact line-items are available.
+ */
+export async function fetchHubSpotProductCatalog({ limit = 100 } = {}) {
+  const props = ['name', 'hs_sku', 'price', 'hs_status', 'hs_product_type'].join(',');
+  const results = [];
+  let after = null;
+  do {
+    const qs = new URLSearchParams({
+      limit: String(Math.min(limit - results.length, 100)),
+      properties: props,
+    });
+    if (after) qs.set('after', after);
+    const data = await invokeHubSpotProxy(`/crm/v3/objects/products?${qs.toString()}`);
+    const batch = Array.isArray(data?.results) ? data.results : [];
+    for (const row of batch) {
+      const name = row?.properties?.name?.trim();
+      const status = String(row?.properties?.hs_status || '').toLowerCase();
+      if (!name) continue;
+      if (status && status !== 'active') continue;
+      results.push({
+        id: String(row.id),
+        name,
+        sku: row?.properties?.hs_sku || null,
+        source: 'product',
+      });
+    }
+    after = data?.paging?.next?.after || null;
+  } while (after && results.length < limit);
+  return results;
+}
+
+/**
+ * Distinct line-item / product names from a contact's associated deals (and quotes when present).
+ * Prefer recent open/won deals so Suivi tasks mirror what was sold to that client.
+ */
+export async function fetchHubSpotContactServiceNames(contactId, { maxDeals = 8 } = {}) {
+  const id = contactId != null ? String(contactId).trim() : '';
+  if (!id) return [];
+
+  const names = new Map(); // lower → display
+
+  const addName = (raw, source) => {
+    const name = String(raw || '').trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (!names.has(key)) names.set(key, { name, source });
+  };
+
+  // 1) Deals associated to contact
+  let dealIds = [];
+  try {
+    const assoc = await invokeHubSpotProxy(
+      `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/deals`
+    );
+    dealIds = (Array.isArray(assoc?.results) ? assoc.results : [])
+      .map((r) => String(r.toObjectId || r.id || ''))
+      .filter(Boolean)
+      .slice(0, maxDeals);
+  } catch (err) {
+    console.warn('[HubSpot] contact→deals associations failed:', err?.message || err);
+  }
+
+  // 2) Quotes associated to contact (best-effort)
+  let quoteIds = [];
+  try {
+    const assoc = await invokeHubSpotProxy(
+      `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/quotes`
+    );
+    quoteIds = (Array.isArray(assoc?.results) ? assoc.results : [])
+      .map((r) => String(r.toObjectId || r.id || ''))
+      .filter(Boolean)
+      .slice(0, maxDeals);
+  } catch {
+    // Quotes association may lack scopes — ignore
+  }
+
+  const parentIds = [
+    ...dealIds.map((d) => ({ type: 'deals', id: d })),
+    ...quoteIds.map((q) => ({ type: 'quotes', id: q })),
+  ];
+
+  for (const parent of parentIds) {
+    let lineIds = [];
+    try {
+      const assoc = await invokeHubSpotProxy(
+        `/crm/v3/objects/${parent.type}/${encodeURIComponent(parent.id)}/associations/line_items`
+      );
+      lineIds = (Array.isArray(assoc?.results) ? assoc.results : [])
+        .map((r) => String(r.toObjectId || r.id || ''))
+        .filter(Boolean);
+    } catch (err) {
+      console.warn(`[HubSpot] ${parent.type}→line_items failed:`, err?.message || err);
+      continue;
+    }
+    if (!lineIds.length) continue;
+
+    // Batch read line items (max 100)
+    const chunk = lineIds.slice(0, 100);
+    try {
+      const batch = await invokeHubSpotProxy('/crm/v3/objects/line_items/batch/read', 'POST', {
+        properties: ['name', 'hs_product_id', 'description'],
+        inputs: chunk.map((lid) => ({ id: lid })),
+      });
+      for (const row of Array.isArray(batch?.results) ? batch.results : []) {
+        addName(row?.properties?.name, 'line_item');
+      }
+    } catch (err) {
+      console.warn('[HubSpot] line_items batch read failed:', err?.message || err);
+    }
+  }
+
+  return [...names.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+}
+
+/**
+ * Services for Suivi task picker: contact line-items first, then product catalog fallback.
+ */
+export async function fetchHubSpotServicesForTaskPicker(contactId) {
+  const fromContact = contactId
+    ? await fetchHubSpotContactServiceNames(contactId).catch(() => [])
+    : [];
+  if (fromContact.length) {
+    return { services: fromContact, source: 'contact_line_items' };
+  }
+  const catalog = await fetchHubSpotProductCatalog().catch(() => []);
+  return {
+    services: catalog.map((p) => ({ name: p.name, source: 'product', id: p.id })),
+    source: catalog.length ? 'product_catalog' : 'empty',
+  };
+}
+
+/**
+ * Internal HubSpot deal property: total_surface_in_m2 ("Total surface (in m2)").
+ * Reads the most recent deal associated with the contact (by closedate, then createdate).
+ * @returns {Promise<{ surfaceM2: number|null, dealId: string|null, dealName: string|null }>}
+ */
+export async function fetchHubSpotContactLatestDealSurface(contactId) {
+  const id = contactId != null ? String(contactId).trim() : '';
+  if (!id) return { surfaceM2: null, dealId: null, dealName: null };
+
+  let dealIds = [];
+  try {
+    const assoc = await invokeHubSpotProxy(
+      `/crm/v3/objects/contacts/${encodeURIComponent(id)}/associations/deals`
+    );
+    dealIds = (Array.isArray(assoc?.results) ? assoc.results : [])
+      .map((r) => String(r.toObjectId || r.id || ''))
+      .filter(Boolean);
+  } catch (err) {
+    console.warn('[HubSpot] contact→deals for surface failed:', err?.message || err);
+    return { surfaceM2: null, dealId: null, dealName: null };
+  }
+  if (!dealIds.length) return { surfaceM2: null, dealId: null, dealName: null };
+
+  // Batch-read deals with surface + ranking dates (max 100)
+  const chunk = dealIds.slice(0, 100);
+  let deals = [];
+  try {
+    const batch = await invokeHubSpotProxy('/crm/v3/objects/deals/batch/read', 'POST', {
+      properties: [
+        'dealname',
+        'closedate',
+        'createdate',
+        'hs_lastmodifieddate',
+        'total_surface_in_m2',
+        'dealstage',
+      ],
+      inputs: chunk.map((did) => ({ id: did })),
+    });
+    deals = Array.isArray(batch?.results) ? batch.results : [];
+  } catch (err) {
+    console.warn('[HubSpot] deals batch read for surface failed:', err?.message || err);
+    return { surfaceM2: null, dealId: null, dealName: null };
+  }
+  if (!deals.length) return { surfaceM2: null, dealId: null, dealName: null };
+
+  const rank = (d) => {
+    const props = d.properties || {};
+    const close = Date.parse(props.closedate || '') || 0;
+    const created = Date.parse(props.createdate || '') || 0;
+    const modified = Date.parse(props.hs_lastmodifieddate || '') || 0;
+    // Prefer closedate when present, else createdate, else lastmodified
+    return close || created || modified;
+  };
+
+  deals.sort((a, b) => rank(b) - rank(a));
+  const latest = deals[0];
+  const raw = latest?.properties?.total_surface_in_m2;
+  const num = raw === '' || raw == null ? null : Number(raw);
+  return {
+    surfaceM2: Number.isFinite(num) ? num : null,
+    dealId: latest?.id ? String(latest.id) : null,
+    dealName: latest?.properties?.dealname || null,
+  };
+}

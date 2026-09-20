@@ -21,7 +21,9 @@ import { distinctWorkersOnDate, normalizeFuelAddress } from './fuel';
  *   else dieselFuel += tripFactor * km * (consumption_l100/100) * dieselEurL
  *     tripFactor = 2 if round_trip else 1
  * essenceHours = sum person hours on lines whose service ∈ params.essence_services
- * essenceFuel = essenceHours * essence_l_h * essence_eur_l
+ * essenceTimeFactor = params.essence_time_factor ?? 0.6  (3/5: ~1/5 spray + ~1/5 setup/cleanup)
+ * essenceHoursEffective = essenceHours * essenceTimeFactor
+ * essenceFuel = essenceHoursEffective * essence_l_h * essence_eur_l
  * fuel (total) = (dieselFuel||0) + (essenceFuel||0)
  * otherExpenses = sum project_expenses.amount_ht (optional)
  * direct = productCost + mo + fuel + otherExpenses
@@ -74,7 +76,12 @@ export function calculateProjectMargin({
   const essenceHours = sumEssenceHours(hourLines, params.essence_services);
   const essenceLh = Number(params.essence_l_h) || 0;
   const essenceEurL = Number(params.essence_eur_l) || 0;
-  const essenceFuel = essenceHours * essenceLh * essenceEurL;
+  // Remy: only ~3/5 of HP/SC hours run the engine (~1/5 spray + ~1/5 setup/cleanup).
+  const rawFactor = Number(params.essence_time_factor);
+  const essenceTimeFactor =
+    Number.isFinite(rawFactor) && rawFactor > 0 ? rawFactor : 0.6;
+  const essenceHoursEffective = essenceHours * essenceTimeFactor;
+  const essenceFuel = essenceHoursEffective * essenceLh * essenceEurL;
   const fuel = (dieselFuel || 0) + (essenceFuel || 0);
   const direct = productCost + mo + fuel + (Number.isFinite(otherExp) ? otherExp : 0);
 
@@ -119,6 +126,8 @@ export function calculateProjectMargin({
     mo: roundMoney(mo),
     dieselFuel: dieselFuel == null ? null : roundMoney(dieselFuel),
     essenceHours: roundHours(essenceHours),
+    essenceHoursEffective: roundHours(essenceHoursEffective),
+    essenceTimeFactor,
     essenceFuel: roundMoney(essenceFuel),
     fuel: roundMoney(fuel),
     fuelIncomplete: fuelResult.missingAddresses,

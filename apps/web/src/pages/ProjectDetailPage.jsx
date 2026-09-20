@@ -754,6 +754,7 @@ const ProjectDetailPage = () => {
                     projectId={id}
                     projectName={project?.name}
                     companycamProjectId={project?.companycam_project_id || null}
+                    hubspotContactId={project?.hubspot_contact_id || hubspotContact?.id || null}
                   />
                 </div>
                 <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
@@ -761,6 +762,7 @@ const ProjectDetailPage = () => {
                     projectId={id}
                     projectName={project?.name}
                     companycamProjectId={project?.companycam_project_id || null}
+                    hubspotContactId={project?.hubspot_contact_id || hubspotContact?.id || null}
                   />
                 </div>
                 <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
@@ -932,6 +934,7 @@ const ProjectDetailPage = () => {
               <SuiviSidebarLinks
                 projectId={id}
                 companycamProjectId={project?.companycam_project_id || null}
+                hubspotContactId={project?.hubspot_contact_id || hubspotContact?.id || null}
                 onOpenSuivi={() => setActiveTab('suivi')}
               />
             </SidebarCard>
