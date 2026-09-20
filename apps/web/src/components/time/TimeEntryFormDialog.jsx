@@ -31,6 +31,7 @@ import {
   nowTimeHHMM,
   buildQuoteLineItemProgress,
   fetchProjectQuoteSnapshot,
+  formatQuoteLineItemTaskLabel,
 } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
@@ -49,9 +50,7 @@ const emptyForm = (defaults = {}) => ({
   client_source: defaults.client_source || 'app',
   companycam_project_id: defaults.companycam_project_id || '',
   companycam_project_name: defaults.companycam_project_name || '',
-  hubspot_line_item_id: defaults.hubspot_line_item_id || '',
-  quote_quantity: defaults.quote_quantity ?? '',
-  quantity_done: defaults.quantity_done ?? '',
+  selected_postes: defaults.selected_postes || [],
 });
 
 const TimeEntryFormDialog = ({
@@ -107,17 +106,22 @@ const TimeEntryFormDialog = ({
           ? String(entry.companycam_project_id)
           : '',
         companycam_project_name: entry.companycam_project_name || '',
-        hubspot_line_item_id: entry.hubspot_line_item_id
-          ? String(entry.hubspot_line_item_id)
-          : '',
-        quote_quantity:
-          entry.quote_quantity != null && entry.quote_quantity !== ''
-            ? entry.quote_quantity
-            : '',
-        quantity_done:
-          entry.quantity_done != null && entry.quantity_done !== ''
-            ? entry.quantity_done
-            : '',
+        selected_postes: entry.hubspot_line_item_id
+          ? [
+              {
+                hubspot_line_item_id: String(entry.hubspot_line_item_id),
+                task_label: entry.task_label || '',
+                quote_quantity:
+                  entry.quote_quantity != null && entry.quote_quantity !== ''
+                    ? entry.quote_quantity
+                    : null,
+                quantity_done:
+                  entry.quantity_done != null && entry.quantity_done !== ''
+                    ? entry.quantity_done
+                    : '',
+              },
+            ]
+          : [],
       });
     } else {
       setForm(
@@ -263,19 +267,12 @@ const TimeEntryFormDialog = ({
   const hasLinkedQuoteId = Boolean(effectiveQuote.hubspot_quote_id);
   const quoteTitle = effectiveQuote.hubspot_quote_title || null;
 
-  const handleQuoteLineSelect = (payload) => {
+  const handleQuotePostesChange = (postes) => {
+    const list = Array.isArray(postes) ? postes : [];
     setForm((prev) => ({
       ...prev,
-      hubspot_line_item_id: payload.hubspot_line_item_id || '',
-      task_label: payload.task_label || '',
-      quote_quantity:
-        payload.quote_quantity != null && payload.quote_quantity !== ''
-          ? payload.quote_quantity
-          : '',
-      quantity_done:
-        payload.quantity_done != null && payload.quantity_done !== ''
-          ? payload.quantity_done
-          : '',
+      selected_postes: list,
+      task_label: formatQuoteLineItemTaskLabel(list) || prev.task_label,
     }));
   };
 
@@ -304,9 +301,7 @@ const TimeEntryFormDialog = ({
         client_name: '',
         companycam_project_id: '',
         companycam_project_name: '',
-        hubspot_line_item_id: '',
-        quote_quantity: '',
-        quantity_done: '',
+        selected_postes: [],
         task_label: '',
       }));
       return;
@@ -320,9 +315,7 @@ const TimeEntryFormDialog = ({
       companycam_project_name: '',
       client_source: 'app',
       // Reset poste when switching project (devis postes are per-project)
-      hubspot_line_item_id: '',
-      quote_quantity: '',
-      quantity_done: '',
+      selected_postes: [],
       task_label: '',
     }));
   };
@@ -335,9 +328,7 @@ const TimeEntryFormDialog = ({
         companycam_project_name: '',
         client_name: '',
         project_id: lockProject ? prev.project_id : '',
-        hubspot_line_item_id: '',
-        quote_quantity: '',
-        quantity_done: '',
+        selected_postes: [],
         task_label: '',
       }));
       return;
@@ -368,9 +359,7 @@ const TimeEntryFormDialog = ({
       project_id: lockProject ? prev.project_id : linkedAppId || '',
       client_source: 'companycam',
       // Reset poste when switching chantier (devis postes are per-project)
-      hubspot_line_item_id: '',
-      quote_quantity: '',
-      quantity_done: '',
+      selected_postes: [],
       task_label: '',
     }));
   };
@@ -419,13 +408,7 @@ const TimeEntryFormDialog = ({
       return Number.isFinite(n) ? n : null;
     };
 
-    const lineItemId = form.hubspot_line_item_id
-      ? String(form.hubspot_line_item_id).trim()
-      : null;
-    const qtyDone = parseQty(form.quantity_done);
-    const quoteQty = parseQty(form.quote_quantity);
-
-    const payload = {
+    const basePayload = {
       user_id: form.user_id,
       project_id: projectId,
       work_date: form.work_date,
@@ -438,29 +421,84 @@ const TimeEntryFormDialog = ({
       break_minutes: breakMin,
       notes: form.notes?.trim() || null,
       client_name: clientName,
-      task_label: form.task_label?.trim() || null,
       client_source: source,
       companycam_project_id: ccId,
       companycam_project_name: ccName,
-      hubspot_line_item_id: lineItemId || null,
-      quote_quantity: lineItemId ? quoteQty : null,
-      quantity_done: lineItemId ? qtyDone : null,
+    };
+
+    const postes = Array.isArray(form.selected_postes) ? form.selected_postes : [];
+    const joinedLabel =
+      formatQuoteLineItemTaskLabel(postes) || form.task_label?.trim() || null;
+
+    // Approach A: one time_entry per selected poste (same times / user / project).
+    const buildRow = (poste) => {
+      const lineItemId = poste?.hubspot_line_item_id
+        ? String(poste.hubspot_line_item_id).trim()
+        : null;
+      return {
+        ...basePayload,
+        task_label: lineItemId
+          ? poste.task_label?.trim() || joinedLabel
+          : form.task_label?.trim() || null,
+        hubspot_line_item_id: lineItemId || null,
+        quote_quantity: lineItemId ? parseQty(poste.quote_quantity) : null,
+        quantity_done: lineItemId ? parseQty(poste.quantity_done) : null,
+      };
     };
 
     setSaving(true);
     try {
       let error;
       if (entry?.id) {
-        ({ error } = await supabase.from('time_entries').update(payload).eq('id', entry.id));
+        // Edit: update this row with the first selected poste (or clear).
+        // Extra postes selected while editing are inserted as sibling entries.
+        const primary = postes[0] || null;
+        const updatePayload = primary
+          ? buildRow(primary)
+          : {
+              ...basePayload,
+              task_label: form.task_label?.trim() || null,
+              hubspot_line_item_id: null,
+              quote_quantity: null,
+              quantity_done: null,
+            };
+        ({ error } = await supabase
+          .from('time_entries')
+          .update(updatePayload)
+          .eq('id', entry.id));
+        if (error) throw error;
+        if (postes.length > 1) {
+          const extras = postes.slice(1).map(buildRow);
+          ({ error } = await supabase.from('time_entries').insert(extras));
+          if (error) throw error;
+        }
+      } else if (postes.length > 0) {
+        const rows = postes.map(buildRow);
+        ({ error } = await supabase.from('time_entries').insert(rows));
+        if (error) throw error;
       } else {
+        const payload = {
+          ...basePayload,
+          task_label: form.task_label?.trim() || null,
+          hubspot_line_item_id: null,
+          quote_quantity: null,
+          quantity_done: null,
+        };
         ({ error } = await supabase.from('time_entries').insert(payload));
+        if (error) throw error;
       }
-      if (error) throw error;
+      const createdCount = entry?.id
+        ? 1 + Math.max(0, postes.length - 1)
+        : Math.max(1, postes.length);
       toast({
         title: entry ? 'Entrée mise à jour' : 'Heures enregistrées',
         description: entry
-          ? 'Les modifications ont été sauvegardées.'
-          : 'La prestation a été ajoutée.',
+          ? postes.length > 1
+            ? `Modifié + ${postes.length - 1} poste(s) ajouté(s).`
+            : 'Les modifications ont été sauvegardées.'
+          : postes.length > 1
+            ? `${createdCount} prestations ajoutées (un poste chacune).`
+            : 'La prestation a été ajoutée.',
       });
       onOpenChange(false);
       onSuccess?.();
@@ -661,11 +699,10 @@ const TimeEntryFormDialog = ({
             {hasLinkedQuotePostes ? (
               <QuoteLineItemPicker
                 lineItems={quoteLineItemsProgress}
-                selectedLineItemId={form.hubspot_line_item_id}
-                quantityDone={form.quantity_done}
+                selectedPostes={form.selected_postes || []}
                 quoteTitle={quoteTitle}
-                onSelect={handleQuoteLineSelect}
-                onQuantityDoneChange={(v) => setField('quantity_done', v)}
+                allowMulti={true}
+                onChange={handleQuotePostesChange}
               />
             ) : quoteLoading && (form.project_id || quoteLookupCcId || resolvedHubspotContactId) ? (
               <div className="h-11 rounded-xl border bg-muted/40 px-3 flex items-center text-sm text-muted-foreground gap-2">
@@ -697,9 +734,7 @@ const TimeEntryFormDialog = ({
                     setForm((prev) => ({
                       ...prev,
                       task_label: e.target.value,
-                      hubspot_line_item_id: '',
-                      quote_quantity: '',
-                      quantity_done: '',
+                      selected_postes: [],
                     }));
                   }}
                 />
