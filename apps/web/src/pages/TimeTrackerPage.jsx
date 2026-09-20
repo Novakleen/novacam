@@ -80,7 +80,7 @@ const TimeTrackerPage = () => {
           .order('start_time', { ascending: false }),
         supabase
           .from('projects')
-          .select('id, name, is_archived, companycam_project_id, hubspot_contact_id')
+          .select('id, name, is_archived, companycam_project_id, hubspot_contact_id, hubspot_quote_id, hubspot_quote_title, hubspot_quote_line_items')
           .eq('is_archived', false)
           .order('name'),
         supabase.from('profiles').select('id, full_name, email, initials').order('full_name'),
@@ -395,6 +395,7 @@ const TimeTrackerPage = () => {
         entry={editing}
         projects={projects}
         users={users}
+        progressEntries={entries}
         onSuccess={fetchAll}
       />
 

@@ -167,7 +167,12 @@
     "taskHintContact": "Services du devis / deal HubSpot liés au contact",
     "taskHintCatalog": "Catalogue produits HubSpot (aucun devis lié trouvé)",
     "taskHintEmpty": "Aucun service HubSpot — saisie libre possible",
-    "taskHintNoContact": "Pas de contact HubSpot — catalogue ou saisie libre"
+    "taskHintNoContact": "Pas de contact HubSpot — catalogue ou saisie libre",
+    "quoteProgressTitle": "Avancement postes du devis",
+    "quoteProgressDone": "Fait {{done}} / {{planned}}",
+    "quoteProgressRemaining": "Reste {{remaining}}",
+    "qtyDone": "Qté faite",
+    "qtyPlanned": "Qté devis"
   },
   "spray": {
     "title": "Pulvérisations",

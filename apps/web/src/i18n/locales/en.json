@@ -167,7 +167,12 @@
     "taskHintContact": "Services from HubSpot quote/deal linked to the contact",
     "taskHintCatalog": "HubSpot product catalog (no linked quote found)",
     "taskHintEmpty": "No HubSpot service found — free text allowed",
-    "taskHintNoContact": "No HubSpot contact — catalog or free text"
+    "taskHintNoContact": "No HubSpot contact — catalog or free text",
+    "quoteProgressTitle": "Quote line-item progress",
+    "quoteProgressDone": "Done {{done}} / {{planned}}",
+    "quoteProgressRemaining": "Left {{remaining}}",
+    "qtyDone": "Qty done",
+    "qtyPlanned": "Quote qty"
   },
   "spray": {
     "title": "Spray applications",

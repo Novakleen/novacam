@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Plus, Clock, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, Clock, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +16,11 @@ import {
   AlertDialogTitle,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-import { formatHoursDecimal, sumHours } from '@/lib/timeTracking';
+import {
+  formatHoursDecimal,
+  sumHours,
+  buildQuoteLineItemProgress,
+} from '@/lib/timeTracking';
 
 const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubspotContactId = null }) => {
   const { toast } = useToast();
@@ -29,31 +33,56 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
   const [deleting, setDeleting] = useState(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [resolvedHsContactId, setResolvedHsContactId] = useState(hubspotContactId || null);
+  const [projectHs, setProjectHs] = useState({
+    hubspot_quote_id: null,
+    hubspot_quote_title: null,
+    hubspot_quote_line_items: [],
+  });
 
   useEffect(() => {
-    if (hubspotContactId) {
-      setResolvedHsContactId(hubspotContactId);
-      return;
-    }
     if (!projectId) {
-      setResolvedHsContactId(null);
+      setResolvedHsContactId(hubspotContactId || null);
+      setProjectHs({
+        hubspot_quote_id: null,
+        hubspot_quote_title: null,
+        hubspot_quote_line_items: [],
+      });
       return;
     }
     let cancelled = false;
     (async () => {
       const { data } = await supabase
         .from('projects')
-        .select('hubspot_contact_id')
+        .select(
+          'hubspot_contact_id, hubspot_quote_id, hubspot_quote_title, hubspot_quote_line_items'
+        )
         .eq('id', projectId)
         .maybeSingle();
-      if (!cancelled) {
-        setResolvedHsContactId(data?.hubspot_contact_id || null);
-      }
+      if (cancelled) return;
+      setResolvedHsContactId(
+        hubspotContactId || data?.hubspot_contact_id || null
+      );
+      setProjectHs({
+        hubspot_quote_id: data?.hubspot_quote_id || null,
+        hubspot_quote_title: data?.hubspot_quote_title || null,
+        hubspot_quote_line_items: Array.isArray(data?.hubspot_quote_line_items)
+          ? data.hubspot_quote_line_items
+          : [],
+      });
     })();
     return () => {
       cancelled = true;
     };
   }, [projectId, hubspotContactId]);
+
+  const quoteProgress = useMemo(
+    () =>
+      buildQuoteLineItemProgress(
+        projectHs.hubspot_quote_line_items,
+        entries
+      ),
+    [projectHs.hubspot_quote_line_items, entries]
+  );
 
   const fetchEntries = useCallback(async () => {
     if (!projectId && !companycamProjectId) return;
@@ -162,6 +191,65 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
         </div>
       </div>
 
+      {quoteProgress.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4 text-primary" />
+            <h4 className="text-sm font-semibold">
+              {t('time.quoteProgressTitle')}
+            </h4>
+            {projectHs.hubspot_quote_title && (
+              <span className="text-xs text-muted-foreground truncate">
+                — {projectHs.hubspot_quote_title}
+              </span>
+            )}
+          </div>
+          <ul className="space-y-2">
+            {quoteProgress.map((li) => {
+              const pct =
+                li.planned > 0
+                  ? Math.min(100, Math.round((li.done / li.planned) * 100))
+                  : li.done > 0
+                    ? 100
+                    : 0;
+              return (
+                <li key={li.id || li.name} className="space-y-1">
+                  <div className="flex items-start justify-between gap-3 text-sm">
+                    <span className="font-medium truncate" title={li.name}>
+                      {li.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                      {t('time.quoteProgressDone', {
+                        done: li.done,
+                        planned: li.planned,
+                      })}
+                      {' · '}
+                      <span
+                        className={
+                          li.remaining > 0
+                            ? 'text-amber-700 dark:text-amber-400 font-semibold'
+                            : 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                        }
+                      >
+                        {t('time.quoteProgressRemaining', { remaining: li.remaining })}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        li.remaining <= 0 ? 'bg-emerald-500' : 'bg-blue-500'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <TimeEntriesTable
         entries={entries}
         loading={loading}
@@ -182,7 +270,20 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
           if (!o) setEditing(null);
         }}
         entry={editing}
-        projects={projectId ? [{ id: projectId, name: projectName || t('expenses.project'), hubspot_contact_id: resolvedHsContactId }] : []}
+        projects={
+          projectId
+            ? [
+                {
+                  id: projectId,
+                  name: projectName || t('expenses.project'),
+                  hubspot_contact_id: resolvedHsContactId,
+                  hubspot_quote_id: projectHs.hubspot_quote_id,
+                  hubspot_quote_title: projectHs.hubspot_quote_title,
+                  hubspot_quote_line_items: projectHs.hubspot_quote_line_items,
+                },
+              ]
+            : []
+        }
         users={users}
         defaultProjectId={projectId || null}
         lockProject={Boolean(projectId)}
@@ -190,6 +291,7 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
         ccProjectId={companycamProjectId || null}
         ccProjectName={projectName || null}
         hubspotContactId={resolvedHsContactId}
+        progressEntries={entries}
         onSuccess={fetchEntries}
       />
 

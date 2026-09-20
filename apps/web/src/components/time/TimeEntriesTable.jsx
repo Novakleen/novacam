@@ -126,12 +126,29 @@ const TimeEntriesTable = ({
                       {row.task_label && row.projects?.name && (
                         <div className="text-xs text-muted-foreground truncate">{row.projects.name}</div>
                       )}
+                      {row.hubspot_line_item_id && row.quantity_done != null && (
+                        <div className="text-[10px] text-muted-foreground tabular-nums">
+                          Qté {row.quantity_done}
+                          {row.quote_quantity != null ? ` / ${row.quote_quantity}` : ''}
+                        </div>
+                      )}
                     </td>
                   )}
                   <td className="px-3 py-3 max-w-[180px]">
                     <div className="truncate" title={row.client_name || row.companycam_project_name || ''}>
                       {row.client_name || row.companycam_project_name || '—'}
                     </div>
+                    {!showProject && row.task_label && (
+                      <div className="text-xs text-muted-foreground truncate" title={row.task_label}>
+                        {row.task_label}
+                      </div>
+                    )}
+                    {!showProject && row.hubspot_line_item_id && row.quantity_done != null && (
+                      <div className="text-[10px] text-muted-foreground tabular-nums">
+                        Qté {row.quantity_done}
+                        {row.quote_quantity != null ? ` / ${row.quote_quantity}` : ''}
+                      </div>
+                    )}
                     {row.companycam_project_id && (
                       <div className="text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400 font-semibold">
                         CompanyCam
