@@ -167,7 +167,12 @@
     "taskHintContact": "Diensten uit HubSpot-offerte/deal gekoppeld aan het contact",
     "taskHintCatalog": "HubSpot-productcatalogus (geen gekoppelde offerte gevonden)",
     "taskHintEmpty": "Geen HubSpot-dienst gevonden — vrije tekst mogelijk",
-    "taskHintNoContact": "Geen HubSpot-contact — catalogus of vrije tekst"
+    "taskHintNoContact": "Geen HubSpot-contact — catalogus of vrije tekst",
+    "quoteProgressTitle": "Voortgang offertelijnen",
+    "quoteProgressDone": "Gedaan {{done}} / {{planned}}",
+    "quoteProgressRemaining": "Rest {{remaining}}",
+    "qtyDone": "Qty gedaan",
+    "qtyPlanned": "Offerte qty"
   },
   "spray": {
     "title": "Besproeiingen",

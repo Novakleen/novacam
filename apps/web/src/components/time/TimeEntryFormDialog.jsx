@@ -29,10 +29,12 @@ import {
   computeOvertimeHours,
   todayISODate,
   nowTimeHHMM,
+  buildQuoteLineItemProgress,
 } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
 import HubSpotTaskPicker from '@/components/time/HubSpotTaskPicker';
+import QuoteLineItemPicker from '@/components/time/QuoteLineItemPicker';
 
 const emptyForm = (defaults = {}) => ({
   user_id: defaults.user_id || '',
@@ -47,6 +49,9 @@ const emptyForm = (defaults = {}) => ({
   client_source: defaults.client_source || 'app',
   companycam_project_id: defaults.companycam_project_id || '',
   companycam_project_name: defaults.companycam_project_name || '',
+  hubspot_line_item_id: defaults.hubspot_line_item_id || '',
+  quote_quantity: defaults.quote_quantity ?? '',
+  quantity_done: defaults.quantity_done ?? '',
 });
 
 const TimeEntryFormDialog = ({
@@ -61,6 +66,8 @@ const TimeEntryFormDialog = ({
   ccProjectId = null,
   ccProjectName = null,
   hubspotContactId: hubspotContactIdProp = null,
+  /** Existing project time entries — used to compute remaining qty per devis poste */
+  progressEntries = [],
   onSuccess,
 }) => {
   const { user } = useAuth();
@@ -96,6 +103,17 @@ const TimeEntryFormDialog = ({
           ? String(entry.companycam_project_id)
           : '',
         companycam_project_name: entry.companycam_project_name || '',
+        hubspot_line_item_id: entry.hubspot_line_item_id
+          ? String(entry.hubspot_line_item_id)
+          : '',
+        quote_quantity:
+          entry.quote_quantity != null && entry.quote_quantity !== ''
+            ? entry.quote_quantity
+            : '',
+        quantity_done:
+          entry.quantity_done != null && entry.quantity_done !== ''
+            ? entry.quantity_done
+            : '',
       });
     } else {
       setForm(
@@ -129,6 +147,37 @@ const TimeEntryFormDialog = ({
     return proj?.hubspot_contact_id ? String(proj.hubspot_contact_id) : null;
   }, [hubspotContactIdProp, form.project_id, projects]);
 
+  const selectedProject = useMemo(() => {
+    const pid = form.project_id;
+    if (!pid) return null;
+    return projects.find((x) => x.id === pid) || null;
+  }, [form.project_id, projects]);
+
+  const quoteLineItemsProgress = useMemo(() => {
+    const raw = selectedProject?.hubspot_quote_line_items;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    return buildQuoteLineItemProgress(raw, progressEntries, entry?.id || null);
+  }, [selectedProject, progressEntries, entry?.id]);
+
+  const hasLinkedQuotePostes = quoteLineItemsProgress.length > 0;
+  const quoteTitle = selectedProject?.hubspot_quote_title || null;
+
+  const handleQuoteLineSelect = (payload) => {
+    setForm((prev) => ({
+      ...prev,
+      hubspot_line_item_id: payload.hubspot_line_item_id || '',
+      task_label: payload.task_label || '',
+      quote_quantity:
+        payload.quote_quantity != null && payload.quote_quantity !== ''
+          ? payload.quote_quantity
+          : '',
+      quantity_done:
+        payload.quantity_done != null && payload.quantity_done !== ''
+          ? payload.quantity_done
+          : '',
+    }));
+  };
+
   const handleClientSourceChange = (source) => {
     setForm((prev) => ({
       ...prev,
@@ -154,6 +203,10 @@ const TimeEntryFormDialog = ({
         client_name: '',
         companycam_project_id: '',
         companycam_project_name: '',
+        hubspot_line_item_id: '',
+        quote_quantity: '',
+        quantity_done: '',
+        task_label: '',
       }));
       return;
     }
@@ -165,6 +218,11 @@ const TimeEntryFormDialog = ({
       companycam_project_id: '',
       companycam_project_name: '',
       client_source: 'app',
+      // Reset poste when switching project (devis postes are per-project)
+      hubspot_line_item_id: '',
+      quote_quantity: '',
+      quantity_done: '',
+      task_label: '',
     }));
   };
 
@@ -236,6 +294,18 @@ const TimeEntryFormDialog = ({
       if (ccId && !clientName) clientName = ccName;
     }
 
+    const parseQty = (v) => {
+      if (v === '' || v == null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const lineItemId = form.hubspot_line_item_id
+      ? String(form.hubspot_line_item_id).trim()
+      : null;
+    const qtyDone = parseQty(form.quantity_done);
+    const quoteQty = parseQty(form.quote_quantity);
+
     const payload = {
       user_id: form.user_id,
       project_id: projectId,
@@ -253,6 +323,9 @@ const TimeEntryFormDialog = ({
       client_source: source,
       companycam_project_id: ccId,
       companycam_project_name: ccName,
+      hubspot_line_item_id: lineItemId || null,
+      quote_quantity: lineItemId ? quoteQty : null,
+      quantity_done: lineItemId ? qtyDone : null,
     };
 
     setSaving(true);
@@ -394,12 +467,47 @@ const TimeEntryFormDialog = ({
 
           <div className="space-y-2">
             <Label>Projet / tâche</Label>
-            <HubSpotTaskPicker
-              value={form.task_label}
-              onChange={(v) => setField('task_label', v)}
-              hubspotContactId={resolvedHubspotContactId}
-              placeholder="Service HubSpot (devis / catalogue)…"
-            />
+            {hasLinkedQuotePostes ? (
+              <QuoteLineItemPicker
+                lineItems={quoteLineItemsProgress}
+                selectedLineItemId={form.hubspot_line_item_id}
+                quantityDone={form.quantity_done}
+                quoteTitle={quoteTitle}
+                onSelect={handleQuoteLineSelect}
+                onQuantityDoneChange={(v) => setField('quantity_done', v)}
+              />
+            ) : (
+              <>
+                <HubSpotTaskPicker
+                  value={form.task_label}
+                  onChange={(v) => {
+                    setForm((prev) => ({
+                      ...prev,
+                      task_label: v,
+                      hubspot_line_item_id: '',
+                      quote_quantity: '',
+                      quantity_done: '',
+                    }));
+                  }}
+                  hubspotContactId={resolvedHubspotContactId}
+                  placeholder="Service HubSpot (devis / catalogue)…"
+                />
+                {selectedProject && !selectedProject.hubspot_quote_id && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
+                    Astuce : liez un devis HubSpot sur le panneau Source du projet pour
+                    encoder les postes exacts avec quantités et reste.
+                  </p>
+                )}
+                {selectedProject?.hubspot_quote_id &&
+                  (!Array.isArray(selectedProject.hubspot_quote_line_items) ||
+                    selectedProject.hubspot_quote_line_items.length === 0) && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
+                      Devis lié mais sans postes en snapshot — reliez le devis depuis Source
+                      pour recharger les line items.
+                    </p>
+                  )}
+              </>
+            )}
           </div>
 
           <div className="space-y-2">

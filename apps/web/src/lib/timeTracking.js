@@ -95,3 +95,51 @@ export function sumHours(entries) {
     return acc + (enriched._hoursWorked || 0);
   }, 0);
 }
+
+/** Sum quantity_done per hubspot_line_item_id (optionally exclude one entry when editing). */
+export function sumQuantityDoneByLineItem(entries = [], excludeEntryId = null) {
+  const map = {};
+  for (const e of entries || []) {
+    if (!e?.hubspot_line_item_id) continue;
+    if (excludeEntryId && e.id === excludeEntryId) continue;
+    const q = Number(e.quantity_done);
+    if (!Number.isFinite(q) || q === 0) continue;
+    const key = String(e.hubspot_line_item_id);
+    map[key] = (map[key] || 0) + q;
+  }
+  return map;
+}
+
+/**
+ * Enrich devis line items with fait / reste from logged time entries.
+ * remaining = max(0, planned − done).
+ */
+export function buildQuoteLineItemProgress(lineItems = [], entries = [], excludeEntryId = null) {
+  const doneById = sumQuantityDoneByLineItem(entries, excludeEntryId);
+  return (Array.isArray(lineItems) ? lineItems : []).map((li) => {
+    const id = li?.id != null ? String(li.id) : null;
+    const planned =
+      li?.quantity != null && Number.isFinite(Number(li.quantity))
+        ? Number(li.quantity)
+        : 0;
+    const done = id ? doneById[id] || 0 : 0;
+    const remaining = Math.max(0, Math.round((planned - done) * 1000) / 1000);
+    return {
+      ...li,
+      id,
+      planned,
+      done,
+      remaining,
+    };
+  });
+}
+
+/** Sensible default for quantity_done when picking a poste: remaining (editable). */
+export function defaultQuantityDoneForLineItem(progressItem) {
+  if (!progressItem) return '';
+  const rem = Number(progressItem.remaining);
+  if (Number.isFinite(rem) && rem > 0) return rem;
+  const planned = Number(progressItem.planned ?? progressItem.quantity);
+  if (Number.isFinite(planned) && planned > 0) return planned;
+  return 1;
+}
