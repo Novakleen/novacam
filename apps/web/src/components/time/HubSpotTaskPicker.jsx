@@ -20,9 +20,10 @@ import { fetchHubSpotServicesForTaskPicker } from '@/lib/hubspotService';
 
 /**
  * Searchable task/service picker fed by HubSpot:
- * - preferred: line items on the linked contact's deals/quotes
- * - fallback: active product catalog
- * Always allows a custom free-text value.
+ * - preferred: line items on the linked contact's deals/quotes/invoices
+ * - then: deal type_of_service (when line-item scopes are missing)
+ * - then: product catalog / type_of_service enum catalog
+ * Always allows a custom free-text value. Surfaces emptyReason when HubSpot returns none.
  */
 const HubSpotTaskPicker = ({
   value = '',
@@ -35,6 +36,8 @@ const HubSpotTaskPicker = ({
   const [open, setOpen] = useState(false);
   const [services, setServices] = useState([]);
   const [source, setSource] = useState('empty');
+  const [emptyReason, setEmptyReason] = useState(null);
+  const [requiredScopes, setRequiredScopes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [customMode, setCustomMode] = useState(false);
@@ -42,14 +45,20 @@ const HubSpotTaskPicker = ({
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setEmptyReason(null);
+    setRequiredScopes([]);
     try {
       const res = await fetchHubSpotServicesForTaskPicker(hubspotContactId);
       setServices(Array.isArray(res.services) ? res.services : []);
       setSource(res.source || 'empty');
+      setEmptyReason(res.emptyReason || null);
+      setRequiredScopes(Array.isArray(res.requiredScopes) ? res.requiredScopes : []);
     } catch (err) {
       setError(err?.message || 'Chargement HubSpot impossible');
       setServices([]);
       setSource('empty');
+      setEmptyReason(err?.message || 'Chargement HubSpot impossible');
+      setRequiredScopes(Array.isArray(err?.requiredScopes) ? err.requiredScopes : []);
     } finally {
       setLoading(false);
     }
@@ -71,14 +80,27 @@ const HubSpotTaskPicker = ({
     }
   }, [value, selectedInList, services.length]);
 
-  const sourceHint =
-    source === 'contact_line_items'
-      ? 'Services du devis / deal HubSpot liés au contact'
-      : source === 'product_catalog'
-        ? 'Catalogue produits HubSpot (aucun devis lié trouvé)'
-        : hubspotContactId
-          ? 'Aucun service HubSpot trouvé — saisie libre possible'
-          : 'Pas de contact HubSpot — catalogue ou saisie libre';
+  const sourceHint = useMemo(() => {
+    if (source === 'contact_line_items') {
+      return 'Services (line items) du devis / deal / facture HubSpot liés au contact';
+    }
+    if (source === 'deal_type_of_service') {
+      return 'Services depuis le champ HubSpot « type_of_service » du deal (line items non lisibles)';
+    }
+    if (source === 'product_catalog') {
+      return 'Catalogue produits HubSpot (aucun service contact trouvé)';
+    }
+    if (source === 'type_of_service_catalog') {
+      return 'Catalogue HubSpot type_of_service (fallback — line items / produits indisponibles)';
+    }
+    if (emptyReason) return emptyReason;
+    if (hubspotContactId) return 'Aucun service HubSpot trouvé — saisie libre possible';
+    return 'Pas de contact HubSpot — catalogue ou saisie libre';
+  }, [source, emptyReason, hubspotContactId]);
+
+  const emptyListMessage = loading
+    ? 'Chargement…'
+    : error || emptyReason || 'Aucun service. Utilisez « Saisie libre ».';
 
   if (customMode) {
     return (
@@ -132,7 +154,7 @@ const HubSpotTaskPicker = ({
             <CommandInput placeholder="Rechercher un service…" />
             <CommandList>
               <CommandEmpty>
-                {loading ? 'Chargement…' : error || 'Aucun service. Utilisez « Saisie libre ».'}
+                {emptyListMessage}
               </CommandEmpty>
               <CommandGroup>
                 {services.map((s) => (
@@ -168,6 +190,11 @@ const HubSpotTaskPicker = ({
         </PopoverContent>
       </Popover>
       <p className="text-[11px] text-muted-foreground px-0.5">{sourceHint}</p>
+      {requiredScopes.length > 0 && services.length === 0 && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5 break-all">
+          Scopes manquants : {requiredScopes.slice(0, 6).join(', ')}
+        </p>
+      )}
     </div>
   );
 };
