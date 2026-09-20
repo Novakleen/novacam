@@ -125,12 +125,24 @@ const DossierDetail = ({
                 <Fuel className="h-3.5 w-3.5" /> Trajets
               </p>
               {calc.fuelDays.map((d) => (
-                <div key={d.date} className="text-sm flex justify-between gap-2">
+                <div
+                  key={`${d.date}-${d.personKey || d.driverName || 'unknown'}`}
+                  className="text-sm flex justify-between gap-2"
+                >
                   <span className="text-muted-foreground">
                     {d.date} · {d.driverName || '—'}
+                    {!d.homeAddress ? (
+                      <span className="block text-[11px] text-amber-600 dark:text-amber-400">
+                        adresse domicile manquante
+                      </span>
+                    ) : null}
                   </span>
                   <span className="tabular-nums">
-                    {d.km == null ? 'km indisponible' : `${formatKm(d.km)}${d.roundTrip ? ' A/R' : ''} · ${formatMoney(d.cost)}`}
+                    {d.km == null
+                      ? d.homeAddress
+                        ? 'échec géocode'
+                        : 'adresses / km indisponible'
+                      : `${formatKm(d.km)}${d.roundTrip ? ' A/R' : ''} · ${formatMoney(d.cost)}`}
                   </span>
                 </div>
               ))}

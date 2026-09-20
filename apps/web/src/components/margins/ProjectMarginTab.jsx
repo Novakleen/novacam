@@ -539,14 +539,21 @@ const ProjectMarginTab = ({
             <Fuel className="h-3.5 w-3.5" /> Trajets diesel
           </p>
           {calc.fuelDays.map((d) => (
-            <div key={d.date} className="text-sm flex justify-between gap-2">
+            <div
+              key={`${d.date}-${d.personKey || d.driverName || 'unknown'}`}
+              className="text-sm flex justify-between gap-2"
+            >
               <span className="text-muted-foreground">
                 {d.date} · {d.driverName || '—'}
                 {d.homeAddress ? (
                   <span className="block text-[11px] opacity-70 truncate max-w-[240px]">
                     {d.homeAddress}
                   </span>
-                ) : null}
+                ) : (
+                  <span className="block text-[11px] text-amber-600 dark:text-amber-400">
+                    adresse domicile manquante
+                  </span>
+                )}
               </span>
               <span className="tabular-nums shrink-0">
                 {d.km == null
