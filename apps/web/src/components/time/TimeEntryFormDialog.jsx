@@ -30,6 +30,7 @@ import {
   todayISODate,
   nowTimeHHMM,
   buildQuoteLineItemProgress,
+  fetchProjectQuoteSnapshot,
 } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
@@ -64,7 +65,7 @@ const TimeEntryFormDialog = ({
   lockCompanyCam = false,
   ccProjectId = null,
   ccProjectName = null,
-  hubspotContactId: _hubspotContactIdProp = null,
+  hubspotContactId: hubspotContactIdProp = null,
   /** Existing project time entries — used to compute remaining qty per devis poste */
   progressEntries = [],
   onSuccess,
@@ -142,8 +143,8 @@ const TimeEntryFormDialog = ({
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  // _hubspotContactIdProp kept for API compat (ProjectTimeSection); devis postes
-  // come from project hubspot_quote_line_items, not the contact catalog.
+  // Devis postes come from the Novacam projects row that holds hubspot_quote_*;
+  // resolve by UUID, companycam_project_id, or hubspot_contact_id (prefer devis snapshot).
 
   const selectedProject = useMemo(() => {
     const pid = form.project_id;
@@ -151,43 +152,78 @@ const TimeEntryFormDialog = ({
     return projects.find((x) => x.id === pid) || null;
   }, [form.project_id, projects]);
 
-  // Refresh devis snapshot whenever the chosen project changes (covers TimeTrackerPage
-  // where the projects list may be stale, or ProjectTimeSection before its own fetch lands).
+  const resolvedHubspotContactId = useMemo(() => {
+    if (hubspotContactIdProp) return String(hubspotContactIdProp);
+    if (selectedProject?.hubspot_contact_id) return String(selectedProject.hubspot_contact_id);
+    return null;
+  }, [hubspotContactIdProp, selectedProject]);
+
+  const quoteLookupCcId = useMemo(() => {
+    if (form.companycam_project_id) return String(form.companycam_project_id);
+    if (lockCompanyCam && ccProjectId) return String(ccProjectId);
+    if (selectedProject?.companycam_project_id) return String(selectedProject.companycam_project_id);
+    return null;
+  }, [
+    form.companycam_project_id,
+    lockCompanyCam,
+    ccProjectId,
+    selectedProject,
+  ]);
+
+  // Refresh devis snapshot whenever the chosen client / chantier changes.
+  // CC detail pages pass projectId=null + companycamProjectId — must resolve the
+  // Novacam row that Source wrote hubspot_quote_* onto (not only .eq('id', pid)).
   useEffect(() => {
-    const pid = form.project_id;
-    if (!pid) {
+    const pid = form.project_id || null;
+    const ccId = quoteLookupCcId;
+    const hsId = resolvedHubspotContactId;
+    if (!pid && !ccId && !hsId) {
       setQuoteOverride(null);
       setQuoteLoading(false);
       return;
     }
     let cancelled = false;
-    setQuoteOverride(null); // use projects[] until live fetch lands (avoid stale other-project postes)
+    setQuoteOverride(null); // use projects[] until live fetch lands
     setQuoteLoading(true);
     (async () => {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('hubspot_quote_id, hubspot_quote_title, hubspot_quote_line_items')
-        .eq('id', pid)
-        .maybeSingle();
+      const { data, error } = await fetchProjectQuoteSnapshot(supabase, {
+        projectId: pid,
+        companycamProjectId: ccId,
+        hubspotContactId: hsId,
+      });
       if (cancelled) return;
       if (error) {
         console.warn('quote snapshot fetch failed', error);
         setQuoteOverride(null);
       } else {
         setQuoteOverride({
+          id: data?.id || null,
           hubspot_quote_id: data?.hubspot_quote_id || null,
           hubspot_quote_title: data?.hubspot_quote_title || null,
           hubspot_quote_line_items: Array.isArray(data?.hubspot_quote_line_items)
             ? data.hubspot_quote_line_items
             : [],
         });
+        // CC-only selection: attach the Novacam UUID that holds the devis so
+        // time_entries.project_id links to the same row Source updated.
+        if (data?.id && !pid) {
+          setForm((prev) =>
+            prev.project_id
+              ? prev
+              : {
+                  ...prev,
+                  project_id: data.id,
+                  client_name: prev.client_name || data.name || prev.client_name,
+                }
+          );
+        }
       }
       setQuoteLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [form.project_id]);
+  }, [form.project_id, quoteLookupCcId, resolvedHubspotContactId]);
 
   const effectiveQuote = useMemo(() => {
     // Prefer live fetch; fall back to projects[] prop (ProjectTimeSection passes them).
@@ -206,9 +242,16 @@ const TimeEntryFormDialog = ({
 
   const projectProgressEntries = useMemo(() => {
     const pid = form.project_id;
-    if (!pid) return progressEntries || [];
-    return (progressEntries || []).filter((e) => e.project_id === pid);
-  }, [progressEntries, form.project_id]);
+    const ccId = quoteLookupCcId;
+    if (!pid && !ccId) return progressEntries || [];
+    return (progressEntries || []).filter((e) => {
+      if (pid && e.project_id === pid) return true;
+      if (ccId && e.companycam_project_id && String(e.companycam_project_id) === ccId) {
+        return true;
+      }
+      return false;
+    });
+  }, [progressEntries, form.project_id, quoteLookupCcId]);
 
   const quoteLineItemsProgress = useMemo(() => {
     const raw = effectiveQuote.hubspot_quote_line_items;
@@ -292,16 +335,29 @@ const TimeEntryFormDialog = ({
         companycam_project_name: '',
         client_name: '',
         project_id: lockProject ? prev.project_id : '',
+        hubspot_line_item_id: '',
+        quote_quantity: '',
+        quantity_done: '',
+        task_label: '',
       }));
       return;
     }
     const name = pickedName || `CompanyCam #${ccId}`;
-    // If CC project is linked to a Supabase project, prefer that link when available
+    // Prefer the Novacam row that already holds a devis snapshot for this CC id.
+    const linkedCandidates = projects.filter(
+      (ap) => ap.companycam_project_id && String(ap.companycam_project_id) === String(ccId)
+    );
+    const linkedPreferred =
+      linkedCandidates.find(
+        (ap) =>
+          Array.isArray(ap.hubspot_quote_line_items) && ap.hubspot_quote_line_items.length > 0
+      ) ||
+      linkedCandidates.find((ap) => ap.hubspot_quote_id) ||
+      linkedCandidates[0] ||
+      null;
     const linkedAppId =
       raw?.supabase_id ||
-      projects.find(
-        (ap) => ap.companycam_project_id && String(ap.companycam_project_id) === String(ccId)
-      )?.id ||
+      linkedPreferred?.id ||
       '';
 
     setForm((prev) => ({
@@ -311,6 +367,11 @@ const TimeEntryFormDialog = ({
       client_name: name,
       project_id: lockProject ? prev.project_id : linkedAppId || '',
       client_source: 'companycam',
+      // Reset poste when switching chantier (devis postes are per-project)
+      hubspot_line_item_id: '',
+      quote_quantity: '',
+      quantity_done: '',
+      task_label: '',
     }));
   };
 
@@ -606,14 +667,14 @@ const TimeEntryFormDialog = ({
                 onSelect={handleQuoteLineSelect}
                 onQuantityDoneChange={(v) => setField('quantity_done', v)}
               />
-            ) : quoteLoading && form.project_id ? (
+            ) : quoteLoading && (form.project_id || quoteLookupCcId || resolvedHubspotContactId) ? (
               <div className="h-11 rounded-xl border bg-muted/40 px-3 flex items-center text-sm text-muted-foreground gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Chargement des postes du devis…
               </div>
             ) : (
               <div className="space-y-2">
-                {!form.project_id && !lockCompanyCam ? (
+                {!form.project_id && !lockCompanyCam && !quoteLookupCcId ? (
                   <p className="text-[11px] text-muted-foreground px-0.5">
                     Sélectionnez d&apos;abord un client / projet pour charger les postes du devis.
                   </p>
