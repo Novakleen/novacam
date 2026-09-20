@@ -20,10 +20,14 @@ import { fetchHubSpotServicesForTaskPicker } from '@/lib/hubspotService';
 
 /**
  * Searchable task/service picker fed by HubSpot:
- * - preferred: line items on the linked contact's deals/quotes/invoices
+ * - preferred: line items on the linked contact's latest deal/transaction
+ * - then: line items on other deals/quotes/invoices
  * - then: deal type_of_service (when line-item scopes are missing)
  * - then: product catalog / type_of_service enum catalog
  * Always allows a custom free-text value. Surfaces emptyReason when HubSpot returns none.
+ *
+ * Nested inside TimeEntryFormDialog (Radix Dialog): Popover must be modal +
+ * CommandItem must select on pointerdown — same pattern as CompanyCamProjectPicker.
  */
 const HubSpotTaskPicker = ({
   value = '',
@@ -38,6 +42,7 @@ const HubSpotTaskPicker = ({
   const [source, setSource] = useState('empty');
   const [emptyReason, setEmptyReason] = useState(null);
   const [requiredScopes, setRequiredScopes] = useState([]);
+  const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [customMode, setCustomMode] = useState(false);
@@ -47,18 +52,21 @@ const HubSpotTaskPicker = ({
     setError(null);
     setEmptyReason(null);
     setRequiredScopes([]);
+    setMeta(null);
     try {
       const res = await fetchHubSpotServicesForTaskPicker(hubspotContactId);
       setServices(Array.isArray(res.services) ? res.services : []);
       setSource(res.source || 'empty');
       setEmptyReason(res.emptyReason || null);
       setRequiredScopes(Array.isArray(res.requiredScopes) ? res.requiredScopes : []);
+      setMeta(res.meta || null);
     } catch (err) {
       setError(err?.message || 'Chargement HubSpot impossible');
       setServices([]);
       setSource('empty');
       setEmptyReason(err?.message || 'Chargement HubSpot impossible');
       setRequiredScopes(Array.isArray(err?.requiredScopes) ? err.requiredScopes : []);
+      setMeta(null);
     } finally {
       setLoading(false);
     }
@@ -81,6 +89,10 @@ const HubSpotTaskPicker = ({
   }, [value, selectedInList, services.length]);
 
   const sourceHint = useMemo(() => {
+    if (source === 'latest_deal_line_items') {
+      const dealLabel = meta?.dealName ? ` (« ${meta.dealName} »)` : '';
+      return `Line items de la dernière transaction HubSpot${dealLabel}`;
+    }
     if (source === 'contact_line_items') {
       return 'Services (line items) du devis / deal / facture HubSpot liés au contact';
     }
@@ -96,11 +108,24 @@ const HubSpotTaskPicker = ({
     if (emptyReason) return emptyReason;
     if (hubspotContactId) return 'Aucun service HubSpot trouvé — saisie libre possible';
     return 'Pas de contact HubSpot — catalogue ou saisie libre';
-  }, [source, emptyReason, hubspotContactId]);
+  }, [source, emptyReason, hubspotContactId, meta]);
 
   const emptyListMessage = loading
     ? 'Chargement…'
     : error || emptyReason || 'Aucun service. Utilisez « Saisie libre ».';
+
+  const pickService = useCallback(
+    (name) => {
+      onChange?.(name);
+      setOpen(false);
+    },
+    [onChange]
+  );
+
+  const enterCustomMode = useCallback(() => {
+    setCustomMode(true);
+    setOpen(false);
+  }, []);
 
   if (customMode) {
     return (
@@ -124,9 +149,15 @@ const HubSpotTaskPicker = ({
     );
   }
 
+  const latestDealItems = services.filter((s) => s.source === 'line_item' && s.fromLatestDeal);
+  const otherItems = services.filter((s) => !(s.source === 'line_item' && s.fromLatestDeal));
+  const showLatestGroup =
+    source === 'latest_deal_line_items' || latestDealItems.length > 0;
+
   return (
     <div className={cn('space-y-1.5', className)}>
-      <Popover open={open} onOpenChange={setOpen}>
+      {/* modal={true} required so pointer events work inside parent Dialog */}
+      <Popover modal open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -149,38 +180,95 @@ const HubSpotTaskPicker = ({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <PopoverContent
+          className="z-[200] w-[var(--radix-popover-trigger-width)] p-0 rounded-xl"
+          align="start"
+          sideOffset={4}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onWheel={(e) => e.stopPropagation()}
+        >
           <Command>
             <CommandInput placeholder="Rechercher un service…" />
             <CommandList>
-              <CommandEmpty>
-                {emptyListMessage}
-              </CommandEmpty>
-              <CommandGroup>
-                {services.map((s) => (
-                  <CommandItem
-                    key={`${s.source}-${s.id || s.name}`}
-                    value={s.name}
-                    onSelect={() => {
-                      onChange?.(s.name);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        'mr-2 h-4 w-4',
-                        value === s.name ? 'opacity-100' : 'opacity-0'
-                      )}
-                    />
-                    <span className="truncate">{s.name}</span>
-                  </CommandItem>
-                ))}
+              <CommandEmpty>{emptyListMessage}</CommandEmpty>
+              {showLatestGroup && latestDealItems.length > 0 && (
+                <CommandGroup
+                  heading={
+                    meta?.dealName
+                      ? `Dernière transaction — ${meta.dealName}`
+                      : 'Dernière transaction'
+                  }
+                >
+                  {latestDealItems.map((s) => (
+                    <CommandItem
+                      key={`latest-${s.id || s.name}`}
+                      value={`latest ${s.id || ''} ${s.name}`}
+                      keywords={[s.name, s.sku, s.id].filter(Boolean)}
+                      onSelect={() => pickService(s.name)}
+                      onPointerDown={(e) => {
+                        // Ensure selection works even when nested in a Dialog
+                        e.preventDefault();
+                        pickService(s.name);
+                      }}
+                      className="rounded-lg cursor-pointer"
+                    >
+                      <Check
+                        className={cn(
+                          'mr-2 h-4 w-4 shrink-0',
+                          value === s.name ? 'opacity-100' : 'opacity-0'
+                        )}
+                      />
+                      <span className="truncate">{s.name}</span>
+                      {s.sku ? (
+                        <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+                          {s.sku}
+                        </span>
+                      ) : null}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              <CommandGroup
+                heading={
+                  showLatestGroup && latestDealItems.length > 0
+                    ? otherItems.length
+                      ? 'Autres services'
+                      : undefined
+                    : undefined
+                }
+              >
+                {(showLatestGroup && latestDealItems.length > 0 ? otherItems : services).map(
+                  (s) => (
+                    <CommandItem
+                      key={`${s.source}-${s.id || s.name}`}
+                      value={`${s.source || ''} ${s.id || ''} ${s.name}`}
+                      keywords={[s.name, s.sku, s.id].filter(Boolean)}
+                      onSelect={() => pickService(s.name)}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        pickService(s.name);
+                      }}
+                      className="rounded-lg cursor-pointer"
+                    >
+                      <Check
+                        className={cn(
+                          'mr-2 h-4 w-4 shrink-0',
+                          value === s.name ? 'opacity-100' : 'opacity-0'
+                        )}
+                      />
+                      <span className="truncate">{s.name}</span>
+                    </CommandItem>
+                  )
+                )}
                 <CommandItem
                   value="__custom__"
-                  onSelect={() => {
-                    setCustomMode(true);
-                    setOpen(false);
+                  onSelect={enterCustomMode}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    enterCustomMode();
                   }}
+                  className="rounded-lg cursor-pointer"
                 >
                   <span className="text-muted-foreground">Saisie libre…</span>
                 </CommandItem>
