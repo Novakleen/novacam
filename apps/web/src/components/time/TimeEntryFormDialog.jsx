@@ -516,7 +516,7 @@ const TimeEntryFormDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-lg overflow-y-auto overflow-x-hidden min-w-0 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <Clock className="h-5 w-5 text-primary" />
@@ -527,7 +527,7 @@ const TimeEntryFormDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-4 pt-2">
           <div className="space-y-2">
             <Label>Utilisateur</Label>
             <Select
@@ -609,13 +609,13 @@ const TimeEntryFormDialog = ({
                 onChange={(e) => setField('break_minutes', e.target.value)}
               />
             </div>
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Label>Aperçu calculé</Label>
-              <div className="h-11 rounded-xl border bg-muted/40 px-3 flex items-center text-sm gap-3">
-                <span>
+              <div className="min-h-11 h-auto rounded-xl border bg-muted/40 px-3 py-2 flex flex-wrap items-center text-sm gap-x-3 gap-y-1 min-w-0 overflow-hidden">
+                <span className="min-w-0 break-words">
                   Presté : <strong>{formatHoursDecimal(preview.hours)} h</strong>
                 </span>
-                <span className="text-red-500">
+                <span className="text-red-500 shrink-0">
                   OT : {formatHoursDecimal(preview.overtime)} h
                 </span>
               </div>
@@ -694,7 +694,7 @@ const TimeEntryFormDialog = ({
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <Label>Projet / tâche</Label>
             {hasLinkedQuotePostes ? (
               <QuoteLineItemPicker
