@@ -284,5 +284,27 @@
       "SPRING": "Printemps",
       "FALL": "Automne"
     }
+  },
+  "googleCalendar": {
+    "label": "Intervention Google Calendar",
+    "none": "Aucun événement",
+    "link": "Lier un événement",
+    "clear": "Retirer l'événement",
+    "linkTitle": "Lier une intervention Google Calendar",
+    "linkDesc": "Choisissez un événement à venir sur le calendrier hello@novakleen.be.",
+    "searchPlaceholder": "Rechercher par titre…",
+    "searchButton": "Rechercher",
+    "calendarIdHint": "Calendrier : {{id}}",
+    "noEventsFound": "Aucun événement à venir trouvé.",
+    "searchFailed": "Recherche Google Calendar indisponible.",
+    "searchFailedTitle": "Google Calendar",
+    "searchFailedDesc": "Impossible de charger les événements. Vérifiez les secrets Google OAuth.",
+    "linkedTitle": "Intervention liée",
+    "linkedDesc": "Événement « {{title}} » enregistré.",
+    "clearedTitle": "Intervention retirée",
+    "clearedDesc": "Le lien Google Calendar a été effacé.",
+    "saveError": "Impossible d'enregistrer l'événement Google Calendar.",
+    "attendees": "Invités",
+    "openInCalendar": "Ouvrir dans Google Calendar"
   }
 }

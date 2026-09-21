@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Briefcase,
+  Calendar,
   ExternalLink,
   FileSpreadsheet,
   FileText,
@@ -11,6 +12,7 @@ import {
   Plus,
   Trash2,
   UserPlus,
+  Users,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -40,6 +42,13 @@ import {
   fetchHubSpotDealJobInfo,
   formatHubSpotTypeOfServiceShort,
 } from '@/lib/hubspotService';
+import {
+  DEFAULT_GOOGLE_CALENDAR_ID,
+  formatGoogleCalendarAttendees,
+  formatGoogleCalendarStart,
+  getGoogleCalendarEvent,
+  listUpcomingGoogleCalendarEvents,
+} from '@/lib/googleCalendarService';
 
 const HUBSPOT_PORTAL_ID = '144564857';
 const HUBSPOT_APP_BASE = `https://app-eu1.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}`;
@@ -87,7 +96,14 @@ const PROJECT_HS_FIELDS = `
   hubspot_quote_title,
   hubspot_quote_status,
   hubspot_quote_amount,
-  hubspot_quote_line_items
+  hubspot_quote_line_items,
+  google_calendar_event_id,
+  google_calendar_title,
+  google_calendar_start,
+  google_calendar_end,
+  google_calendar_attendees,
+  google_calendar_html_link,
+  google_calendar_id
 `;
 
 const isUuid = (value) =>
@@ -275,6 +291,7 @@ const ProjectHubSpotAdminPanel = ({
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [showDealDialog, setShowDealDialog] = useState(false);
   const [showQuoteDialog, setShowQuoteDialog] = useState(false);
+  const [showCalendarDialog, setShowCalendarDialog] = useState(false);
 
   const locale = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2);
 
@@ -652,6 +669,78 @@ const ProjectHubSpotAdminPanel = ({
     }
   };
 
+
+  const toTimestamptz = (value) => {
+    if (!value) return null;
+    const s = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T00:00:00Z`;
+    return s;
+  };
+
+  const handleClearCalendarEvent = async () => {
+    try {
+      await updateHubSpotFields({
+        google_calendar_event_id: null,
+        google_calendar_title: null,
+        google_calendar_start: null,
+        google_calendar_end: null,
+        google_calendar_attendees: null,
+        google_calendar_html_link: null,
+        google_calendar_id: null,
+      });
+      toast({
+        title: t('googleCalendar.clearedTitle'),
+        description: t('googleCalendar.clearedDesc'),
+      });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: t('common.error'),
+        description: err.message || t('googleCalendar.saveError'),
+      });
+    }
+  };
+
+  const handleSelectCalendarEvent = async (event) => {
+    try {
+      let ev = event;
+      try {
+        const live = await getGoogleCalendarEvent(
+          event.id,
+          event.calendarId || DEFAULT_GOOGLE_CALENDAR_ID
+        );
+        if (live?.id) ev = live;
+      } catch (liveErr) {
+        console.warn(
+          '[ProjectHubSpotAdminPanel] calendar event refresh failed:',
+          liveErr?.message || liveErr
+        );
+      }
+      await updateHubSpotFields({
+        google_calendar_event_id: String(ev.id),
+        google_calendar_title: ev.title ? String(ev.title) : null,
+        google_calendar_start: toTimestamptz(ev.start),
+        google_calendar_end: toTimestamptz(ev.end),
+        google_calendar_attendees: Array.isArray(ev.attendees) ? ev.attendees : [],
+        google_calendar_html_link: ev.htmlLink || null,
+        google_calendar_id: ev.calendarId || DEFAULT_GOOGLE_CALENDAR_ID,
+      });
+      setShowCalendarDialog(false);
+      toast({
+        title: t('googleCalendar.linkedTitle'),
+        description: t('googleCalendar.linkedDesc', {
+          title: ev.title || ev.id,
+        }),
+      });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: t('common.error'),
+        description: err.message || t('googleCalendar.saveError'),
+      });
+    }
+  };
+
   if (!isAdmin) return null;
 
   const contactName = linked?.hubspot_contact_name;
@@ -660,7 +749,15 @@ const ProjectHubSpotAdminPanel = ({
   const hasInvoice = !!linked?.hubspot_invoice_id;
   const hasDeal = !!linked?.hubspot_deal_id;
   const hasQuote = !!linked?.hubspot_quote_id;
+  const hasCalendar = !!linked?.google_calendar_event_id;
   const moneyLocale = locale === 'nl' ? 'nl-BE' : locale === 'en' ? 'en-GB' : 'fr-BE';
+  const calendarAttendeeLabels = formatGoogleCalendarAttendees(
+    linked?.google_calendar_attendees
+  );
+  const calendarStartLabel = formatGoogleCalendarStart(
+    linked?.google_calendar_start,
+    moneyLocale
+  );
   const amountLabel = formatMoney(
     linked?.hubspot_invoice_amount,
     linked?.hubspot_invoice_currency,
@@ -932,6 +1029,79 @@ const ProjectHubSpotAdminPanel = ({
             )}
           </div>
 
+          {/* Intervention Google Calendar */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                {t('googleCalendar.label')}
+              </p>
+              <div className="flex items-center gap-1">
+                {hasCalendar && (
+                  <button
+                    type="button"
+                    onClick={handleClearCalendarEvent}
+                    disabled={saving}
+                    className="h-7 w-7 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                    title={t('googleCalendar.clear')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowCalendarDialog(true)}
+                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                  title={t('googleCalendar.link')}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+            {hasCalendar ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-gray-400" />
+                  {linked.google_calendar_title || `#${linked.google_calendar_event_id}`}
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                  {calendarStartLabel && <span>{calendarStartLabel}</span>}
+                </div>
+                {calendarAttendeeLabels.length > 0 && (
+                  <p className="text-xs text-gray-500 flex items-start gap-1.5">
+                    <Users className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gray-400" />
+                    <span>
+                      {t('googleCalendar.attendees')}: {calendarAttendeeLabels.join(', ')}
+                    </span>
+                  </p>
+                )}
+                {linked.google_calendar_html_link && (
+                  <a
+                    href={linked.google_calendar_html_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-orange-600 hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {t('googleCalendar.openInCalendar')}
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-gray-400">{t('googleCalendar.none')}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs rounded-lg"
+                  onClick={() => setShowCalendarDialog(true)}
+                >
+                  <Link2 className="h-3.5 w-3.5 mr-1" />
+                  {t('googleCalendar.link')}
+                </Button>
+              </div>
+            )}
+          </div>
+
           {/* Invoice */}
           {showInvoice && (
           <div className="space-y-2">
@@ -1040,6 +1210,13 @@ const ProjectHubSpotAdminPanel = ({
         contactId={linked?.hubspot_contact_id}
         dealId={linked?.hubspot_deal_id}
         onSelect={handleSelectQuote}
+        saving={saving}
+      />
+
+      <CalendarLinkDialog
+        open={showCalendarDialog}
+        onOpenChange={setShowCalendarDialog}
+        onSelect={handleSelectCalendarEvent}
         saving={saving}
       />
     </div>
@@ -1689,6 +1866,141 @@ const QuoteLinkDialog = ({ open, onOpenChange, contactId, dealId, onSelect, savi
                 <p>{searchError || t('hubspotAdmin.noQuotesFound')}</p>
               </div>
             )
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t('common.cancel')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+
+const CalendarLinkDialog = ({ open, onOpenChange, onSelect, saving }) => {
+  const { t, i18n } = useTranslation();
+  const { toast } = useToast();
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  const [query, setQuery] = useState('');
+  const locale = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2);
+  const dateLocale = locale === 'nl' ? 'nl-BE' : locale === 'en' ? 'en-GB' : 'fr-BE';
+
+  const loadEvents = useCallback(
+    async (q) => {
+      setLoading(true);
+      setSearchError(null);
+      setEvents([]);
+      try {
+        const list = await listUpcomingGoogleCalendarEvents({
+          q: q?.trim() || undefined,
+          maxResults: 30,
+          calendarId: DEFAULT_GOOGLE_CALENDAR_ID,
+        });
+        setEvents(list || []);
+        if (!(list || []).length) {
+          setSearchError(t('googleCalendar.noEventsFound'));
+        }
+      } catch (err) {
+        console.warn('[CalendarLink] fetch failed:', err?.message || err);
+        setSearchError(err?.message || t('googleCalendar.searchFailed'));
+        toast({
+          variant: 'destructive',
+          title: t('googleCalendar.searchFailedTitle'),
+          description: err?.message || t('googleCalendar.searchFailedDesc'),
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t, toast]
+  );
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setSearchError(null);
+      setEvents([]);
+      loadEvents('');
+    }
+  }, [open, loadEvents]);
+
+  const handleSearch = (e) => {
+    e?.preventDefault?.();
+    loadEvents(query);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-orange-500" />
+            {t('googleCalendar.linkTitle')}
+          </DialogTitle>
+          <DialogDescription>{t('googleCalendar.linkDesc')}</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('googleCalendar.searchPlaceholder')}
+            className="flex-1"
+          />
+          <Button type="submit" variant="outline" disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              t('googleCalendar.searchButton')
+            )}
+          </Button>
+        </form>
+
+        <p className="text-xs text-gray-400">
+          {t('googleCalendar.calendarIdHint', { id: DEFAULT_GOOGLE_CALENDAR_ID })}
+        </p>
+
+        <div className="flex-1 overflow-y-auto space-y-2 min-h-[140px] p-1">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : events.length > 0 ? (
+            events.map((ev) => {
+              const startLabel = formatGoogleCalendarStart(ev.start, dateLocale);
+              const attendees = formatGoogleCalendarAttendees(ev.attendees);
+              return (
+                <button
+                  key={ev.id}
+                  type="button"
+                  onClick={() => onSelect(ev)}
+                  disabled={saving}
+                  className="w-full text-left p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700 transition-colors"
+                >
+                  <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                    {ev.title || ev.id}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
+                    {startLabel && <span>{startLabel}</span>}
+                    {attendees.length > 0 && (
+                      <span>
+                        {t('googleCalendar.attendees')}: {attendees.slice(0, 4).join(', ')}
+                        {attendees.length > 4 ? '…' : ''}
+                      </span>
+                    )}
+                  </p>
+                </button>
+              );
+            })
+          ) : (
+            <div className="text-center py-6 text-sm text-gray-500">
+              <p>{searchError || t('googleCalendar.noEventsFound')}</p>
+            </div>
           )}
         </div>
 

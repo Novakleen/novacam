@@ -284,5 +284,27 @@
       "SPRING": "Spring",
       "FALL": "Fall"
     }
+  },
+  "googleCalendar": {
+    "label": "Google Calendar intervention",
+    "none": "No event",
+    "link": "Link an event",
+    "clear": "Remove event",
+    "linkTitle": "Link Google Calendar intervention",
+    "linkDesc": "Pick an upcoming event on the hello@novakleen.be calendar.",
+    "searchPlaceholder": "Search by title…",
+    "searchButton": "Search",
+    "calendarIdHint": "Calendar: {{id}}",
+    "noEventsFound": "No upcoming events found.",
+    "searchFailed": "Google Calendar search unavailable.",
+    "searchFailedTitle": "Google Calendar",
+    "searchFailedDesc": "Could not load events. Check Google OAuth secrets.",
+    "linkedTitle": "Intervention linked",
+    "linkedDesc": "Event \"{{title}}\" saved.",
+    "clearedTitle": "Intervention removed",
+    "clearedDesc": "The Google Calendar link was cleared.",
+    "saveError": "Could not save the Google Calendar event.",
+    "attendees": "Invitees",
+    "openInCalendar": "Open in Google Calendar"
   }
 }
