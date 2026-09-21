@@ -168,7 +168,7 @@ const QuoteLineItemPicker = ({
   const footerCount = open && allowMulti ? draftPostes.length : selectedPostes.length;
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn('min-w-0 space-y-2', className)}>
       <div className="space-y-1.5">
         {/* modal={true} required so pointer events work inside parent Dialog */}
         <Popover modal open={open} onOpenChange={handleOpenChange}>
@@ -179,13 +179,13 @@ const QuoteLineItemPicker = ({
               role="combobox"
               aria-expanded={open}
               disabled={disabled || lineItems.length === 0}
-              className="h-11 w-full justify-between rounded-xl font-normal"
+              className="min-h-11 h-auto w-full justify-between rounded-xl font-normal py-2"
             >
-              <span className="flex items-center gap-2 truncate">
-                <FileSpreadsheet className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="flex min-w-0 flex-1 items-start gap-2 text-left">
+                <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <span
                   className={cn(
-                    'truncate',
+                    'min-w-0 whitespace-normal break-words',
                     (open && allowMulti ? draftPostes : selectedPostes).length === 0 &&
                       'text-muted-foreground'
                   )}
@@ -193,7 +193,7 @@ const QuoteLineItemPicker = ({
                   {triggerLabel}
                 </span>
               </span>
-              <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 self-start mt-0.5" />
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -250,8 +250,8 @@ const QuoteLineItemPicker = ({
                         >
                           {isSelected ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
                         </span>
-                        <div className="min-w-0 flex-1 flex items-center gap-2">
-                          <div className="truncate font-medium flex-1">{li.name}</div>
+                        <div className="min-w-0 flex-1 flex items-start gap-2">
+                          <div className="min-w-0 flex-1 whitespace-normal break-words font-medium">{li.name}</div>
                           {progressHint && (
                             <span
                               className={cn(
@@ -323,10 +323,10 @@ const QuoteLineItemPicker = ({
             return (
               <div
                 key={poste.hubspot_line_item_id}
-                className="flex items-center gap-2 rounded-lg bg-background border px-2 py-1.5"
+                className="flex items-start gap-2 rounded-lg bg-background border px-2 py-1.5"
               >
-                <div className="min-w-0 flex-1 truncate text-sm font-medium">{name}</div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="min-w-0 flex-1 whitespace-normal break-words text-sm font-medium">{name}</div>
+                <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                   <Input
                     type="number"
                     min={0}
