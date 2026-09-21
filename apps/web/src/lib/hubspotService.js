@@ -1201,14 +1201,123 @@ export async function fetchHubSpotServicesForTaskPicker(contactId) {
   };
 }
 
+/** HubSpot deal properties for chantier job summary (surface + planning). */
+export const HUBSPOT_DEAL_JOB_PROPERTIES = [
+  'total_surface_in_m2',
+  'type_of_service',
+  'expected_month_for_the_job',
+  'expected_season_for_the_job',
+  'expected_year_for_the_job',
+];
+
+/**
+ * Normalize HubSpot deal job fields (surface, type of service, expected timing).
+ * @returns {{ surfaceM2: number|null, typeOfService: string|null, typeOfServiceLabels: string[], expectedMonth: string|null, expectedSeason: string|null, expectedYear: string|null }}
+ */
+export function normalizeHubSpotDealJobInfo(props = {}) {
+  const rawSurface = props?.total_surface_in_m2;
+  const surfaceNum =
+    rawSurface === '' || rawSurface == null ? null : Number(rawSurface);
+  const typeRaw =
+    props?.type_of_service != null && String(props.type_of_service).trim()
+      ? String(props.type_of_service).trim()
+      : null;
+  const labels = splitMultiSelect(typeRaw);
+  return {
+    surfaceM2: Number.isFinite(surfaceNum) ? surfaceNum : null,
+    typeOfService: typeRaw,
+    typeOfServiceLabels: labels,
+    expectedMonth: props?.expected_month_for_the_job
+      ? String(props.expected_month_for_the_job).trim() || null
+      : null,
+    expectedSeason: props?.expected_season_for_the_job
+      ? String(props.expected_season_for_the_job).trim() || null
+      : null,
+    expectedYear: props?.expected_year_for_the_job
+      ? String(props.expected_year_for_the_job).trim() || null
+      : null,
+  };
+}
+
+/** Short codes from HubSpot labels, e.g. "SC (surface cleaner)" → "SC". */
+export function formatHubSpotTypeOfServiceShort(rawOrLabels) {
+  const labels = Array.isArray(rawOrLabels)
+    ? rawOrLabels
+    : splitMultiSelect(rawOrLabels);
+  return labels
+    .map((label) => {
+      const m = String(label).match(/^([A-Za-z0-9]+)\b/);
+      return m ? m[1] : String(label).trim();
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Fetch job info for a specific HubSpot deal (preferred when a transaction is linked).
+ * @returns {Promise<{ surfaceM2, typeOfService, typeOfServiceLabels, expectedMonth, expectedSeason, expectedYear, dealId, dealName, source }>}
+ */
+export async function fetchHubSpotDealJobInfo(dealId) {
+  const id = dealId != null ? String(dealId).trim() : '';
+  const empty = {
+    ...normalizeHubSpotDealJobInfo({}),
+    dealId: null,
+    dealName: null,
+    source: null,
+  };
+  if (!id) return empty;
+
+  try {
+    const qs = new URLSearchParams({
+      properties: [
+        'dealname',
+        'dealstage',
+        'closedate',
+        'createdate',
+        'amount',
+        ...HUBSPOT_DEAL_JOB_PROPERTIES,
+      ].join(','),
+    });
+    const raw = await invokeHubSpotProxy(
+      `/crm/v3/objects/deals/${encodeURIComponent(id)}?${qs.toString()}`
+    );
+    const props = raw?.properties || {};
+    return {
+      ...normalizeHubSpotDealJobInfo(props),
+      dealId: raw?.id ? String(raw.id) : id,
+      dealName: props.dealname || null,
+      amount: toNullableNumber(props.amount),
+      stage: props.dealstage || null,
+      closedate: props.closedate || null,
+      source: 'linked_deal',
+    };
+  } catch (err) {
+    console.warn('[HubSpot] deal job info read failed:', err?.message || err);
+    return empty;
+  }
+}
+
 /**
  * Internal HubSpot deal property: total_surface_in_m2 ("Total surface (in m2)").
- * Reads the most recent deal associated with the contact (by closedate, then createdate).
- * @returns {Promise<{ surfaceM2: number|null, dealId: string|null, dealName: string|null }>}
+ * Prefer a linked dealId; otherwise the most recent deal on the contact
+ * (closedate → createdate → hs_lastmodifieddate).
+ * Also returns type_of_service + expected month/season/year.
+ *
+ * @returns {Promise<{ surfaceM2, typeOfService, typeOfServiceLabels, expectedMonth, expectedSeason, expectedYear, dealId, dealName, source }>}
  */
-export async function fetchHubSpotContactLatestDealSurface(contactId) {
+export async function fetchHubSpotContactLatestDealSurface(contactId, { dealId = null } = {}) {
+  const linkedId = dealId != null ? String(dealId).trim() : '';
+  if (linkedId) {
+    return fetchHubSpotDealJobInfo(linkedId);
+  }
+
+  const empty = {
+    ...normalizeHubSpotDealJobInfo({}),
+    dealId: null,
+    dealName: null,
+    source: null,
+  };
   const id = contactId != null ? String(contactId).trim() : '';
-  if (!id) return { surfaceM2: null, dealId: null, dealName: null };
+  if (!id) return empty;
 
   let dealIds = [];
   try {
@@ -1218,26 +1327,29 @@ export async function fetchHubSpotContactLatestDealSurface(contactId) {
     dealIds = associationObjectIds(assoc);
   } catch (err) {
     console.warn('[HubSpot] contact→deals for surface failed:', err?.message || err);
-    return { surfaceM2: null, dealId: null, dealName: null };
+    return empty;
   }
-  if (!dealIds.length) return { surfaceM2: null, dealId: null, dealName: null };
+  if (!dealIds.length) return empty;
 
   let deals = [];
   try {
-    deals = await batchReadDealsRanked(dealIds, ['total_surface_in_m2', 'dealstage']);
+    deals = await batchReadDealsRanked(dealIds, [
+      ...HUBSPOT_DEAL_JOB_PROPERTIES,
+      'dealstage',
+    ]);
   } catch (err) {
     console.warn('[HubSpot] deals batch read for surface failed:', err?.message || err);
-    return { surfaceM2: null, dealId: null, dealName: null };
+    return empty;
   }
-  if (!deals.length) return { surfaceM2: null, dealId: null, dealName: null };
+  if (!deals.length) return empty;
 
   const latest = deals[0];
-  const raw = latest?.properties?.total_surface_in_m2;
-  const num = raw === '' || raw == null ? null : Number(raw);
+  const props = latest?.properties || {};
   return {
-    surfaceM2: Number.isFinite(num) ? num : null,
+    ...normalizeHubSpotDealJobInfo(props),
     dealId: latest?.id ? String(latest.id) : null,
-    dealName: latest?.properties?.dealname || null,
+    dealName: props.dealname || null,
+    source: 'latest_contact_deal',
   };
 }
 
@@ -1261,6 +1373,7 @@ const DEAL_LIST_PROPERTIES = [
   'hs_lastmodifieddate',
   'pipeline',
   'hs_object_id',
+  ...HUBSPOT_DEAL_JOB_PROPERTIES,
 ];
 
 const QUOTE_LIST_PROPERTIES = [
@@ -1302,6 +1415,7 @@ export const normalizeHubSpotDeal = (raw) => {
   const props = raw.properties || raw;
   const id = String(raw.id || props.hs_object_id || props.id || '');
   if (!id) return null;
+  const job = normalizeHubSpotDealJobInfo(props);
   return {
     id,
     name: props.dealname || props.name || id,
@@ -1310,6 +1424,12 @@ export const normalizeHubSpotDeal = (raw) => {
     closedate: props.closedate || null,
     createdate: props.createdate || null,
     pipeline: props.pipeline || null,
+    surfaceM2: job.surfaceM2,
+    typeOfService: job.typeOfService,
+    typeOfServiceLabels: job.typeOfServiceLabels,
+    expectedMonth: job.expectedMonth,
+    expectedSeason: job.expectedSeason,
+    expectedYear: job.expectedYear,
   };
 };
 
@@ -1401,7 +1521,12 @@ export async function fetchHubSpotContactDeals(contactId, { limit = 50 } = {}) {
   if (!dealIds.length) return { deals: [], missingScopes: null };
 
   try {
-    const ranked = await batchReadDealsRanked(dealIds, ['amount', 'dealstage', 'pipeline']);
+    const ranked = await batchReadDealsRanked(dealIds, [
+      'amount',
+      'dealstage',
+      'pipeline',
+      ...HUBSPOT_DEAL_JOB_PROPERTIES,
+    ]);
     const deals = ranked
       .slice(0, limit)
       .map(normalizeHubSpotDeal)

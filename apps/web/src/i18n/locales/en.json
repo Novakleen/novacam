@@ -102,7 +102,8 @@
     "loadingSummary": "…",
     "emptySummary": "—",
     "totalSurface": "Total surface (m²)",
-    "totalSurfaceHint": "From the latest HubSpot deal"
+    "totalSurfaceHint": "From the latest HubSpot deal",
+    "totalSurfaceHintLinked": "From the linked HubSpot transaction"
   },
   "expenses": {
     "title": "Other expenses",
@@ -275,6 +276,13 @@
     "dealMissingScopesBody": "Reading transactions needs deal scopes on the HubSpot private app (EU portal 144564857):",
     "quoteMissingScopesShort": "Quote / line-item scopes missing on the HubSpot private app.",
     "quoteMissingScopesBody": "Reading quotes (and line items) needs quotes / line_items scopes on the HubSpot private app (EU portal 144564857):",
-    "quoteLineItemsMissingScopes": "Quote linked, but line-item scopes missing — items not loaded."
+    "quoteLineItemsMissingScopes": "Quote linked, but line-item scopes missing — items not loaded.",
+    "dealSurface": "Surface",
+    "dealTypeOfService": "Type of service",
+    "dealExpected": "Expected period",
+    "season": {
+      "SPRING": "Spring",
+      "FALL": "Fall"
+    }
   }
 }

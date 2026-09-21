@@ -102,7 +102,8 @@
     "loadingSummary": "…",
     "emptySummary": "—",
     "totalSurface": "Totale oppervlakte (m²)",
-    "totalSurfaceHint": "Van de laatste HubSpot-deal"
+    "totalSurfaceHint": "Van de laatste HubSpot-deal",
+    "totalSurfaceHintLinked": "Van de gekoppelde HubSpot-transactie"
   },
   "expenses": {
     "title": "Overige kosten",
@@ -275,6 +276,13 @@
     "dealMissingScopesBody": "Transacties lezen vereist deal-scopes op de HubSpot privé-app (EU-portaal 144564857):",
     "quoteMissingScopesShort": "Offerte- / line-item-scopes ontbreken op de privé-app van HubSpot.",
     "quoteMissingScopesBody": "Offertes (en posten) lezen vereist quotes / line_items-scopes op de HubSpot privé-app (EU-portaal 144564857):",
-    "quoteLineItemsMissingScopes": "Offerte gekoppeld, maar line-item-scopes ontbreken — posten niet geladen."
+    "quoteLineItemsMissingScopes": "Offerte gekoppeld, maar line-item-scopes ontbreken — posten niet geladen.",
+    "dealSurface": "Oppervlakte",
+    "dealTypeOfService": "Type dienst",
+    "dealExpected": "Verwachte periode",
+    "season": {
+      "SPRING": "Lente",
+      "FALL": "Herfst"
+    }
   }
 }

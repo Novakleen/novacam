@@ -4,7 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/customSupabaseClient';
 import { formatHoursDecimal, sumHours } from '@/lib/timeTracking';
 import { formatMoney } from '@/lib/margin/format';
-import { fetchHubSpotContactLatestDealSurface } from '@/lib/hubspotService';
+import {
+  fetchHubSpotContactLatestDealSurface,
+  formatHubSpotTypeOfServiceShort,
+} from '@/lib/hubspotService';
 
 function applyProjectFilter(query, projectId, companycamProjectId) {
   if (projectId && companycamProjectId) {
@@ -21,15 +24,46 @@ function applyProjectFilter(query, projectId, companycamProjectId) {
 const ROW_BTN =
   'w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group';
 
-const SuiviSidebarLinks = ({ projectId, companycamProjectId, hubspotContactId = null, onOpenSuivi }) => {
+const emptyDealInfo = () => ({
+  surfaceM2: null,
+  typeOfService: null,
+  typeOfServiceLabels: [],
+  expectedMonth: null,
+  expectedSeason: null,
+  expectedYear: null,
+  source: null,
+});
+
+/**
+ * Suivi sidebar metrics + HubSpot deal surface / job infos.
+ * Prefer the linked HubSpot transaction (hubspotDealId / persisted snapshot);
+ * fall back to the contact's latest deal only when no transaction is linked.
+ */
+const SuiviSidebarLinks = ({
+  projectId,
+  companycamProjectId,
+  hubspotContactId = null,
+  hubspotDealId = null,
+  hubspotDealSurfaceM2 = null,
+  hubspotDealTypeOfService = null,
+  hubspotDealExpectedMonth = null,
+  hubspotDealExpectedSeason = null,
+  hubspotDealExpectedYear = null,
+  onOpenSuivi,
+}) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [timeEntries, setTimeEntries] = useState([]);
   const [sprayEntries, setSprayEntries] = useState([]);
   const [expenseEntries, setExpenseEntries] = useState([]);
-  const [hsSurfaceM2, setHsSurfaceM2] = useState(null);
+  const [hsDealInfo, setHsDealInfo] = useState(emptyDealInfo);
   const [hsSurfaceLoading, setHsSurfaceLoading] = useState(false);
+
+  const persistedSurface =
+    hubspotDealSurfaceM2 != null && Number.isFinite(Number(hubspotDealSurfaceM2))
+      ? Number(hubspotDealSurfaceM2)
+      : null;
 
   const fetchSummaries = useCallback(async () => {
     if (!projectId && !companycamProjectId) {
@@ -94,19 +128,66 @@ const SuiviSidebarLinks = ({ projectId, companycamProjectId, hubspotContactId = 
 
   useEffect(() => {
     let cancelled = false;
-    if (!hubspotContactId) {
-      setHsSurfaceM2(null);
+    const dealId = hubspotDealId ? String(hubspotDealId).trim() : '';
+    const contactId = hubspotContactId ? String(hubspotContactId).trim() : '';
+
+    // Seed from persisted snapshot immediately (linking path).
+    if (
+      dealId ||
+      persistedSurface != null ||
+      hubspotDealTypeOfService ||
+      hubspotDealExpectedMonth ||
+      hubspotDealExpectedSeason ||
+      hubspotDealExpectedYear
+    ) {
+      setHsDealInfo({
+        surfaceM2: persistedSurface,
+        typeOfService: hubspotDealTypeOfService || null,
+        typeOfServiceLabels: formatHubSpotTypeOfServiceShort(hubspotDealTypeOfService),
+        expectedMonth: hubspotDealExpectedMonth || null,
+        expectedSeason: hubspotDealExpectedSeason || null,
+        expectedYear: hubspotDealExpectedYear || null,
+        source: dealId ? 'linked_deal' : 'persisted',
+      });
+    } else {
+      setHsDealInfo(emptyDealInfo());
+    }
+
+    if (!dealId && !contactId) {
       setHsSurfaceLoading(false);
       return undefined;
     }
+
     setHsSurfaceLoading(true);
     (async () => {
       try {
-        const res = await fetchHubSpotContactLatestDealSurface(hubspotContactId);
-        if (!cancelled) setHsSurfaceM2(res?.surfaceM2 ?? null);
+        const res = await fetchHubSpotContactLatestDealSurface(contactId || null, {
+          dealId: dealId || null,
+        });
+        if (cancelled) return;
+        setHsDealInfo({
+          surfaceM2: res?.surfaceM2 ?? persistedSurface,
+          typeOfService:
+            res?.typeOfService ?? hubspotDealTypeOfService ?? null,
+          typeOfServiceLabels:
+            res?.typeOfServiceLabels?.length
+              ? res.typeOfServiceLabels
+              : formatHubSpotTypeOfServiceShort(
+                  res?.typeOfService ?? hubspotDealTypeOfService
+                ),
+          expectedMonth:
+            res?.expectedMonth ?? hubspotDealExpectedMonth ?? null,
+          expectedSeason:
+            res?.expectedSeason ?? hubspotDealExpectedSeason ?? null,
+          expectedYear:
+            res?.expectedYear ?? hubspotDealExpectedYear ?? null,
+          source: res?.source || (dealId ? 'linked_deal' : 'latest_contact_deal'),
+        });
       } catch (err) {
-        console.warn('[Suivi] HubSpot surface fetch failed:', err?.message || err);
-        if (!cancelled) setHsSurfaceM2(null);
+        console.warn('[Suivi] HubSpot deal info fetch failed:', err?.message || err);
+        if (!cancelled && persistedSurface == null && !hubspotDealTypeOfService) {
+          setHsDealInfo(emptyDealInfo());
+        }
       } finally {
         if (!cancelled) setHsSurfaceLoading(false);
       }
@@ -114,7 +195,15 @@ const SuiviSidebarLinks = ({ projectId, companycamProjectId, hubspotContactId = 
     return () => {
       cancelled = true;
     };
-  }, [hubspotContactId]);
+  }, [
+    hubspotContactId,
+    hubspotDealId,
+    persistedSurface,
+    hubspotDealTypeOfService,
+    hubspotDealExpectedMonth,
+    hubspotDealExpectedSeason,
+    hubspotDealExpectedYear,
+  ]);
 
   const hoursTotal = useMemo(() => sumHours(timeEntries), [timeEntries]);
 
@@ -154,6 +243,30 @@ const SuiviSidebarLinks = ({ projectId, companycamProjectId, hubspotContactId = 
   );
 
   const expenseMetric = metricOrFallback(formatMoney(expenseTotalHt));
+
+  const hsSurfaceM2 = hsDealInfo.surfaceM2;
+  const fromLinkedDeal =
+    hsDealInfo.source === 'linked_deal' || Boolean(hubspotDealId);
+  const serviceShort = formatHubSpotTypeOfServiceShort(
+    hsDealInfo.typeOfServiceLabels?.length
+      ? hsDealInfo.typeOfServiceLabels
+      : hsDealInfo.typeOfService
+  );
+  const expectedParts = [
+    hsDealInfo.expectedMonth,
+    hsDealInfo.expectedSeason
+      ? t(`hubspotAdmin.season.${String(hsDealInfo.expectedSeason).toUpperCase()}`, {
+          defaultValue: hsDealInfo.expectedSeason,
+        })
+      : null,
+    hsDealInfo.expectedYear,
+  ].filter(Boolean);
+  const dealExtraLabel = [
+    serviceShort.length ? serviceShort.join(', ') : null,
+    expectedParts.length ? expectedParts.join(' ') : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="space-y-0.5">
@@ -216,14 +329,23 @@ const SuiviSidebarLinks = ({ projectId, companycamProjectId, hubspotContactId = 
               {t('suivi.totalSurface')}
             </p>
             <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums shrink-0">
-              {hsSurfaceLoading
+              {hsSurfaceLoading && hsSurfaceM2 == null
                 ? t('suivi.loadingSummary')
                 : hsSurfaceM2 != null
                   ? `${Number(hsSurfaceM2).toLocaleString('fr-BE')} m²`
                   : t('suivi.emptySummary')}
             </p>
           </div>
-          <p className="text-xs text-gray-400">{t('suivi.totalSurfaceHint')}</p>
+          <p className="text-xs text-gray-400">
+            {fromLinkedDeal
+              ? t('suivi.totalSurfaceHintLinked')
+              : t('suivi.totalSurfaceHint')}
+          </p>
+          {dealExtraLabel ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate" title={dealExtraLabel}>
+              {dealExtraLabel}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
