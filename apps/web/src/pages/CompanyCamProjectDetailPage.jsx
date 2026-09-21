@@ -178,44 +178,40 @@ const CompanyCamProjectDetailPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await ccApi.getProject(ccId);
-      if (!res.success) throw new Error(res.error || 'Projet CompanyCam introuvable.');
+      // Parallel: project details + labels (avoid waterfall)
+      const [res, labelsRes] = await Promise.all([
+        ccApi.getProject(ccId),
+        ccApi.listProjectLabels(ccId, { per_page: 50, page: 1 }).catch(() => null),
+      ]);
+      if (!res.success) throw new Error(res.error || t('project.loadError'));
 
       let projectData = res.data || {};
-      try {
-        const labelsRes = await ccApi.listProjectLabels(ccId, { per_page: 50, page: 1 });
-        if (labelsRes.success) {
-          const names = ccApi.normalizeCcTagNames(labelsRes.data);
-          projectData = { ...projectData, tags: names };
-        } else if (!Array.isArray(projectData.tags)) {
-          projectData = { ...projectData, tags: [] };
-        }
-      } catch {
-        if (!Array.isArray(projectData.tags)) {
-          projectData = { ...projectData, tags: [] };
-        }
+      if (labelsRes?.success) {
+        projectData = { ...projectData, tags: ccApi.normalizeCcTagNames(labelsRes.data) };
+      } else if (!Array.isArray(projectData.tags)) {
+        projectData = { ...projectData, tags: [] };
       }
 
       setProject(projectData);
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Impossible de charger le projet CompanyCam.');
+      setError(err.message || t('project.loadError'));
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: err.message || 'Impossible de charger le projet CompanyCam.',
+        title: t('common.error'),
+        description: err.message || t('project.loadError'),
       });
     } finally {
       setLoading(false);
     }
-  }, [ccId, toast]);
+  }, [ccId, toast, t]);
 
   const fetchPhotos = useCallback(async () => {
     if (!ccId) return;
     setPhotosLoading(true);
     try {
       const res = await ccApi.listProjectPhotos(ccId, { per_page: 100, page: 1 });
-      if (!res.success) throw new Error(res.error || 'Échec du chargement des photos.');
+      if (!res.success) throw new Error(res.error || t('project.photosLoadError'));
       const photos = normalizeList(res.data);
       const mapped = photos
         .map((ph) => {
@@ -245,13 +241,13 @@ const CompanyCamProjectDetailPage = () => {
       console.error(err);
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: err.message || 'Échec du chargement des photos.',
+        title: t('common.error'),
+        description: err.message || t('project.photosLoadError'),
       });
     } finally {
       setPhotosLoading(false);
     }
-  }, [ccId, toast]);
+  }, [ccId, toast, t]);
 
   useEffect(() => {
     fetchProject();
@@ -310,17 +306,17 @@ const CompanyCamProjectDetailPage = () => {
             <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Projet CompanyCam indisponible
+            {t('project.ccUnavailableTitle')}
           </h1>
           <p className="text-gray-600 dark:text-gray-400 max-w-md mb-8">
-            {error || 'Ce projet CompanyCam n’a pas pu être chargé.'}
+            {error || t('project.ccUnavailableDesc')}
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-center">
             <Button onClick={fetchProject} variant="outline" className="gap-2">
-              <RefreshCw className="h-4 w-4" /> Réessayer
+              <RefreshCw className="h-4 w-4" /> {t('project.retry')}
             </Button>
             <Button onClick={() => navigate('/dashboard')} className="gap-2">
-              <ArrowLeft className="h-4 w-4" /> Dashboard
+              <ArrowLeft className="h-4 w-4" /> {t('project.dashboard')}
             </Button>
           </div>
         </div>
@@ -344,7 +340,7 @@ const CompanyCamProjectDetailPage = () => {
             className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Projets
+            {t('project.backToProjects')}
           </button>
 
           <div className="flex items-center gap-1">
@@ -355,7 +351,7 @@ const CompanyCamProjectDetailPage = () => {
               className="hidden sm:inline-flex h-9 rounded-full text-gray-600 gap-1.5"
             >
               <RefreshCw className={cn('h-4 w-4', photosLoading && 'animate-spin')} />
-              Actualiser
+              {t('project.refresh')}
             </Button>
             {project.uri && (
               <Button
@@ -376,14 +372,14 @@ const CompanyCamProjectDetailPage = () => {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem onClick={openInMaps}>
-                  <MapPin className="mr-2 h-4 w-4" /> Voir sur la carte
+                  <MapPin className="mr-2 h-4 w-4" /> {t('project.viewOnMap')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={fetchPhotos}>
-                  <RefreshCw className="mr-2 h-4 w-4" /> Actualiser photos
+                  <RefreshCw className="mr-2 h-4 w-4" /> {t('project.refreshPhotos')}
                 </DropdownMenuItem>
                 {project.uri && (
                   <DropdownMenuItem onClick={openInCompanyCam}>
-                    <ExternalLink className="mr-2 h-4 w-4" /> Ouvrir CompanyCam
+                    <ExternalLink className="mr-2 h-4 w-4" /> {t('project.openInCompanyCam')}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -436,13 +432,13 @@ const CompanyCamProjectDetailPage = () => {
               {createdAt && (
                 <span className="inline-flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
-                  Créé {new Date(createdAt).toLocaleDateString('fr-BE')}
+                  {t('project.created')} {new Date(createdAt).toLocaleDateString()}
                 </span>
               )}
               {updatedAt && (
                 <span>
-                  MAJ{' '}
-                  {new Date(updatedAt).toLocaleDateString('fr-BE', {
+                  {t('project.updated')}{' '}
+                  {new Date(updatedAt).toLocaleDateString(undefined, {
                     day: 'numeric',
                     month: 'short',
                     year: 'numeric',
@@ -463,7 +459,7 @@ const CompanyCamProjectDetailPage = () => {
                     value="photos"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-gray-900 dark:data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:shadow-none bg-transparent px-3 sm:px-4 py-2.5 text-sm font-medium text-gray-500 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white gap-1.5"
                   >
-                    Photos
+                    {t('project.photos')}
                     <span className="text-gray-400 font-normal">({media.length})</span>
                   </TabsTrigger>
                   <TabsTrigger
@@ -478,7 +474,7 @@ const CompanyCamProjectDetailPage = () => {
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-gray-900 dark:data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:shadow-none bg-transparent px-3 sm:px-4 py-2.5 text-sm font-medium text-gray-500 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white gap-1.5"
                   >
                     <PieChart className="h-3.5 w-3.5" />
-                    Marge
+                    {t('project.margin')}
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -487,14 +483,14 @@ const CompanyCamProjectDetailPage = () => {
                 <div className="flex flex-wrap items-center gap-2 sm:hidden">
                   <Button variant="outline" size="sm" onClick={fetchPhotos} className="rounded-lg h-9">
                     <RefreshCw className={cn('h-4 w-4 mr-1.5', photosLoading && 'animate-spin')} />
-                    Actualiser
+                    {t('project.refresh')}
                   </Button>
                 </div>
 
                 {photosLoading && media.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-24 gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                    <p className="text-sm text-gray-500">Chargement des photos…</p>
+                    <p className="text-sm text-gray-500">{t('project.loadingPhotos')}</p>
                   </div>
                 ) : (
                   <MediaGrid
@@ -507,15 +503,17 @@ const CompanyCamProjectDetailPage = () => {
                 )}
               </TabsContent>
 
-              <TabsContent value="suivi" className="mt-0 space-y-6 focus-visible:outline-none">
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+              <TabsContent value="suivi" className="mt-0 space-y-6 focus-visible:outline-none" forceMount={false}>
+                {activeTab === 'suivi' && (
+                <>
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectTimeSection
                     projectId={null}
                     projectName={projectName}
                     companycamProjectId={String(ccId)}
                   />
                 </div>
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectSpraySection
                     projectId={null}
                     projectName={projectName}
@@ -525,17 +523,20 @@ const CompanyCamProjectDetailPage = () => {
                     hubspotDealSurfaceM2={hsLinkedProject?.hubspot_deal_surface_m2 ?? null}
                   />
                 </div>
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectExpenseSection
                     projectId={null}
                     projectName={projectName}
                     companycamProjectId={String(ccId)}
                   />
                 </div>
+                </>
+                )}
               </TabsContent>
 
               <TabsContent value="marge" className="mt-0 space-y-5 focus-visible:outline-none">
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                {activeTab === 'marge' && (
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectMarginTab
                     projectId={null}
                     companycamProjectId={String(ccId)}
@@ -544,12 +545,13 @@ const CompanyCamProjectDetailPage = () => {
                     isAdmin={isAdmin}
                   />
                 </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
 
           <aside className="w-full xl:w-[300px] shrink-0 space-y-3 xl:sticky xl:top-20">
-            <SidebarCard title="Source">
+            <SidebarCard title={t('project.source')}>
               <div className="flex items-center gap-2.5">
                 <Badge className="bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800">
                   CompanyCam
@@ -564,19 +566,21 @@ const CompanyCamProjectDetailPage = () => {
                   onClick={openInCompanyCam}
                 >
                   <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                  Ouvrir dans CompanyCam
+                  {t('project.openInCompanyCam')}
                 </Button>
               )}
-              <ProjectHubSpotAdminPanel
-                isAdmin={isAdmin}
-                companycamProjectId={String(ccId)}
-                projectName={projectName}
-                projectAddress={address}
-                onLinkedProjectChange={setHsLinkedProject}
-              />
+              {isAdmin && (
+                <ProjectHubSpotAdminPanel
+                  isAdmin={isAdmin}
+                  companycamProjectId={String(ccId)}
+                  projectName={projectName}
+                  projectAddress={address}
+                  onLinkedProjectChange={setHsLinkedProject}
+                />
+              )}
             </SidebarCard>
 
-            <SidebarCard title="Adresse">
+            <SidebarCard title={t('project.address')}>
               <button
                 type="button"
                 onClick={openInMaps}
@@ -590,7 +594,7 @@ const CompanyCamProjectDetailPage = () => {
             </SidebarCard>
 
             {project.description ? (
-              <SidebarCard title="Description">
+              <SidebarCard title={t('project.description')}>
                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
                   {project.description}
                 </p>
@@ -612,7 +616,7 @@ const CompanyCamProjectDetailPage = () => {
               />
             </SidebarCard>
 
-            <SidebarCard title="Photos">
+            <SidebarCard title={t('project.photos')}>
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                 <Camera className="h-4 w-4 text-gray-400" />
                 <span>

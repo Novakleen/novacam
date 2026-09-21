@@ -3,7 +3,6 @@
 - [Accept Invitation - Novakleen](/invitations/:token): No description available
 - [Bug Hunter - Novakleen](/bughunter): No description available
 - [CompanyCam Integration | Novakleen](/companycamexplorer): No description available
-- [Dashboard - Novakleen](/dashboard): Tableau de bord des projets Novacam et CompanyCam — photos, heures et produits.
 - [Direct7 Messaging - Novakleen](/direct7debug): No description available
 - [HubSpot Contacts (API) - Novakleen](/hubspotcontacts): No description available
 - [HubSpot Debugger - Novakleen](/hubspotdebug): No description available
@@ -13,6 +12,7 @@
 - [Photos - Novakleen](/photos): View all project photos
 - [Portfolio Manager - Novakleen](/portfolio): No description available
 - [Profile - Novakleen](/profile): Manage your profile settings
+- [Untitled Page](/dashboard): No description available
 - [Untitled Page](/login): Login to Novakleen project management system
 - [Untitled Page](/reset-password): Set a new password for your Novakleen account
 - [User Management - Novakleen](/usermanagement): No description available

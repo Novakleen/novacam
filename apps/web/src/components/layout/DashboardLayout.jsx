@@ -412,7 +412,7 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           </div>
         </header>
 
-        <div className={fullWidth ? "h-[calc(100vh-64px)] md:h-[calc(100vh-88px)]" : "px-4 py-6 md:px-8 md:py-8 max-w-[1600px] mx-auto pb-24 md:pb-12"}>
+        <div className={fullWidth ? "h-[calc(100vh-64px)] md:h-[calc(100vh-88px)]" : "px-3 py-4 sm:px-4 sm:py-6 md:px-8 md:py-8 max-w-[1600px] mx-auto pb-24 md:pb-12 w-full min-w-0"}>
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

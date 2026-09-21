@@ -180,17 +180,22 @@ const ProjectDetailPage = () => {
         .from('projects')
         .select(
           `
-          *,
+          id, name, description, address, full_address, status, is_starred, is_archived,
+          created_at, updated_at, created_by, companycam_project_id,
+          hubspot_contact_id, hubspot_contact_name, hubspot_contact_email,
+          hubspot_invoice_id, hubspot_deal_id, hubspot_deal_surface_m2,
+          hubspot_deal_type_of_service, hubspot_deal_expected_month,
+          hubspot_deal_expected_season, hubspot_deal_expected_year,
           created_by_profile:profiles!created_by(full_name, initials),
           project_tags(tag_id, tags(name)),
           project_contacts(
-             hubspot_contact_id, 
+             hubspot_contact_id,
              contacts(
-               id, 
-               first_name, 
-               last_name, 
-               email, 
-               phone, 
+               id,
+               first_name,
+               last_name,
+               email,
+               phone,
                hubspot_contact_id
              )
           )
@@ -228,7 +233,7 @@ const ProjectDetailPage = () => {
       if (!resolvedContact && data.hubspot_contact_id) {
         const { data: directContact } = await supabase
           .from('contacts')
-          .select('*')
+          .select('id, first_name, last_name, email, phone, hubspot_contact_id')
           .eq('hubspot_contact_id', data.hubspot_contact_id)
           .maybeSingle();
 
@@ -268,7 +273,7 @@ const ProjectDetailPage = () => {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to load project details',
+        description: t('project.loadDetailsError'),
       });
       navigate('/dashboard');
     } finally {
@@ -282,7 +287,8 @@ const ProjectDetailPage = () => {
         .from('media')
         .select(
           `
-          *,
+          id, project_id, file_url, file_type, thumbnail_url, description,
+          created_at, uploaded_by, is_starred,
           uploaded_by_profile:profiles!uploaded_by(full_name, initials),
           media_tags(tag_id, tags(name))
         `
@@ -296,7 +302,7 @@ const ProjectDetailPage = () => {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to load media',
+        description: t('project.loadMediaError'),
       });
     }
   };
@@ -323,7 +329,7 @@ const ProjectDetailPage = () => {
   };
 
   const handleDeleteComparison = async (comparisonId) => {
-    if (!window.confirm('Are you sure you want to delete this comparison?')) return;
+    if (!window.confirm(t('project.deleteComparisonConfirm'))) return;
 
     try {
       const { error } = await supabase
@@ -336,13 +342,13 @@ const ProjectDetailPage = () => {
       setComparisons((prev) => prev.filter((c) => c.id !== comparisonId));
       toast({
         title: 'Deleted',
-        description: 'Comparison deleted successfully',
+        description: t('project.comparisonDeleted'),
       });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to delete comparison',
+        description: t('project.deleteComparisonError'),
       });
     }
   };
@@ -359,13 +365,13 @@ const ProjectDetailPage = () => {
       setProject({ ...project, is_starred: !project.is_starred });
       toast({
         title: 'Success',
-        description: project.is_starred ? 'Project unstarred' : 'Project starred',
+        description: project.is_starred ? t('project.unstarred') : t('project.starred'),
       });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to update project',
+        description: t('project.updateError'),
       });
     }
   };
@@ -379,8 +385,8 @@ const ProjectDetailPage = () => {
 
       if (success) {
         toast({
-          title: 'Project Archived',
-          description: 'Project has been moved to archived section.',
+          title: t('project.archivedTitle'),
+          description: t('project.archivedDesc'),
         });
         navigate('/dashboard');
       } else {
@@ -389,8 +395,8 @@ const ProjectDetailPage = () => {
     } catch (err) {
       toast({
         variant: 'destructive',
-        title: 'Archive Failed',
-        description: err.message || 'Could not archive project.',
+        title: t('project.archiveFailed'),
+        description: err.message || t('project.archiveFailedDesc'),
       });
     } finally {
       setIsArchiving(false);
@@ -735,7 +741,7 @@ const ProjectDetailPage = () => {
                     ) : (
                       <CheckSquare className="h-4 w-4 mr-1.5" />
                     )}
-                    {isSelectionMode ? 'Annuler' : 'Sélectionner'}
+                    {isSelectionMode ? t('project.cancelSelect') : t('project.select')}
                   </Button>
                 </div>
 
@@ -750,7 +756,9 @@ const ProjectDetailPage = () => {
               </TabsContent>
 
               <TabsContent value="suivi" className="mt-0 space-y-6 focus-visible:outline-none">
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                {activeTab === 'suivi' && (
+                <>
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectTimeSection
                     projectId={id}
                     projectName={project?.name}
@@ -758,7 +766,7 @@ const ProjectDetailPage = () => {
                     hubspotContactId={project?.hubspot_contact_id || hubspotContact?.id || null}
                   />
                 </div>
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectSpraySection
                     projectId={id}
                     projectName={project?.name}
@@ -779,17 +787,20 @@ const ProjectDetailPage = () => {
                     }
                   />
                 </div>
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectExpenseSection
                     projectId={id}
                     projectName={project?.name}
                     companycamProjectId={project?.companycam_project_id || null}
                   />
                 </div>
+                </>
+                )}
               </TabsContent>
 
               <TabsContent value="marge" className="mt-0 space-y-5 focus-visible:outline-none">
-                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
+                {activeTab === 'marge' && (
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5 overflow-x-auto">
                   <ProjectMarginTab
                     projectId={id}
                     companycamProjectId={project?.companycam_project_id || null}
@@ -798,6 +809,7 @@ const ProjectDetailPage = () => {
                     isAdmin={isAdmin}
                   />
                 </div>
+                )}
               </TabsContent>
 
               <TabsContent value="beforeafter" className="mt-0 space-y-5 focus-visible:outline-none">
@@ -833,15 +845,14 @@ const ProjectDetailPage = () => {
 
           {/* Right sidebar */}
           <aside className="w-full xl:w-[300px] shrink-0 space-y-3 xl:sticky xl:top-20">
-            {isAdmin && (
             <SidebarCard
-              title="Client"
+              title={t('project.contact')}
               action={
                 <button
                   type="button"
                   onClick={() => setShowChangeContactDialog(true)}
                   className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                  title={hubspotContact ? 'Changer' : 'Assigner'}
+                  title={hubspotContact ? t('project.change') : t('project.assign')}
                 >
                   {hubspotContact ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-4 w-4" />}
                 </button>
@@ -850,7 +861,7 @@ const ProjectDetailPage = () => {
               {hubspotContact ? (
                 <div className="space-y-2">
                   <p className="font-medium text-gray-900 dark:text-white text-[15px]">
-                    {contactName || 'Client'}
+                    {contactName || t('project.contact')}
                   </p>
                   {hubspotContact.email && (
                     <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -876,27 +887,28 @@ const ProjectDetailPage = () => {
                     ) : (
                       <CloudUpload className="h-3.5 w-3.5 mr-1.5" />
                     )}
-                    Assigner à CompanyCam
+                    {t('project.assignToCompanyCam')}
                   </Button>
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">Aucun client assigné.</p>
+                <p className="text-sm text-gray-400">{t('hubspotAdmin.contactUnassigned')}</p>
               )}
-              <ProjectHubSpotAdminPanel
-                key={`hs-inv-${project?.hubspot_contact_id || 'none'}-${project?.hubspot_invoice_id || 'none'}`}
-                compact
-                showContact={false}
-                isAdmin={isAdmin}
-                projectId={project?.id}
-                companycamProjectId={project?.companycam_project_id || null}
-                projectName={project?.name}
-                projectAddress={project?.full_address || project?.address}
-                onLinkedProjectChange={setHsLinkedProject}
-              />
+              {isAdmin && (
+                <ProjectHubSpotAdminPanel
+                  key={`hs-inv-${project?.hubspot_contact_id || 'none'}-${project?.hubspot_invoice_id || 'none'}`}
+                  compact
+                  showContact={false}
+                  isAdmin={isAdmin}
+                  projectId={project?.id}
+                  companycamProjectId={project?.companycam_project_id || null}
+                  projectName={project?.name}
+                  projectAddress={project?.full_address || project?.address}
+                  onLinkedProjectChange={setHsLinkedProject}
+                />
+              )}
             </SidebarCard>
-            )}
 
-            <SidebarCard title="Utilisateur">
+            <SidebarCard title={t('project.user')}>
               <div className="flex items-center gap-2.5">
                 <span className="h-8 w-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[11px] font-semibold text-gray-600 dark:text-gray-300">
                   {creatorInitials}
@@ -911,7 +923,7 @@ const ProjectDetailPage = () => {
             </SidebarCard>
 
             {(project.description || project.instructions) && (
-              <SidebarCard title="Description">
+              <SidebarCard title={t('project.description')}>
                 {project.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
                     {project.description}
@@ -930,7 +942,7 @@ const ProjectDetailPage = () => {
 
             {!project.description && !project.instructions && (
               <SidebarCard
-                title="Description"
+                title={t('project.description')}
                 action={
                   <button
                     type="button"
@@ -987,7 +999,7 @@ const ProjectDetailPage = () => {
               />
             </SidebarCard>
 
-            <SidebarCard title="Conversation">
+            <SidebarCard title={t('project.conversation')}>
               <div className="-mx-1 max-h-[420px] overflow-hidden">
                 <CommentsSection projectId={id} />
               </div>

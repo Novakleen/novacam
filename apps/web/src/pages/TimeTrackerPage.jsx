@@ -15,6 +15,7 @@ import { fr } from 'date-fns/locale';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
+import { useTranslation } from 'react-i18next';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +51,7 @@ import { prefetchRecentProjects } from '@/lib/companycamService';
 const TimeTrackerPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [entries, setEntries] = useState([]);
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
@@ -97,7 +99,7 @@ const TimeTrackerPage = () => {
       console.error(err);
       toast({
         variant: 'destructive',
-        title: 'Erreur',
+        title: t('common.error'),
         description: 'Impossible de charger le time tracker.',
       });
     } finally {
@@ -178,7 +180,7 @@ const TimeTrackerPage = () => {
     } catch (err) {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
+        title: t('common.error'),
         description: err.message || 'Suppression impossible.',
       });
     } finally {
@@ -321,7 +323,7 @@ const TimeTrackerPage = () => {
           <div className="h-6 w-px bg-border hidden sm:block mx-1" />
 
           <Select value={filterUser} onValueChange={setFilterUser}>
-            <SelectTrigger className="w-[180px] h-10 rounded-xl">
+            <SelectTrigger className="w-full min-w-0 sm:w-[180px] h-10 rounded-xl">
               <Users className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
               <SelectValue placeholder="Utilisateurs" />
             </SelectTrigger>
@@ -336,7 +338,7 @@ const TimeTrackerPage = () => {
           </Select>
 
           <Select value={filterProject} onValueChange={setFilterProject}>
-            <SelectTrigger className="w-[200px] h-10 rounded-xl">
+            <SelectTrigger className="w-full min-w-0 sm:w-[200px] h-10 rounded-xl">
               <MapPin className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
               <SelectValue placeholder="Projets" />
             </SelectTrigger>

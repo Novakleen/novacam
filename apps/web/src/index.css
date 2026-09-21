@@ -125,7 +125,8 @@
     @apply rounded-2xl shadow-2xl border-0 !important;
   }
   .leaflet-popup-content {
-    @apply m-0 w-[300px] !important;
+    @apply m-0 !important;
+    width: min(280px, calc(100vw - 2.5rem)) !important;
   }
   .leaflet-container {
     @apply font-sans z-0 !important;

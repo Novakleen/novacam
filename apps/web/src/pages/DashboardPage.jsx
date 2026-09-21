@@ -23,6 +23,7 @@ import EditProjectDialog from '@/components/projects/EditProjectDialog';
 import ArchivedProjectsSection from '@/components/projects/ArchivedProjectsSection';
 import * as ccApi from '@/lib/companycamService';
 import { enrichEntry } from '@/lib/timeTracking';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 const STORAGE_KEY = 'dashboardFilters_v2';
@@ -58,6 +59,7 @@ const DashboardPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const savedFilters = (() => {
     try {
@@ -108,13 +110,17 @@ const DashboardPage = () => {
   }, [searchQuery]);
 
   const loadTrackerStats = useCallback(async () => {
-    const [timeRes, sprayRes] = await Promise.all([
+    // Parallel: time + spray + margins (avoid waterfall)
+    const [timeRes, sprayRes, marginsRes] = await Promise.all([
       supabase
         .from('time_entries')
         .select('project_id, companycam_project_id, start_time, end_time, break_minutes'),
       supabase
         .from('spray_entries')
         .select('project_id, companycam_project_id, product_quantity, surface_m2, spray_hours'),
+      supabase
+        .from('margin_dossiers')
+        .select('project_id, companycam_project_id, ma, mb, ma_pct, generated_at'),
     ]);
 
     const timeByProject = {};
@@ -157,19 +163,15 @@ const DashboardPage = () => {
       }
     });
 
-    let marginByProject = {};
-    let marginByCc = {};
-    try {
-      // All snapshots (one dossier per project) — small table
-      const { data: margins } = await supabase
-        .from('margin_dossiers')
-        .select('project_id, companycam_project_id, ma, mb, ma_pct, generated_at');
-      for (const row of margins || []) {
+    const marginByProject = {};
+    const marginByCc = {};
+    if (marginsRes.error) {
+      console.warn('margin snapshots load failed', marginsRes.error);
+    } else {
+      for (const row of marginsRes.data || []) {
         if (row.project_id) marginByProject[row.project_id] = row;
         if (row.companycam_project_id) marginByCc[String(row.companycam_project_id)] = row;
       }
-    } catch (e) {
-      console.warn('margin snapshots load failed', e);
     }
 
     statsRef.current = {
@@ -267,52 +269,48 @@ const DashboardPage = () => {
     });
   }, []);
 
-  const hydrateCcPhotos = useCallback(async (projects) => {
-    const slice = projects.slice(0, 30);
+  /** Hydrate CC photos + labels in one parallel pass (avoid photo→label waterfall). */
+  const hydrateCcExtras = useCallback(async (projects) => {
+    const slice = projects.slice(0, 25);
     const results = await Promise.all(
       slice.map(async (p) => {
-        if (p.recent_photos?.length) return p;
-        try {
-          const res = await ccApi.listProjectPhotos(p.id, { per_page: 4, page: 1 });
-          if (!res.success) return p;
-          const photos = normalizeCcList(res.data);
+        const needPhotos = !(p.recent_photos?.length);
+        const existingTags = Array.isArray(p.tags) ? p.tags : [];
+        const needLabels = existingTags.length === 0;
+        if (!needPhotos && !needLabels) return p;
+
+        const [photoRes, labelRes] = await Promise.all([
+          needPhotos
+            ? ccApi.listProjectPhotos(p.id, { per_page: 4, page: 1 }).catch(() => null)
+            : Promise.resolve(null),
+          needLabels
+            ? ccApi.listProjectLabels(p.id, { per_page: 50, page: 1 }).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+
+        let next = p;
+        if (photoRes?.success) {
+          const photos = normalizeCcList(photoRes.data);
           const mapped = photos.slice(0, 4).map((ph) => ({
             id: ph.id,
             url: extractCcPhotoUrl(ph),
           }));
-          return {
-            ...p,
+          next = {
+            ...next,
             recent_photos: mapped,
-            thumbnail_url: p.thumbnail_url || mapped[0]?.url || null,
+            thumbnail_url: next.thumbnail_url || mapped[0]?.url || null,
             stats: {
-              ...p.stats,
-              photos: p.stats?.photos || photos.length || mapped.length,
+              ...next.stats,
+              photos: next.stats?.photos || photos.length || mapped.length,
             },
           };
-        } catch {
-          return p;
         }
-      })
-    );
-    const byId = Object.fromEntries(results.map((p) => [String(p.id), p]));
-    return projects.map((p) => byId[String(p.id)] || p);
-  }, []);
-
-  /** Fetch real CompanyCam project labels (shown as tags in CC UI). */
-  const hydrateCcLabels = useCallback(async (projects) => {
-    const slice = projects.slice(0, 30);
-    const results = await Promise.all(
-      slice.map(async (p) => {
-        const existing = Array.isArray(p.tags) ? p.tags : [];
-        if (existing.length > 0) return p;
-        try {
-          const res = await ccApi.listProjectLabels(p.id, { per_page: 50, page: 1 });
-          if (!res.success) return { ...p, tags: existing };
-          const names = ccApi.normalizeCcTagNames(res.data);
-          return { ...p, tags: names };
-        } catch {
-          return { ...p, tags: existing };
+        if (labelRes?.success) {
+          next = { ...next, tags: ccApi.normalizeCcTagNames(labelRes.data) };
+        } else if (needLabels) {
+          next = { ...next, tags: existingTags };
         }
+        return next;
       })
     );
     const byId = Object.fromEntries(results.map((p) => [String(p.id), p]));
@@ -320,18 +318,19 @@ const DashboardPage = () => {
   }, []);
 
   const fetchNovacam = useCallback(async (stats) => {
+    // Lean select: list UI only needs id/name/address/tags/media thumbs + contact names
     const { data, error: qErr } = await supabase
       .from('projects')
       .select(
         `
-          *,
+          id, name, address, full_address, updated_at, created_at, is_starred,
+          companycam_project_id, hubspot_contact_id, is_archived,
           created_by_profile:profiles!created_by(full_name, initials),
-          media(id, created_at, uploaded_by, file_url, file_type),
-          project_members(user_id),
+          media(id, created_at, file_url, file_type),
           project_tags(tag_id, tags(name)),
           project_contacts(
             contact_id,
-            contacts(id, first_name, last_name, email, phone, hubspot_contact_id)
+            contacts(id, first_name, last_name, hubspot_contact_id)
           )
         `
       )
@@ -352,11 +351,11 @@ const DashboardPage = () => {
       if (query) params.query = query;
 
       const res = await ccApi.listProjects(params);
-      if (!res.success) throw new Error(res.error || 'Échec chargement CompanyCam');
+      if (!res.success) throw new Error(res.error || t('dashboard.ccLoadError'));
 
       let list = enrichCc(normalizeCcList(res.data), stats);
 
-      // Map linked Supabase projects
+      // Map linked Supabase projects (lean fields only)
       try {
         const ids = list.map((p) => String(p.id));
         if (ids.length) {
@@ -392,9 +391,7 @@ const DashboardPage = () => {
         console.warn('CC→Supabase map failed', e);
       }
 
-      list = await hydrateCcPhotos(list);
-      list = await hydrateCcLabels(list);
-
+      // Paint list immediately — hydrate thumbs/labels in background (non-blocking)
       setCcHasMore(list.length >= CC_PAGE_SIZE);
       setCcPage(page);
       setCcProjects((prev) => {
@@ -402,9 +399,17 @@ const DashboardPage = () => {
         const seen = new Set(prev.map((p) => String(p.id)));
         return [...prev, ...list.filter((p) => !seen.has(String(p.id)))];
       });
+
+      hydrateCcExtras(list).then((hydrated) => {
+        setCcProjects((prev) => {
+          const byId = Object.fromEntries(hydrated.map((p) => [String(p.id), p]));
+          return prev.map((p) => byId[String(p.id)] || p);
+        });
+      });
+
       return list;
     },
-    [enrichCc, hydrateCcPhotos, hydrateCcLabels]
+    [enrichCc, hydrateCcExtras, t]
   );
 
   const fetchAll = useCallback(async () => {
@@ -436,16 +441,16 @@ const DashboardPage = () => {
       if (!tagsRes.error) setAvailableTags(tagsRes.data || []);
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Échec du chargement');
+      setError(err.message || t('dashboard.loadFailed'));
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: err.message || 'Impossible de charger les projets',
+        title: t('common.error'),
+        description: err.message || t('dashboard.loadErrorToast'),
       });
     } finally {
       setLoading(false);
     }
-  }, [user, sourceFilter, loadTrackerStats, fetchNovacam, fetchCcPage, toast]);
+  }, [user, sourceFilter, loadTrackerStats, fetchNovacam, fetchCcPage, toast, t]);
 
   // Initial + source filter changes
   useEffect(() => {
@@ -488,7 +493,7 @@ const DashboardPage = () => {
     try {
       await fetchCcPage(ccPage + 1, debouncedSearch, statsRef.current, true);
     } catch (err) {
-      toast({ variant: 'destructive', title: 'Erreur', description: err.message });
+      toast({ variant: 'destructive', title: t('common.error'), description: err.message });
     } finally {
       setLoadingMore(false);
     }
@@ -586,19 +591,16 @@ const DashboardPage = () => {
   };
 
   const sourceTabs = [
-    { value: 'all', label: 'Tous' },
-    { value: 'novacam', label: 'Novacam' },
-    { value: 'companycam', label: 'CompanyCam' },
+    { value: 'all', label: t('dashboard.sourceAll') },
+    { value: 'novacam', label: t('dashboard.sourceNovacam') },
+    { value: 'companycam', label: t('dashboard.sourceCompanyCam') },
   ];
 
   return (
     <DashboardLayout>
       <Helmet>
-        <title>Dashboard - Novakleen</title>
-        <meta
-          name="description"
-          content="Tableau de bord des projets Novacam et CompanyCam — photos, heures et produits."
-        />
+        <title>{t('dashboard.pageTitle')}</title>
+        <meta name="description" content={t('dashboard.pageDesc')} />
       </Helmet>
 
       <Tabs value={mainViewTab} onValueChange={setMainViewTab} className="space-y-5">
@@ -606,14 +608,14 @@ const DashboardPage = () => {
           <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white hidden sm:block">
-                Projets
+                {t('dashboard.title')}
               </h1>
               <TabsList className="bg-gray-100 dark:bg-gray-800 p-1 border border-gray-200 dark:border-gray-700 rounded-xl h-11 shadow-sm">
                 <TabsTrigger value="active" className="rounded-lg px-4">
-                  Actifs
+                  {t('dashboard.active')}
                 </TabsTrigger>
                 <TabsTrigger value="archived" className="rounded-lg px-4 gap-2">
-                  <Archive className="h-3.5 w-3.5" /> Archivés
+                  <Archive className="h-3.5 w-3.5" /> {t('dashboard.archived')}
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -623,7 +625,7 @@ const DashboardPage = () => {
                 <div className="relative flex-1 sm:w-72">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <Input
-                    placeholder="Rechercher un projet…"
+                    placeholder={t('dashboard.searchPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 h-11 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm rounded-xl"
@@ -636,7 +638,7 @@ const DashboardPage = () => {
                 size="icon"
                 className="h-11 w-11 rounded-xl shrink-0"
                 onClick={fetchAll}
-                title="Actualiser"
+                title={t('dashboard.refresh')}
               >
                 <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
               </Button>
@@ -645,8 +647,8 @@ const DashboardPage = () => {
                 className="h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 rounded-xl px-4 shrink-0"
               >
                 <Plus className="mr-2 h-5 w-5" />
-                <span className="hidden sm:inline">Créer</span>
-                <span className="sm:hidden">Nouveau</span>
+                <span className="hidden sm:inline">{t('dashboard.create')}</span>
+                <span className="sm:hidden">{t('dashboard.createNew')}</span>
               </Button>
             </div>
           </div>
@@ -679,7 +681,7 @@ const DashboardPage = () => {
                     onClick={resetFilters}
                     className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50 text-xs shrink-0"
                   >
-                    <FilterX className="mr-1 h-3 w-3" /> Reset
+                    <FilterX className="mr-1 h-3 w-3" /> {t('dashboard.resetFilters')}
                   </Button>
                 )}
                 {availableTags.map((tag) => (
@@ -707,27 +709,27 @@ const DashboardPage = () => {
             {/* Header */}
             <div className="hidden lg:grid grid-cols-[minmax(0,1.6fr)_minmax(140px,0.7fr)_minmax(180px,0.9fr)_minmax(160px,0.8fr)] gap-6 px-4 py-3 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold uppercase tracking-wide text-gray-500">
               <div className="flex items-center gap-2">
-                <LayoutList className="h-3.5 w-3.5" /> Nom du projet
+                <LayoutList className="h-3.5 w-3.5" /> {t('dashboard.colName')}
               </div>
-              <div>Dernière MAJ</div>
-              <div>Stats</div>
-              <div className="text-right">Photos récentes</div>
+              <div>{t('dashboard.colUpdated')}</div>
+              <div>{t('dashboard.colStats')}</div>
+              <div className="text-right">{t('dashboard.colRecentPhotos')}</div>
             </div>
 
-            {loading || ccLoading ? (
+            {loading && !unifiedList.length ? (
               <div className="flex flex-col items-center justify-center py-24 gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                <p className="text-sm text-gray-500">Chargement des projets…</p>
+                <p className="text-sm text-gray-500">{t('dashboard.loading')}</p>
               </div>
             ) : error ? (
               <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
                 <FilterX className="h-8 w-8 text-red-500 mb-3" />
                 <h3 className="text-lg font-semibold text-red-900 dark:text-red-200 mb-2">
-                  Échec du chargement
+                  {t('dashboard.loadFailed')}
                 </h3>
                 <p className="text-red-600 dark:text-red-300 max-w-sm mb-4">{error}</p>
                 <Button onClick={fetchAll} variant="outline">
-                  <RefreshCw className="mr-2 h-4 w-4" /> Réessayer
+                  <RefreshCw className="mr-2 h-4 w-4" /> {t('dashboard.retry')}
                 </Button>
               </div>
             ) : unifiedList.length === 0 ? (
@@ -736,19 +738,19 @@ const DashboardPage = () => {
                   <FilterX className="h-6 w-6 text-gray-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                  Aucun projet trouvé
+                  {t('dashboard.emptyTitle')}
                 </h3>
                 <p className="text-sm text-gray-500 max-w-sm mb-4">
                   {searchQuery || selectedTags.length
-                    ? 'Essayez d’ajuster les filtres ou la recherche.'
-                    : 'Créez un projet Novacam ou synchronisez CompanyCam.'}
+                    ? t('dashboard.emptyFiltered')
+                    : t('dashboard.emptyHint')}
                 </p>
                 {searchQuery || selectedTags.length || sourceFilter !== 'all' ? (
                   <Button variant="outline" onClick={resetFilters}>
-                    Effacer les filtres
+                    {t('dashboard.clearFilters')}
                   </Button>
                 ) : (
-                  <Button onClick={() => setShowCreateDialog(true)}>Créer un projet</Button>
+                  <Button onClick={() => setShowCreateDialog(true)}>{t('dashboard.createProject')}</Button>
                 )}
               </div>
             ) : (
@@ -774,10 +776,10 @@ const DashboardPage = () => {
               >
                 {loadingMore ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Chargement…
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('common.loading')}
                   </>
                 ) : (
-                  'Charger plus de projets CompanyCam'
+                  t('dashboard.loadMoreCc')
                 )}
               </Button>
             </div>
