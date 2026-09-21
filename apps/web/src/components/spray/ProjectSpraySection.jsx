@@ -18,7 +18,14 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
 
-const ProjectSpraySection = ({ projectId, projectName, companycamProjectId, hubspotContactId = null }) => {
+const ProjectSpraySection = ({
+  projectId,
+  projectName,
+  companycamProjectId,
+  hubspotContactId = null,
+  hubspotDealId = null,
+  hubspotDealSurfaceM2 = null,
+}) => {
   const { toast } = useToast();
   const { t } = useTranslation();
   const [entries, setEntries] = useState([]);
@@ -32,22 +39,30 @@ const ProjectSpraySection = ({ projectId, projectName, companycamProjectId, hubs
 
   useEffect(() => {
     let cancelled = false;
-    if (!hubspotContactId) {
-      setDefaultSurfaceM2(null);
+    const persisted =
+      hubspotDealSurfaceM2 != null && Number.isFinite(Number(hubspotDealSurfaceM2))
+        ? Number(hubspotDealSurfaceM2)
+        : null;
+    if (persisted != null) setDefaultSurfaceM2(persisted);
+
+    if (!hubspotDealId && !hubspotContactId) {
+      if (persisted == null) setDefaultSurfaceM2(null);
       return undefined;
     }
     (async () => {
       try {
-        const res = await fetchHubSpotContactLatestDealSurface(hubspotContactId);
-        if (!cancelled) setDefaultSurfaceM2(res?.surfaceM2 ?? null);
+        const res = await fetchHubSpotContactLatestDealSurface(hubspotContactId, {
+          dealId: hubspotDealId || null,
+        });
+        if (!cancelled) setDefaultSurfaceM2(res?.surfaceM2 ?? persisted ?? null);
       } catch {
-        if (!cancelled) setDefaultSurfaceM2(null);
+        if (!cancelled) setDefaultSurfaceM2(persisted ?? null);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [hubspotContactId]);
+  }, [hubspotContactId, hubspotDealId, hubspotDealSurfaceM2]);
 
   const fetchEntries = useCallback(async () => {
     if (!projectId && !companycamProjectId) return;

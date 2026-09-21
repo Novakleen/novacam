@@ -37,6 +37,8 @@ import {
   HUBSPOT_LINE_ITEM_READ_SCOPES,
   HUBSPOT_QUOTE_READ_SCOPES,
   refreshProjectInvoiceAmountHt,
+  fetchHubSpotDealJobInfo,
+  formatHubSpotTypeOfServiceShort,
 } from '@/lib/hubspotService';
 
 const HUBSPOT_PORTAL_ID = '144564857';
@@ -76,6 +78,11 @@ const PROJECT_HS_FIELDS = `
   hubspot_deal_amount,
   hubspot_deal_stage,
   hubspot_deal_closedate,
+  hubspot_deal_surface_m2,
+  hubspot_deal_type_of_service,
+  hubspot_deal_expected_month,
+  hubspot_deal_expected_season,
+  hubspot_deal_expected_year,
   hubspot_quote_id,
   hubspot_quote_title,
   hubspot_quote_status,
@@ -412,6 +419,11 @@ const ProjectHubSpotAdminPanel = ({
         hubspot_deal_amount: null,
         hubspot_deal_stage: null,
         hubspot_deal_closedate: null,
+        hubspot_deal_surface_m2: null,
+        hubspot_deal_type_of_service: null,
+        hubspot_deal_expected_month: null,
+        hubspot_deal_expected_season: null,
+        hubspot_deal_expected_year: null,
         hubspot_quote_id: null,
         hubspot_quote_title: null,
         hubspot_quote_status: null,
@@ -487,6 +499,11 @@ const ProjectHubSpotAdminPanel = ({
         hubspot_deal_amount: null,
         hubspot_deal_stage: null,
         hubspot_deal_closedate: null,
+        hubspot_deal_surface_m2: null,
+        hubspot_deal_type_of_service: null,
+        hubspot_deal_expected_month: null,
+        hubspot_deal_expected_season: null,
+        hubspot_deal_expected_year: null,
       });
       toast({
         title: t('hubspotAdmin.dealClearedTitle'),
@@ -503,19 +520,61 @@ const ProjectHubSpotAdminPanel = ({
 
   const handleSelectDeal = async (deal) => {
     try {
+      // Prefer live deal properties so surface / type_of_service / expected* are filled at link time.
+      let job = {
+        surfaceM2: deal.surfaceM2 ?? null,
+        typeOfService: deal.typeOfService ?? null,
+        expectedMonth: deal.expectedMonth ?? null,
+        expectedSeason: deal.expectedSeason ?? null,
+        expectedYear: deal.expectedYear ?? null,
+        amount: deal.amount,
+        stage: deal.stage,
+        closedate: deal.closedate,
+        name: deal.name,
+      };
+      try {
+        const live = await fetchHubSpotDealJobInfo(deal.id);
+        if (live?.dealId) {
+          job = {
+            surfaceM2: live.surfaceM2,
+            typeOfService: live.typeOfService,
+            expectedMonth: live.expectedMonth,
+            expectedSeason: live.expectedSeason,
+            expectedYear: live.expectedYear,
+            amount: live.amount ?? deal.amount,
+            stage: live.stage || deal.stage,
+            closedate: live.closedate || deal.closedate,
+            name: live.dealName || deal.name,
+          };
+        }
+      } catch (jobErr) {
+        console.warn(
+          '[ProjectHubSpotAdminPanel] deal job info fetch failed:',
+          jobErr?.message || jobErr
+        );
+      }
+
       await updateHubSpotFields({
         hubspot_deal_id: String(deal.id),
-        hubspot_deal_name: deal.name ? String(deal.name) : null,
+        hubspot_deal_name: job.name ? String(job.name) : null,
         hubspot_deal_amount:
-          deal.amount != null && deal.amount !== '' ? Number(deal.amount) : null,
-        hubspot_deal_stage: deal.stage || null,
-        hubspot_deal_closedate: deal.closedate || null,
+          job.amount != null && job.amount !== '' ? Number(job.amount) : null,
+        hubspot_deal_stage: job.stage || null,
+        hubspot_deal_closedate: job.closedate || null,
+        hubspot_deal_surface_m2:
+          job.surfaceM2 != null && Number.isFinite(Number(job.surfaceM2))
+            ? Number(job.surfaceM2)
+            : null,
+        hubspot_deal_type_of_service: job.typeOfService || null,
+        hubspot_deal_expected_month: job.expectedMonth || null,
+        hubspot_deal_expected_season: job.expectedSeason || null,
+        hubspot_deal_expected_year: job.expectedYear || null,
       });
       setShowDealDialog(false);
       toast({
         title: t('hubspotAdmin.dealLinkedTitle'),
         description: t('hubspotAdmin.dealLinkedDesc', {
-          name: deal.name || deal.id,
+          name: job.name || deal.name || deal.id,
         }),
       });
     } catch (err) {
@@ -608,6 +667,20 @@ const ProjectHubSpotAdminPanel = ({
     moneyLocale
   );
   const dealAmountLabel = formatMoney(linked?.hubspot_deal_amount, 'EUR', moneyLocale);
+  const dealServiceShort = formatHubSpotTypeOfServiceShort(
+    linked?.hubspot_deal_type_of_service
+  );
+  const dealExpectedLabel = [
+    linked?.hubspot_deal_expected_month,
+    linked?.hubspot_deal_expected_season
+      ? t(`hubspotAdmin.season.${String(linked.hubspot_deal_expected_season).toUpperCase()}`, {
+          defaultValue: linked.hubspot_deal_expected_season,
+        })
+      : null,
+    linked?.hubspot_deal_expected_year,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const quoteAmountLabel = formatMoney(linked?.hubspot_quote_amount, 'EUR', moneyLocale);
   const quoteLineItems = Array.isArray(linked?.hubspot_quote_line_items)
     ? linked.hubspot_quote_line_items
@@ -810,6 +883,29 @@ const ProjectHubSpotAdminPanel = ({
                     </span>
                   )}
                 </div>
+                {(dealServiceShort.length > 0 ||
+                  linked.hubspot_deal_surface_m2 != null ||
+                  dealExpectedLabel) && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                    {linked.hubspot_deal_surface_m2 != null &&
+                      Number.isFinite(Number(linked.hubspot_deal_surface_m2)) && (
+                        <span>
+                          {t('hubspotAdmin.dealSurface')}:{' '}
+                          {Number(linked.hubspot_deal_surface_m2).toLocaleString('fr-BE')} m²
+                        </span>
+                      )}
+                    {dealServiceShort.length > 0 && (
+                      <span title={linked.hubspot_deal_type_of_service || undefined}>
+                        {t('hubspotAdmin.dealTypeOfService')}: {dealServiceShort.join(', ')}
+                      </span>
+                    )}
+                    {dealExpectedLabel && (
+                      <span>
+                        {t('hubspotAdmin.dealExpected')}: {dealExpectedLabel}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <a
                   href={dealHubSpotUrl(linked.hubspot_deal_id)}
                   target="_blank"
@@ -1491,6 +1587,14 @@ const DealLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) => 
                 <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
                   {deal.amount != null && (
                     <span>{formatMoney(deal.amount, 'EUR', moneyLocale)}</span>
+                  )}
+                  {deal.surfaceM2 != null && (
+                    <span>{Number(deal.surfaceM2).toLocaleString('fr-BE')} m²</span>
+                  )}
+                  {deal.typeOfServiceLabels?.length > 0 && (
+                    <span>
+                      {formatHubSpotTypeOfServiceShort(deal.typeOfServiceLabels).join(', ')}
+                    </span>
                   )}
                   {deal.stage && <span className="capitalize">{deal.stage}</span>}
                   {deal.closedate && (

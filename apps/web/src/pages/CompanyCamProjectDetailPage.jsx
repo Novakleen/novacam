@@ -144,6 +144,34 @@ const CompanyCamProjectDetailPage = () => {
   const [photosLoading, setPhotosLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('photos');
+  const [hsLinkedProject, setHsLinkedProject] = useState(null);
+  // Load HubSpot link snapshot for Suivi (admins also refresh via onLinkedProjectChange).
+  useEffect(() => {
+    let cancelled = false;
+    if (!ccId) {
+      setHsLinkedProject(null);
+      return undefined;
+    }
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select(
+            'id, hubspot_contact_id, hubspot_deal_id, hubspot_deal_surface_m2, hubspot_deal_type_of_service, hubspot_deal_expected_month, hubspot_deal_expected_season, hubspot_deal_expected_year'
+          )
+          .eq('companycam_project_id', String(ccId))
+          .maybeSingle();
+        if (error) throw error;
+        if (!cancelled && data) setHsLinkedProject((prev) => prev || data);
+      } catch (err) {
+        console.warn('[CC] HubSpot link snapshot load failed:', err?.message || err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ccId]);
+
 
   const fetchProject = useCallback(async () => {
     if (!ccId) return;
@@ -492,6 +520,9 @@ const CompanyCamProjectDetailPage = () => {
                     projectId={null}
                     projectName={projectName}
                     companycamProjectId={String(ccId)}
+                    hubspotContactId={hsLinkedProject?.hubspot_contact_id || null}
+                    hubspotDealId={hsLinkedProject?.hubspot_deal_id || null}
+                    hubspotDealSurfaceM2={hsLinkedProject?.hubspot_deal_surface_m2 ?? null}
                   />
                 </div>
                 <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
@@ -541,6 +572,7 @@ const CompanyCamProjectDetailPage = () => {
                 companycamProjectId={String(ccId)}
                 projectName={projectName}
                 projectAddress={address}
+                onLinkedProjectChange={setHsLinkedProject}
               />
             </SidebarCard>
 
@@ -569,6 +601,13 @@ const CompanyCamProjectDetailPage = () => {
               <SuiviSidebarLinks
                 projectId={null}
                 companycamProjectId={String(ccId)}
+                hubspotContactId={hsLinkedProject?.hubspot_contact_id || null}
+                hubspotDealId={hsLinkedProject?.hubspot_deal_id || null}
+                hubspotDealSurfaceM2={hsLinkedProject?.hubspot_deal_surface_m2 ?? null}
+                hubspotDealTypeOfService={hsLinkedProject?.hubspot_deal_type_of_service || null}
+                hubspotDealExpectedMonth={hsLinkedProject?.hubspot_deal_expected_month || null}
+                hubspotDealExpectedSeason={hsLinkedProject?.hubspot_deal_expected_season || null}
+                hubspotDealExpectedYear={hsLinkedProject?.hubspot_deal_expected_year || null}
                 onOpenSuivi={() => setActiveTab('suivi')}
               />
             </SidebarCard>

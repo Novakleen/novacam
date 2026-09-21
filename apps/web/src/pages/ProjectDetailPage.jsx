@@ -158,6 +158,7 @@ const ProjectDetailPage = () => {
   const [showShareDialog, setShowShareDialog] = useState(false);
 
   const [showArchiveAlert, setShowArchiveAlert] = useState(false);
+  const [hsLinkedProject, setHsLinkedProject] = useState(null);
   const [isArchiving, setIsArchiving] = useState(false);
 
   const { assignAsCustomer, loading: assigningCustomer } = useAssignCustomer(
@@ -762,7 +763,20 @@ const ProjectDetailPage = () => {
                     projectId={id}
                     projectName={project?.name}
                     companycamProjectId={project?.companycam_project_id || null}
-                    hubspotContactId={project?.hubspot_contact_id || hubspotContact?.id || null}
+                    hubspotContactId={
+                      hsLinkedProject?.hubspot_contact_id ||
+                      project?.hubspot_contact_id ||
+                      hubspotContact?.id ||
+                      null
+                    }
+                    hubspotDealId={
+                      hsLinkedProject?.hubspot_deal_id || project?.hubspot_deal_id || null
+                    }
+                    hubspotDealSurfaceM2={
+                      hsLinkedProject?.hubspot_deal_surface_m2 ??
+                      project?.hubspot_deal_surface_m2 ??
+                      null
+                    }
                   />
                 </div>
                 <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-800 p-4 sm:p-5">
@@ -877,6 +891,7 @@ const ProjectDetailPage = () => {
                 companycamProjectId={project?.companycam_project_id || null}
                 projectName={project?.name}
                 projectAddress={project?.full_address || project?.address}
+                onLinkedProjectChange={setHsLinkedProject}
               />
             </SidebarCard>
             )}
@@ -934,7 +949,40 @@ const ProjectDetailPage = () => {
               <SuiviSidebarLinks
                 projectId={id}
                 companycamProjectId={project?.companycam_project_id || null}
-                hubspotContactId={project?.hubspot_contact_id || hubspotContact?.id || null}
+                hubspotContactId={
+                  hsLinkedProject?.hubspot_contact_id ||
+                  project?.hubspot_contact_id ||
+                  hubspotContact?.id ||
+                  null
+                }
+                hubspotDealId={
+                  hsLinkedProject?.hubspot_deal_id || project?.hubspot_deal_id || null
+                }
+                hubspotDealSurfaceM2={
+                  hsLinkedProject?.hubspot_deal_surface_m2 ??
+                  project?.hubspot_deal_surface_m2 ??
+                  null
+                }
+                hubspotDealTypeOfService={
+                  hsLinkedProject?.hubspot_deal_type_of_service ||
+                  project?.hubspot_deal_type_of_service ||
+                  null
+                }
+                hubspotDealExpectedMonth={
+                  hsLinkedProject?.hubspot_deal_expected_month ||
+                  project?.hubspot_deal_expected_month ||
+                  null
+                }
+                hubspotDealExpectedSeason={
+                  hsLinkedProject?.hubspot_deal_expected_season ||
+                  project?.hubspot_deal_expected_season ||
+                  null
+                }
+                hubspotDealExpectedYear={
+                  hsLinkedProject?.hubspot_deal_expected_year ||
+                  project?.hubspot_deal_expected_year ||
+                  null
+                }
                 onOpenSuivi={() => setActiveTab('suivi')}
               />
             </SidebarCard>
