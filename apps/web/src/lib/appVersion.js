@@ -1,6 +1,6 @@
 // Bump version + releasedMonth/releasedLabel on each production release.
 export const APP_VERSION = {
-  version: '1.6.10',
+  version: '1.6.11',
   releasedMonth: '2026-09',
   releasedLabel: {
     fr: 'septembre 2026',
