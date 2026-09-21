@@ -682,9 +682,6 @@ const ProjectHubSpotAdminPanel = ({
     .filter(Boolean)
     .join(' · ');
   const quoteAmountLabel = formatMoney(linked?.hubspot_quote_amount, 'EUR', moneyLocale);
-  const quoteLineItems = Array.isArray(linked?.hubspot_quote_line_items)
-    ? linked.hubspot_quote_line_items
-    : [];
 
   return (
     <div className={compact ? 'space-y-3' : 'mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4'}>
@@ -756,80 +753,6 @@ const ProjectHubSpotAdminPanel = ({
                 >
                   <UserPlus className="h-3.5 w-3.5 mr-1" />
                   {t('hubspotAdmin.assignContact')}
-                </Button>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Invoice */}
-          {showInvoice && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                {t('hubspotAdmin.invoiceLabel')}
-              </p>
-              <div className="flex items-center gap-1">
-                {hasInvoice && (
-                  <button
-                    type="button"
-                    onClick={handleClearInvoice}
-                    disabled={saving}
-                    className="h-7 w-7 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
-                    title={t('hubspotAdmin.clearInvoice')}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowInvoiceDialog(true)}
-                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                  title={t('hubspotAdmin.linkInvoice')}
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-            {hasInvoice ? (
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
-                  <FileText className="h-3.5 w-3.5 text-gray-400" />
-                  {linked.hubspot_invoice_number || `#${linked.hubspot_invoice_id}`}
-                </p>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
-                  {amountLabel && (
-                    <span>
-                      {amountLabel}
-                      {' '}
-                      <span className="text-gray-400">{t('hubspotAdmin.amountHtSuffix')}</span>
-                    </span>
-                  )}
-                  {linked.hubspot_invoice_status && (
-                    <span className="capitalize">{linked.hubspot_invoice_status}</span>
-                  )}
-                </div>
-                <a
-                  href={invoiceHubSpotUrl(linked.hubspot_invoice_id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-orange-600 hover:underline"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  {t('hubspotAdmin.openInHubSpot')}
-                </a>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm text-gray-400">{t('hubspotAdmin.noInvoice')}</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs rounded-lg"
-                  onClick={() => setShowInvoiceDialog(true)}
-                >
-                  <Link2 className="h-3.5 w-3.5 mr-1" />
-                  {t('hubspotAdmin.linkInvoice')}
                 </Button>
               </div>
             )}
@@ -1009,60 +932,80 @@ const ProjectHubSpotAdminPanel = ({
             )}
           </div>
 
-          {/* Postes du devis */}
-          {hasQuote && (
-            <div className="space-y-2">
+          {/* Invoice */}
+          {showInvoice && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                {t('hubspotAdmin.quoteLineItemsLabel')}
+                {t('hubspotAdmin.invoiceLabel')}
               </p>
-              {quoteLineItems.length > 0 ? (
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500">
-                      <tr>
-                        <th className="text-left font-medium px-2.5 py-1.5">{t('hubspotAdmin.lineItemName')}</th>
-                        <th className="text-right font-medium px-2.5 py-1.5 w-12">{t('hubspotAdmin.lineItemQty')}</th>
-                        <th className="text-right font-medium px-2.5 py-1.5 w-20">{t('hubspotAdmin.lineItemPrice')}</th>
-                        <th className="text-right font-medium px-2.5 py-1.5 w-20">{t('hubspotAdmin.lineItemAmount')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {quoteLineItems.map((item, idx) => (
-                        <tr
-                          key={item.id || `${item.name}-${idx}`}
-                          className="border-t border-gray-100 dark:border-gray-800"
-                        >
-                          <td className="px-2.5 py-1.5 text-gray-900 dark:text-gray-100">
-                            <span className="font-medium">{item.name}</span>
-                            {item.sku && (
-                              <span className="block text-[10px] text-gray-400 font-mono">
-                                SKU {item.sku}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                            {item.quantity != null ? item.quantity : '—'}
-                          </td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                            {item.price != null
-                              ? formatMoney(item.price, item.currency || 'EUR', moneyLocale)
-                              : '—'}
-                          </td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums text-gray-900 dark:text-gray-100 font-medium">
-                            {item.amount != null
-                              ? formatMoney(item.amount, item.currency || 'EUR', moneyLocale)
-                              : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400">{t('hubspotAdmin.noQuoteLineItems')}</p>
-              )}
+              <div className="flex items-center gap-1">
+                {hasInvoice && (
+                  <button
+                    type="button"
+                    onClick={handleClearInvoice}
+                    disabled={saving}
+                    className="h-7 w-7 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                    title={t('hubspotAdmin.clearInvoice')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceDialog(true)}
+                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                  title={t('hubspotAdmin.linkInvoice')}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
+            {hasInvoice ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-gray-400" />
+                  {linked.hubspot_invoice_number || `#${linked.hubspot_invoice_id}`}
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                  {amountLabel && (
+                    <span>
+                      {amountLabel}
+                      {' '}
+                      <span className="text-gray-400">{t('hubspotAdmin.amountHtSuffix')}</span>
+                    </span>
+                  )}
+                  {linked.hubspot_invoice_status && (
+                    <span className="capitalize">{linked.hubspot_invoice_status}</span>
+                  )}
+                </div>
+                <a
+                  href={invoiceHubSpotUrl(linked.hubspot_invoice_id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-orange-600 hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {t('hubspotAdmin.openInHubSpot')}
+                </a>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-gray-400">{t('hubspotAdmin.noInvoice')}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs rounded-lg"
+                  onClick={() => setShowInvoiceDialog(true)}
+                >
+                  <Link2 className="h-3.5 w-3.5 mr-1" />
+                  {t('hubspotAdmin.linkInvoice')}
+                </Button>
+              </div>
+            )}
+          </div>
           )}
+
         </>
       )}
 
