@@ -1050,7 +1050,8 @@ const ProjectHubSpotAdminPanel = ({
                 <button
                   type="button"
                   onClick={() => setShowCalendarDialog(true)}
-                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                  disabled={!contactEmail}
+                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-40 disabled:pointer-events-none"
                   title={t('googleCalendar.link')}
                 >
                   <Link2 className="h-3.5 w-3.5" />
@@ -1088,11 +1089,16 @@ const ProjectHubSpotAdminPanel = ({
               </div>
             ) : (
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm text-gray-400">{t('googleCalendar.none')}</p>
+                <p className="text-sm text-gray-400">
+                  {contactEmail
+                    ? t('googleCalendar.none')
+                    : t('hubspotAdmin.needContactFirst')}
+                </p>
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-7 text-xs rounded-lg"
+                  disabled={!contactEmail}
                   onClick={() => setShowCalendarDialog(true)}
                 >
                   <Link2 className="h-3.5 w-3.5 mr-1" />
@@ -1216,6 +1222,7 @@ const ProjectHubSpotAdminPanel = ({
       <CalendarLinkDialog
         open={showCalendarDialog}
         onOpenChange={setShowCalendarDialog}
+        clientEmail={contactEmail}
         onSelect={handleSelectCalendarEvent}
         saving={saving}
       />
@@ -1880,7 +1887,7 @@ const QuoteLinkDialog = ({ open, onOpenChange, contactId, dealId, onSelect, savi
 };
 
 
-const CalendarLinkDialog = ({ open, onOpenChange, onSelect, saving }) => {
+const CalendarLinkDialog = ({ open, onOpenChange, clientEmail, onSelect, saving }) => {
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [events, setEvents] = useState([]);
@@ -1890,49 +1897,63 @@ const CalendarLinkDialog = ({ open, onOpenChange, onSelect, saving }) => {
   const locale = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2);
   const dateLocale = locale === 'nl' ? 'nl-BE' : locale === 'en' ? 'en-GB' : 'fr-BE';
 
-  const loadEvents = useCallback(
-    async (q) => {
-      setLoading(true);
-      setSearchError(null);
-      setEvents([]);
-      try {
-        const list = await listUpcomingGoogleCalendarEvents({
-          q: q?.trim() || undefined,
-          maxResults: 30,
-          calendarId: DEFAULT_GOOGLE_CALENDAR_ID,
-        });
-        setEvents(list || []);
-        if (!(list || []).length) {
-          setSearchError(t('googleCalendar.noEventsFound'));
-        }
-      } catch (err) {
-        console.warn('[CalendarLink] fetch failed:', err?.message || err);
-        setSearchError(err?.message || t('googleCalendar.searchFailed'));
-        toast({
-          variant: 'destructive',
-          title: t('googleCalendar.searchFailedTitle'),
-          description: err?.message || t('googleCalendar.searchFailedDesc'),
-        });
-      } finally {
-        setLoading(false);
+  const normalizedClientEmail = (clientEmail || '').trim();
+
+  const loadEvents = useCallback(async () => {
+    if (!normalizedClientEmail) return;
+    setLoading(true);
+    setSearchError(null);
+    setEvents([]);
+    try {
+      // List upcoming window (~90d / max 50) then filter where client is invited.
+      // Calendar API cannot filter by attendee natively — client-side filter is expected.
+      const list = await listUpcomingGoogleCalendarEvents({
+        maxResults: 50,
+        calendarId: DEFAULT_GOOGLE_CALENDAR_ID,
+        attendeeEmail: normalizedClientEmail,
+      });
+      setEvents(list || []);
+      if (!(list || []).length) {
+        setSearchError(
+          t('googleCalendar.noEventsForClient', { email: normalizedClientEmail })
+        );
       }
-    },
-    [t, toast]
-  );
+    } catch (err) {
+      console.warn('[CalendarLink] fetch failed:', err?.message || err);
+      setSearchError(err?.message || t('googleCalendar.searchFailed'));
+      toast({
+        variant: 'destructive',
+        title: t('googleCalendar.searchFailedTitle'),
+        description: err?.message || t('googleCalendar.searchFailedDesc'),
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [normalizedClientEmail, t, toast]);
 
   useEffect(() => {
     if (open) {
       setQuery('');
       setSearchError(null);
       setEvents([]);
-      loadEvents('');
+      if (normalizedClientEmail) {
+        loadEvents();
+      }
     }
-  }, [open, loadEvents]);
+  }, [open, normalizedClientEmail, loadEvents]);
 
-  const handleSearch = (e) => {
-    e?.preventDefault?.();
-    loadEvents(query);
-  };
+  const filteredEvents = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter((ev) => {
+      const title = (ev.title || '').toLowerCase();
+      const id = (ev.id || '').toLowerCase();
+      const attendeeBlob = formatGoogleCalendarAttendees(ev.attendees)
+        .join(' ')
+        .toLowerCase();
+      return title.includes(q) || id.includes(q) || attendeeBlob.includes(q);
+    });
+  }, [events, query]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1942,67 +1963,131 @@ const CalendarLinkDialog = ({ open, onOpenChange, onSelect, saving }) => {
             <Calendar className="h-5 w-5 text-orange-500" />
             {t('googleCalendar.linkTitle')}
           </DialogTitle>
-          <DialogDescription>{t('googleCalendar.linkDesc')}</DialogDescription>
+          <DialogDescription>
+            {normalizedClientEmail
+              ? t('googleCalendar.linkDesc', { email: normalizedClientEmail })
+              : t('hubspotAdmin.needContactFirst')}
+          </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('googleCalendar.searchPlaceholder')}
-            className="flex-1"
-          />
-          <Button type="submit" variant="outline" disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              t('googleCalendar.searchButton')
-            )}
+        {!normalizedClientEmail ? (
+          <p className="text-center py-6 text-sm text-gray-500">
+            {t('hubspotAdmin.needContactFirst')}
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-gray-500">
+              {t('googleCalendar.clientFilterHint', { email: normalizedClientEmail })}
+            </p>
+            <p className="text-xs text-gray-400">
+              {t('googleCalendar.calendarIdHint', { id: DEFAULT_GOOGLE_CALENDAR_ID })}
+            </p>
+
+            <div className="flex gap-2">
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('googleCalendar.searchPlaceholder')}
+                className="flex-1"
+                disabled={loading || !events.length}
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 min-h-[140px] p-1">
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                </div>
+              ) : filteredEvents.length > 0 ? (
+                filteredEvents.map((ev) => {
+                  const startLabel = formatGoogleCalendarStart(ev.start, dateLocale);
+                  const attendees = formatGoogleCalendarAttendees(ev.attendees);
+                  const attendeeCount = attendees.length;
+                  return (
+                    <button
+                      key={ev.id}
+                      type="button"
+                      onClick={() => onSelect(ev)}
+                      disabled={saving}
+                      className="w-full text-left p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700 transition-colors"
+                    >
+                      <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                        {ev.title || ev.id}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
+                        {startLabel && <span>{startLabel}</span>}
+                        {attendeeCount > 0 && (
+                          <span>
+                            {t('googleCalendar.attendeeCount', { count: attendeeCount })}
+                            {': '}
+                            {attendees.slice(0, 4).join(', ')}
+                            {attendeeCount > 4 ? '…' : ''}
+                          </span>
+                        )}
+                      </p>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="text-center py-6 text-sm text-gray-500">
+                  <p>
+                    {query.trim()
+                      ? t('googleCalendar.noEventsMatchFilter')
+                      : searchError ||
+                        t('googleCalendar.noEventsForClient', {
+                          email: normalizedClientEmail,
+                        })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t('common.cancel')}
           </Button>
-        </form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
-        <p className="text-xs text-gray-400">
-          {t('googleCalendar.calendarIdHint', { id: DEFAULT_GOOGLE_CALENDAR_ID })}
-        </p>
-
-        <div className="flex-1 overflow-y-auto space-y-2 min-h-[140px] p-1">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-            </div>
-          ) : events.length > 0 ? (
-            events.map((ev) => {
-              const startLabel = formatGoogleCalendarStart(ev.start, dateLocale);
-              const attendees = formatGoogleCalendarAttendees(ev.attendees);
-              return (
-                <button
-                  key={ev.id}
-                  type="button"
-                  onClick={() => onSelect(ev)}
-                  disabled={saving}
-                  className="w-full text-left p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700 transition-colors"
-                >
-                  <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                    {ev.title || ev.id}
+ border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700 transition-colors"
+                    >
+                      <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                        {ev.title || ev.id}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
+                        {startLabel && <span>{startLabel}</span>}
+                        {attendeeCount > 0 && (
+                          <span>
+                            {t('googleCalendar.attendeeCount', { count: attendeeCount })}
+                            {': '}
+                            {attendees.slice(0, 4).join(', ')}
+                            {attendeeCount > 4 ? '…' : ''}
+                          </span>
+                        )}
+                      </p>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="text-center py-6 text-sm text-gray-500">
+                  <p>
+                    {query.trim()
+                      ? t('googleCalendar.noEventsMatchFilter')
+                      : searchError ||
+                        t('googleCalendar.noEventsForClient', {
+                          email: normalizedClientEmail,
+                        })}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
-                    {startLabel && <span>{startLabel}</span>}
-                    {attendees.length > 0 && (
-                      <span>
-                        {t('googleCalendar.attendees')}: {attendees.slice(0, 4).join(', ')}
-                        {attendees.length > 4 ? '…' : ''}
-                      </span>
-                    )}
-                  </p>
-                </button>
-              );
-            })
-          ) : (
-            <div className="text-center py-6 text-sm text-gray-500">
-              <p>{searchError || t('googleCalendar.noEventsFound')}</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

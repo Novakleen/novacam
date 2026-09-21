@@ -2,6 +2,8 @@ import { supabase } from '@/lib/customSupabaseClient';
 
 export const DEFAULT_GOOGLE_CALENDAR_ID = 'hello@novakleen.be';
 
+const DEFAULT_LIST_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
 /**
  * Normalize a Google Calendar event into the shape we persist on projects.
  */
@@ -26,6 +28,10 @@ export const normalizeCalendarEvent = (raw, calendarId = DEFAULT_GOOGLE_CALENDAR
         .filter((a) => a.email || a.displayName)
     : [];
 
+  const organizerEmail = raw.organizer?.email
+    ? String(raw.organizer.email)
+    : attendees.find((a) => a.organizer)?.email || null;
+
   // Field workers = invited people (exclude resources / calendar self when possible)
   const fieldWorkers = attendees.filter(
     (a) => !a.resource && !a.self && a.email !== calendarId
@@ -39,10 +45,47 @@ export const normalizeCalendarEvent = (raw, calendarId = DEFAULT_GOOGLE_CALENDAR
     htmlLink: raw.htmlLink ? String(raw.htmlLink) : null,
     calendarId: calendarId || DEFAULT_GOOGLE_CALENDAR_ID,
     attendees: fieldWorkers.length ? fieldWorkers : attendees,
+    /** Full invitee list (incl. resources/self) — used for client-email matching */
+    allAttendees: attendees,
+    organizerEmail,
     status: raw.status || null,
     location: raw.location ? String(raw.location) : null,
   };
 };
+
+/**
+ * True when the event has the given email as attendee or organizer (case-insensitive).
+ */
+export function eventIncludesAttendeeEmail(event, email) {
+  const target = String(email || '').trim().toLowerCase();
+  if (!target || !event) return false;
+
+  if (event.organizerEmail && String(event.organizerEmail).toLowerCase() === target) {
+    return true;
+  }
+
+  const pools = [];
+  if (Array.isArray(event.allAttendees) && event.allAttendees.length) {
+    pools.push(event.allAttendees);
+  }
+  if (Array.isArray(event.attendees) && event.attendees.length) {
+    pools.push(event.attendees);
+  }
+
+  for (const list of pools) {
+    if (list.some((a) => a?.email && String(a.email).toLowerCase() === target)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function filterEventsByAttendeeEmail(events, email) {
+  if (!email) return [];
+  return (Array.isArray(events) ? events : []).filter((ev) =>
+    eventIncludesAttendeeEmail(ev, email)
+  );
+}
 
 const invokeGoogleCalendarProxy = async (body) => {
   const { data, error } = await supabase.functions.invoke('google-calendar-proxy', {
@@ -80,22 +123,36 @@ const invokeGoogleCalendarProxy = async (body) => {
 
 /**
  * List upcoming events on hello@novakleen.be (or override calendarId).
- * @param {{ q?: string, maxResults?: number, calendarId?: string, timeMin?: string }} opts
+ * Window defaults to ~90 days ahead, maxResults 50.
+ * Optional attendeeEmail: filter client-side (Calendar API cannot filter by attendee).
+ * @param {{ q?: string, maxResults?: number, calendarId?: string, timeMin?: string, timeMax?: string, attendeeEmail?: string }} opts
  */
 export async function listUpcomingGoogleCalendarEvents(opts = {}) {
   const calendarId = opts.calendarId || DEFAULT_GOOGLE_CALENDAR_ID;
+  const timeMin = opts.timeMin || new Date().toISOString();
+  const timeMax =
+    opts.timeMax || new Date(Date.now() + DEFAULT_LIST_WINDOW_MS).toISOString();
+
   const data = await invokeGoogleCalendarProxy({
     action: 'list',
     calendarId,
     q: opts.q || undefined,
-    maxResults: opts.maxResults || 25,
-    timeMin: opts.timeMin || new Date().toISOString(),
+    maxResults: opts.maxResults || 50,
+    timeMin,
+    timeMax,
+    // Documented on the proxy; filtering happens below (API has no attendee filter).
+    attendeeEmail: opts.attendeeEmail || undefined,
   });
 
-  const items = Array.isArray(data?.items) ? data.items : [];
-  return items
+  let items = (Array.isArray(data?.items) ? data.items : [])
     .map((ev) => normalizeCalendarEvent(ev, calendarId))
     .filter(Boolean);
+
+  if (opts.attendeeEmail) {
+    items = filterEventsByAttendeeEmail(items, opts.attendeeEmail);
+  }
+
+  return items;
 }
 
 /**
