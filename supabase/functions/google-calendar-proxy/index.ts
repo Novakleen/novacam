@@ -10,7 +10,16 @@ type ProxyBody = {
   eventId?: string;
   q?: string;
   timeMin?: string;
+  /** Upper bound for event start (ISO). Default: ~90 days from now. */
+  timeMax?: string;
   maxResults?: number;
+  /**
+   * Client email to match against attendees/organizer.
+   * Documented for callers — Google Calendar events.list does not filter by
+   * attendee natively; the proxy does not apply this server-side. Prefer
+   * client-side filtering after list (see googleCalendarService).
+   */
+  attendeeEmail?: string;
   /** Optional raw Calendar API path override (must start with /calendars/). */
   path?: string;
   method?: string;
@@ -86,17 +95,23 @@ Deno.serve(async (req) => {
           String(payload.eventId)
         )}`;
       } else {
+        const defaultTimeMax = new Date(
+          Date.now() + 90 * 24 * 60 * 60 * 1000
+        ).toISOString();
         const params = new URLSearchParams({
           singleEvents: 'true',
           orderBy: 'startTime',
           maxResults: String(
-            Math.min(Math.max(Number(payload.maxResults) || 25, 1), 50)
+            Math.min(Math.max(Number(payload.maxResults) || 50, 1), 50)
           ),
           timeMin: payload.timeMin || new Date().toISOString(),
+          timeMax: payload.timeMax || defaultTimeMax,
         });
         if (payload.q && String(payload.q).trim()) {
           params.set('q', String(payload.q).trim());
         }
+        // attendeeEmail is accepted for documentation / forward-compat only;
+        // Calendar API cannot filter list by attendee — callers filter client-side.
         url = `${CALENDAR_API}/calendars/${calEnc}/events?${params}`;
       }
     }
