@@ -311,19 +311,23 @@ const ProjectHubSpotAdminPanel = ({
       const { data, error } = await query.maybeSingle();
       if (error) throw error;
       let row = data || null;
-      // Refresh HT from HubSpot so the invoice card never shows stale TTC.
-      if (row?.hubspot_invoice_id) {
-        try {
-          row = await refreshProjectInvoiceAmountHt(supabase, row);
-        } catch (refreshErr) {
-          console.warn(
-            '[ProjectHubSpotAdminPanel] invoice HT refresh failed:',
-            refreshErr?.message || refreshErr
-          );
-        }
-      }
+      // Paint linked snapshot first; refresh HT in background (avoid blocking Source panel).
       setLinked(row);
       onLinkedProjectChange?.(row);
+      if (row?.hubspot_invoice_id) {
+        refreshProjectInvoiceAmountHt(supabase, row)
+          .then((refreshed) => {
+            if (!refreshed) return;
+            setLinked(refreshed);
+            onLinkedProjectChange?.(refreshed);
+          })
+          .catch((refreshErr) => {
+            console.warn(
+              '[ProjectHubSpotAdminPanel] invoice HT refresh failed:',
+              refreshErr?.message || refreshErr
+            );
+          });
+      }
     } catch (err) {
       console.warn('[ProjectHubSpotAdminPanel] load failed:', err?.message || err);
       setLinked(null);

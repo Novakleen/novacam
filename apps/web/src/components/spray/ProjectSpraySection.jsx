@@ -49,14 +49,18 @@ const ProjectSpraySection = ({
       if (persisted == null) setDefaultSurfaceM2(null);
       return undefined;
     }
+    // Prefer persisted deal surface — skip HubSpot round-trip when already known
+    if (persisted != null) {
+      return undefined;
+    }
     (async () => {
       try {
         const res = await fetchHubSpotContactLatestDealSurface(hubspotContactId, {
           dealId: hubspotDealId || null,
         });
-        if (!cancelled) setDefaultSurfaceM2(res?.surfaceM2 ?? persisted ?? null);
+        if (!cancelled) setDefaultSurfaceM2(res?.surfaceM2 ?? null);
       } catch {
-        if (!cancelled) setDefaultSurfaceM2(persisted ?? null);
+        if (!cancelled) setDefaultSurfaceM2(null);
       }
     })();
     return () => {

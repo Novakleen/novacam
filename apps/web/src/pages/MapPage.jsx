@@ -9,6 +9,7 @@ import { supabase } from '@/lib/customSupabaseClient';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -121,6 +122,7 @@ const ProjectCard = ({ project, onClick, compact = false }) => (
 );
 
 const MapPage = () => {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [projects, setProjects] = useState([]);
   const [filteredProjects, setFilteredProjects] = useState([]);
@@ -431,7 +433,7 @@ const MapPage = () => {
                   {/* Only Render Popup on Desktop to avoid mobile duplication */}
                   {!isMobile && (
                       <Popup offset={[0, -20]} className="rounded-xl overflow-hidden border-0 shadow-2xl">
-                          <div className="w-[280px] p-0 m-0">
+                          <div className="w-full max-w-[280px] p-0 m-0">
                              <div className="h-32 w-full bg-gray-200 relative">
                                 {project.media?.[0] ? (
                                    <img src={project.media[0].file_url} className="w-full h-full object-cover" alt="" />

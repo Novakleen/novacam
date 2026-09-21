@@ -7,6 +7,7 @@ import {
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 const PhotosPage = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [media, setMedia] = useState([]);
@@ -304,7 +306,7 @@ const PhotosPage = () => {
               initial={{ y: 100, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 100, opacity: 0 }}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#1a2634] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-6"
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#1a2634] text-white px-4 sm:px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 sm:gap-6 max-w-[calc(100vw-1.5rem)] overflow-x-auto"
             >
               <div className="flex items-center gap-4 border-r border-gray-600 pr-4">
                 <Button variant="ghost" className="text-white hover:bg-white/10" onClick={() => setIsSelectionMode(false)}>
