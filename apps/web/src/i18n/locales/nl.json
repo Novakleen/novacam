@@ -284,5 +284,27 @@
       "SPRING": "Lente",
       "FALL": "Herfst"
     }
+  },
+  "googleCalendar": {
+    "label": "Google Calendar-interventie",
+    "none": "Geen evenement",
+    "link": "Evenement koppelen",
+    "clear": "Evenement verwijderen",
+    "linkTitle": "Google Calendar-interventie koppelen",
+    "linkDesc": "Kies een komend evenement op de agenda hello@novakleen.be.",
+    "searchPlaceholder": "Zoeken op titel…",
+    "searchButton": "Zoeken",
+    "calendarIdHint": "Agenda: {{id}}",
+    "noEventsFound": "Geen komende evenementen gevonden.",
+    "searchFailed": "Google Calendar-zoekopdracht niet beschikbaar.",
+    "searchFailedTitle": "Google Calendar",
+    "searchFailedDesc": "Evenementen konden niet worden geladen. Controleer de Google OAuth-secrets.",
+    "linkedTitle": "Interventie gekoppeld",
+    "linkedDesc": "Evenement « {{title}} » opgeslagen.",
+    "clearedTitle": "Interventie verwijderd",
+    "clearedDesc": "De Google Calendar-koppeling is gewist.",
+    "saveError": "Google Calendar-evenement kon niet worden opgeslagen.",
+    "attendees": "Genodigden",
+    "openInCalendar": "Openen in Google Calendar"
   }
 }
