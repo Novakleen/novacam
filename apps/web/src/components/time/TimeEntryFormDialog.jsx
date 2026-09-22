@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Clock, Building2, FolderKanban } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -29,13 +30,14 @@ import {
   computeOvertimeHours,
   todayISODate,
   nowTimeHHMM,
-  buildQuoteLineItemProgress,
-  fetchProjectQuoteSnapshot,
-  formatQuoteLineItemTaskLabel,
+  fetchProjectDealServiceSnapshot,
+  formatTypeOfServiceTaskLabel,
+  parseTypeOfServiceLabels,
 } from '@/lib/timeTracking';
+import { fetchHubSpotDealJobInfo } from '@/lib/hubspotService';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
-import QuoteLineItemPicker from '@/components/time/QuoteLineItemPicker';
+import TypeOfServicePicker from '@/components/time/TypeOfServicePicker';
 
 const emptyForm = (defaults = {}) => ({
   user_id: defaults.user_id || '',
@@ -50,8 +52,24 @@ const emptyForm = (defaults = {}) => ({
   client_source: defaults.client_source || 'app',
   companycam_project_id: defaults.companycam_project_id || '',
   companycam_project_name: defaults.companycam_project_name || '',
-  selected_postes: defaults.selected_postes || [],
+  selected_services: defaults.selected_services || [],
 });
+
+/** Prefill selected services from an existing entry (by task_label match). */
+function servicesFromEntry(entry, availableLabels = []) {
+  if (!entry) return [];
+  const label = (entry.task_label || '').trim();
+  if (!label) return [];
+  const labels = Array.isArray(availableLabels) ? availableLabels : [];
+  const exact = labels.find((l) => l === label);
+  if (exact) return [{ value: exact, task_label: exact }];
+  // Legacy / free-text: keep as a single selected chip only if it matches a label
+  // after short-code ignore; otherwise leave empty and use free-text field.
+  const lower = label.toLowerCase();
+  const fuzzy = labels.find((l) => l.toLowerCase() === lower);
+  if (fuzzy) return [{ value: fuzzy, task_label: fuzzy }];
+  return [];
+}
 
 const TimeEntryFormDialog = ({
   open,
@@ -65,23 +83,24 @@ const TimeEntryFormDialog = ({
   ccProjectId = null,
   ccProjectName = null,
   hubspotContactId: hubspotContactIdProp = null,
-  /** Existing project time entries — used to compute remaining qty per devis poste */
-  progressEntries = [],
+  /** @deprecated Quote quantity progress no longer used for hours encoding */
+  progressEntries: _progressEntries = [],
   onSuccess,
 }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  /** Live quote snapshot when projects[] is stale / incomplete (TimeTrackerPage). */
-  const [quoteOverride, setQuoteOverride] = useState(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
+  /** Live deal type_of_service snapshot when projects[] is stale / incomplete. */
+  const [dealOverride, setDealOverride] = useState(null);
+  const [dealLoading, setDealLoading] = useState(false);
   const [form, setForm] = useState(() =>
     emptyForm({ user_id: user?.id, project_id: defaultProjectId || '' })
   );
 
   useEffect(() => {
     if (!open) return;
-    setQuoteOverride(null);
+    setDealOverride(null);
     if (entry) {
       const hasCc = Boolean(entry.companycam_project_id);
       const hasApp = Boolean(entry.project_id);
@@ -106,22 +125,9 @@ const TimeEntryFormDialog = ({
           ? String(entry.companycam_project_id)
           : '',
         companycam_project_name: entry.companycam_project_name || '',
-        selected_postes: entry.hubspot_line_item_id
-          ? [
-              {
-                hubspot_line_item_id: String(entry.hubspot_line_item_id),
-                task_label: entry.task_label || '',
-                quote_quantity:
-                  entry.quote_quantity != null && entry.quote_quantity !== ''
-                    ? entry.quote_quantity
-                    : null,
-                quantity_done:
-                  entry.quantity_done != null && entry.quantity_done !== ''
-                    ? entry.quantity_done
-                    : '',
-              },
-            ]
-          : [],
+        // Prefill from labels once options load (effect below); start empty or
+        // keep task_label for free-text fallback.
+        selected_services: [],
       });
     } else {
       setForm(
@@ -147,9 +153,6 @@ const TimeEntryFormDialog = ({
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  // Devis postes come from the Novacam projects row that holds hubspot_quote_*;
-  // resolve by UUID, companycam_project_id, or hubspot_contact_id (prefer devis snapshot).
-
   const selectedProject = useMemo(() => {
     const pid = form.project_id;
     if (!pid) return null;
@@ -162,7 +165,7 @@ const TimeEntryFormDialog = ({
     return null;
   }, [hubspotContactIdProp, selectedProject]);
 
-  const quoteLookupCcId = useMemo(() => {
+  const dealLookupCcId = useMemo(() => {
     if (form.companycam_project_id) return String(form.companycam_project_id);
     if (lockCompanyCam && ccProjectId) return String(ccProjectId);
     if (selectedProject?.companycam_project_id) return String(selectedProject.companycam_project_id);
@@ -174,105 +177,132 @@ const TimeEntryFormDialog = ({
     selectedProject,
   ]);
 
-  // Refresh devis snapshot whenever the chosen client / chantier changes.
-  // CC detail pages pass projectId=null + companycamProjectId — must resolve the
-  // Novacam row that Source wrote hubspot_quote_* onto (not only .eq('id', pid)).
+  // Refresh deal type_of_service whenever the chosen client / chantier changes.
   useEffect(() => {
     const pid = form.project_id || null;
-    const ccId = quoteLookupCcId;
+    const ccId = dealLookupCcId;
     const hsId = resolvedHubspotContactId;
     if (!pid && !ccId && !hsId) {
-      setQuoteOverride(null);
-      setQuoteLoading(false);
+      setDealOverride(null);
+      setDealLoading(false);
       return;
     }
     let cancelled = false;
-    setQuoteOverride(null); // use projects[] until live fetch lands
-    setQuoteLoading(true);
+    setDealOverride(null);
+    setDealLoading(true);
     (async () => {
-      const { data, error } = await fetchProjectQuoteSnapshot(supabase, {
+      const { data, error } = await fetchProjectDealServiceSnapshot(supabase, {
         projectId: pid,
         companycamProjectId: ccId,
         hubspotContactId: hsId,
       });
       if (cancelled) return;
       if (error) {
-        console.warn('quote snapshot fetch failed', error);
-        setQuoteOverride(null);
-      } else {
-        setQuoteOverride({
-          id: data?.id || null,
-          hubspot_quote_id: data?.hubspot_quote_id || null,
-          hubspot_quote_title: data?.hubspot_quote_title || null,
-          hubspot_quote_line_items: Array.isArray(data?.hubspot_quote_line_items)
-            ? data.hubspot_quote_line_items
-            : [],
-        });
-        // CC-only selection: attach the Novacam UUID that holds the devis so
-        // time_entries.project_id links to the same row Source updated.
-        if (data?.id && !pid) {
-          setForm((prev) =>
-            prev.project_id
-              ? prev
-              : {
-                  ...prev,
-                  project_id: data.id,
-                  client_name: prev.client_name || data.name || prev.client_name,
-                }
-          );
+        console.warn('deal service snapshot fetch failed', error);
+        setDealOverride(null);
+        setDealLoading(false);
+        return;
+      }
+
+      let snapshot = data;
+      // Prefer persisted labels; if deal linked but empty, live-fetch HubSpot.
+      if (
+        snapshot?.hubspot_deal_id &&
+        (!snapshot.type_of_service_labels || snapshot.type_of_service_labels.length === 0)
+      ) {
+        try {
+          const live = await fetchHubSpotDealJobInfo(snapshot.hubspot_deal_id);
+          if (!cancelled && live?.typeOfServiceLabels?.length) {
+            snapshot = {
+              ...snapshot,
+              hubspot_deal_type_of_service: live.typeOfService || snapshot.hubspot_deal_type_of_service,
+              hubspot_deal_name: live.dealName || snapshot.hubspot_deal_name,
+              type_of_service_labels: live.typeOfServiceLabels,
+            };
+          }
+        } catch (err) {
+          console.warn('live type_of_service fetch failed', err);
         }
       }
-      setQuoteLoading(false);
+
+      if (cancelled) return;
+      setDealOverride(snapshot);
+      if (snapshot?.id && !pid) {
+        setForm((prev) =>
+          prev.project_id
+            ? prev
+            : {
+                ...prev,
+                project_id: snapshot.id,
+                client_name: prev.client_name || snapshot.name || prev.client_name,
+              }
+        );
+      }
+      setDealLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [form.project_id, quoteLookupCcId, resolvedHubspotContactId]);
+  }, [form.project_id, dealLookupCcId, resolvedHubspotContactId]);
 
-  const effectiveQuote = useMemo(() => {
-    // Prefer live fetch; fall back to projects[] prop (ProjectTimeSection passes them).
-    if (quoteOverride) return quoteOverride;
+  const effectiveDeal = useMemo(() => {
+    if (dealOverride) return dealOverride;
     if (!selectedProject) {
-      return { hubspot_quote_id: null, hubspot_quote_title: null, hubspot_quote_line_items: [] };
+      return {
+        hubspot_deal_id: null,
+        hubspot_deal_name: null,
+        hubspot_deal_type_of_service: null,
+        type_of_service_labels: [],
+      };
     }
+    const raw =
+      selectedProject.hubspot_deal_type_of_service ||
+      null;
     return {
-      hubspot_quote_id: selectedProject.hubspot_quote_id || null,
-      hubspot_quote_title: selectedProject.hubspot_quote_title || null,
-      hubspot_quote_line_items: Array.isArray(selectedProject.hubspot_quote_line_items)
-        ? selectedProject.hubspot_quote_line_items
-        : [],
+      hubspot_deal_id: selectedProject.hubspot_deal_id
+        ? String(selectedProject.hubspot_deal_id)
+        : null,
+      hubspot_deal_name: selectedProject.hubspot_deal_name || null,
+      hubspot_deal_type_of_service: raw,
+      type_of_service_labels: parseTypeOfServiceLabels(raw),
     };
-  }, [quoteOverride, selectedProject]);
+  }, [dealOverride, selectedProject]);
 
-  const projectProgressEntries = useMemo(() => {
-    const pid = form.project_id;
-    const ccId = quoteLookupCcId;
-    if (!pid && !ccId) return progressEntries || [];
-    return (progressEntries || []).filter((e) => {
-      if (pid && e.project_id === pid) return true;
-      if (ccId && e.companycam_project_id && String(e.companycam_project_id) === ccId) {
-        return true;
+  const serviceOptions = useMemo(
+    () => effectiveDeal.type_of_service_labels || [],
+    [effectiveDeal.type_of_service_labels]
+  );
+  const serviceOptionsKey = serviceOptions.join('\u0001');
+  const hasServiceOptions = serviceOptions.length > 0;
+  const hasLinkedDeal = Boolean(effectiveDeal.hubspot_deal_id);
+  const dealName = effectiveDeal.hubspot_deal_name || null;
+
+  // When editing, map entry.task_label onto available options once they load.
+  useEffect(() => {
+    if (!open || !entry) return;
+    if (!hasServiceOptions) return;
+    setForm((prev) => {
+      if (Array.isArray(prev.selected_services) && prev.selected_services.length > 0) {
+        return prev;
       }
-      return false;
+      const matched = servicesFromEntry(entry, serviceOptions);
+      if (matched.length === 0) return prev;
+      return {
+        ...prev,
+        selected_services: matched,
+        task_label: formatTypeOfServiceTaskLabel(matched) || prev.task_label,
+      };
     });
-  }, [progressEntries, form.project_id, quoteLookupCcId]);
+    // serviceOptionsKey stabilizes the label list without identity churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entry, hasServiceOptions, serviceOptionsKey]);
 
-  const quoteLineItemsProgress = useMemo(() => {
-    const raw = effectiveQuote.hubspot_quote_line_items;
-    if (!Array.isArray(raw) || raw.length === 0) return [];
-    return buildQuoteLineItemProgress(raw, projectProgressEntries, entry?.id || null);
-  }, [effectiveQuote, projectProgressEntries, entry?.id]);
-
-  const hasLinkedQuotePostes = quoteLineItemsProgress.length > 0;
-  const hasLinkedQuoteId = Boolean(effectiveQuote.hubspot_quote_id);
-  const quoteTitle = effectiveQuote.hubspot_quote_title || null;
-
-  const handleQuotePostesChange = (postes) => {
-    const list = Array.isArray(postes) ? postes : [];
+  const handleServicesChange = (services) => {
+    const list = Array.isArray(services) ? services : [];
     setForm((prev) => ({
       ...prev,
-      selected_postes: list,
-      task_label: formatQuoteLineItemTaskLabel(list) || prev.task_label,
+      selected_services: list,
+      task_label: formatTypeOfServiceTaskLabel(list) || prev.task_label,
     }));
   };
 
@@ -280,7 +310,6 @@ const TimeEntryFormDialog = ({
     setForm((prev) => ({
       ...prev,
       client_source: source,
-      // Clear the other source selection when switching
       project_id: source === 'app' ? prev.project_id : lockProject ? prev.project_id : '',
       companycam_project_id: source === 'companycam' ? prev.companycam_project_id : '',
       companycam_project_name: source === 'companycam' ? prev.companycam_project_name : '',
@@ -301,7 +330,7 @@ const TimeEntryFormDialog = ({
         client_name: '',
         companycam_project_id: '',
         companycam_project_name: '',
-        selected_postes: [],
+        selected_services: [],
         task_label: '',
       }));
       return;
@@ -314,8 +343,7 @@ const TimeEntryFormDialog = ({
       companycam_project_id: '',
       companycam_project_name: '',
       client_source: 'app',
-      // Reset poste when switching project (devis postes are per-project)
-      selected_postes: [],
+      selected_services: [],
       task_label: '',
     }));
   };
@@ -328,22 +356,20 @@ const TimeEntryFormDialog = ({
         companycam_project_name: '',
         client_name: '',
         project_id: lockProject ? prev.project_id : '',
-        selected_postes: [],
+        selected_services: [],
         task_label: '',
       }));
       return;
     }
     const name = pickedName || `CompanyCam #${ccId}`;
-    // Prefer the Novacam row that already holds a devis snapshot for this CC id.
     const linkedCandidates = projects.filter(
       (ap) => ap.companycam_project_id && String(ap.companycam_project_id) === String(ccId)
     );
     const linkedPreferred =
       linkedCandidates.find(
-        (ap) =>
-          Array.isArray(ap.hubspot_quote_line_items) && ap.hubspot_quote_line_items.length > 0
+        (ap) => parseTypeOfServiceLabels(ap.hubspot_deal_type_of_service).length > 0
       ) ||
-      linkedCandidates.find((ap) => ap.hubspot_quote_id) ||
+      linkedCandidates.find((ap) => ap.hubspot_deal_id) ||
       linkedCandidates[0] ||
       null;
     const linkedAppId =
@@ -358,8 +384,7 @@ const TimeEntryFormDialog = ({
       client_name: name,
       project_id: lockProject ? prev.project_id : linkedAppId || '',
       client_source: 'companycam',
-      // Reset poste when switching chantier (devis postes are per-project)
-      selected_postes: [],
+      selected_services: [],
       task_label: '',
     }));
   };
@@ -367,14 +392,14 @@ const TimeEntryFormDialog = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.user_id) {
-      toast({ variant: 'destructive', title: 'Erreur', description: 'Sélectionnez un utilisateur.' });
+      toast({ variant: 'destructive', title: t('common.error'), description: t('time.errSelectUser') });
       return;
     }
     if (!form.work_date || !form.start_time) {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: 'Date et heure de début obligatoires.',
+        title: t('common.error'),
+        description: t('time.errDateStart'),
       });
       return;
     }
@@ -396,17 +421,10 @@ const TimeEntryFormDialog = ({
       }
     } else if (source === 'companycam') {
       if (!lockProject) {
-        // Keep linked app project if any, otherwise clear
         if (!projectId) projectId = null;
       }
       if (ccId && !clientName) clientName = ccName;
     }
-
-    const parseQty = (v) => {
-      if (v === '' || v == null) return null;
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
 
     const basePayload = {
       user_id: form.user_id,
@@ -424,25 +442,21 @@ const TimeEntryFormDialog = ({
       client_source: source,
       companycam_project_id: ccId,
       companycam_project_name: ccName,
+      // Hours encoding no longer ties to devis line items / quantities
+      hubspot_line_item_id: null,
+      quote_quantity: null,
+      quantity_done: null,
     };
 
-    const postes = Array.isArray(form.selected_postes) ? form.selected_postes : [];
+    const services = Array.isArray(form.selected_services) ? form.selected_services : [];
     const joinedLabel =
-      formatQuoteLineItemTaskLabel(postes) || form.task_label?.trim() || null;
+      formatTypeOfServiceTaskLabel(services) || form.task_label?.trim() || null;
 
-    // Approach A: one time_entry per selected poste (same times / user / project).
-    const buildRow = (poste) => {
-      const lineItemId = poste?.hubspot_line_item_id
-        ? String(poste.hubspot_line_item_id).trim()
-        : null;
+    const buildRow = (svc) => {
+      const label = svc?.task_label?.trim() || svc?.value?.trim() || null;
       return {
         ...basePayload,
-        task_label: lineItemId
-          ? poste.task_label?.trim() || joinedLabel
-          : form.task_label?.trim() || null,
-        hubspot_line_item_id: lineItemId || null,
-        quote_quantity: lineItemId ? parseQty(poste.quote_quantity) : null,
-        quantity_done: lineItemId ? parseQty(poste.quantity_done) : null,
+        task_label: label || joinedLabel,
       };
     };
 
@@ -450,55 +464,47 @@ const TimeEntryFormDialog = ({
     try {
       let error;
       if (entry?.id) {
-        // Edit: update this row with the first selected poste (or clear).
-        // Extra postes selected while editing are inserted as sibling entries.
-        const primary = postes[0] || null;
+        const primary = services[0] || null;
         const updatePayload = primary
           ? buildRow(primary)
           : {
               ...basePayload,
               task_label: form.task_label?.trim() || null,
-              hubspot_line_item_id: null,
-              quote_quantity: null,
-              quantity_done: null,
             };
         ({ error } = await supabase
           .from('time_entries')
           .update(updatePayload)
           .eq('id', entry.id));
         if (error) throw error;
-        if (postes.length > 1) {
-          const extras = postes.slice(1).map(buildRow);
+        if (services.length > 1) {
+          const extras = services.slice(1).map(buildRow);
           ({ error } = await supabase.from('time_entries').insert(extras));
           if (error) throw error;
         }
-      } else if (postes.length > 0) {
-        const rows = postes.map(buildRow);
+      } else if (services.length > 0) {
+        const rows = services.map(buildRow);
         ({ error } = await supabase.from('time_entries').insert(rows));
         if (error) throw error;
       } else {
         const payload = {
           ...basePayload,
           task_label: form.task_label?.trim() || null,
-          hubspot_line_item_id: null,
-          quote_quantity: null,
-          quantity_done: null,
         };
         ({ error } = await supabase.from('time_entries').insert(payload));
         if (error) throw error;
       }
       const createdCount = entry?.id
-        ? 1 + Math.max(0, postes.length - 1)
-        : Math.max(1, postes.length);
+        ? 1 + Math.max(0, services.length - 1)
+        : Math.max(1, services.length);
       toast({
-        title: entry ? 'Entrée mise à jour' : 'Heures enregistrées',
+        title: entry ? t('time.toastUpdated') : t('time.toastCreated'),
         description: entry
-          ? postes.length > 1
-            ? `Modifié + ${postes.length - 1} poste(s) ajouté(s).`
-            : 'Les modifications ont été sauvegardées.'
-          : postes.length > 1
-            ? `${createdCount} prestations ajoutées (un poste chacune).`
-            : 'La prestation a été ajoutée.',
+          ? services.length > 1
+            ? t('time.toastUpdatedExtra', { count: services.length - 1 })
+            : t('time.toastUpdatedDesc')
+          : services.length > 1
+            ? t('time.toastCreatedMulti', { count: createdCount })
+            : t('time.toastCreatedDesc'),
       });
       onOpenChange(false);
       onSuccess?.();
@@ -506,13 +512,16 @@ const TimeEntryFormDialog = ({
       console.error(err);
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: err.message || "Impossible d'enregistrer l'entrée.",
+        title: t('common.error'),
+        description: err.message || t('time.saveError'),
       });
     } finally {
       setSaving(false);
     }
   };
+
+  const showClientPicker = !lockCompanyCam;
+  const lookingUpDeal = Boolean(form.project_id || dealLookupCcId || resolvedHubspotContactId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -520,26 +529,26 @@ const TimeEntryFormDialog = ({
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <Clock className="h-5 w-5 text-primary" />
-            {entry ? 'Modifier le pointage' : 'Nouvelle entrée de temps'}
+            {entry ? t('time.formEditTitle') : t('time.formNewTitle')}
           </DialogTitle>
           <DialogDescription>
-            Encodez les heures prestées avec pause, comme sur Excel.
+            {t('time.formDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="min-w-0 space-y-4 pt-2">
           <div className="space-y-2">
-            <Label>Utilisateur</Label>
+            <Label>{t('time.userLabel')}</Label>
             <Select
               value={form.user_id || 'none'}
               onValueChange={(v) => setField('user_id', v === 'none' ? '' : v)}
             >
               <SelectTrigger className="h-11 rounded-xl">
-                <SelectValue placeholder="Choisir un utilisateur" />
+                <SelectValue placeholder={t('time.userPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {users.length === 0 && user && (
-                  <SelectItem value={user.id}>Moi</SelectItem>
+                  <SelectItem value={user.id}>{t('time.userMe')}</SelectItem>
                 )}
                 {users.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
@@ -552,13 +561,13 @@ const TimeEntryFormDialog = ({
 
           {(lockProject || lockCompanyCam) && (
             <div className="space-y-2">
-              <Label>Projet</Label>
+              <Label>{t('time.projectLabel')}</Label>
               <Input
                 className="h-11 rounded-xl bg-muted"
                 value={
                   lockCompanyCam
-                    ? ccProjectName || form.companycam_project_name || 'Projet CompanyCam'
-                    : projects.find((p) => p.id === form.project_id)?.name || 'Projet actuel'
+                    ? ccProjectName || form.companycam_project_name || 'CompanyCam'
+                    : projects.find((p) => p.id === form.project_id)?.name || t('time.currentProject')
                 }
                 disabled
               />
@@ -567,7 +576,7 @@ const TimeEntryFormDialog = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-2">
-              <Label>Date</Label>
+              <Label>{t('time.dateLabel')}</Label>
               <Input
                 type="date"
                 className="h-11 rounded-xl"
@@ -577,7 +586,7 @@ const TimeEntryFormDialog = ({
               />
             </div>
             <div className="space-y-2">
-              <Label>Début</Label>
+              <Label>{t('time.startLabel')}</Label>
               <Input
                 type="time"
                 className="h-11 rounded-xl"
@@ -587,7 +596,7 @@ const TimeEntryFormDialog = ({
               />
             </div>
             <div className="space-y-2">
-              <Label>Fin</Label>
+              <Label>{t('time.endLabel')}</Label>
               <Input
                 type="time"
                 className="h-11 rounded-xl"
@@ -599,7 +608,7 @@ const TimeEntryFormDialog = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Pause (min)</Label>
+              <Label>{t('time.breakLabel')}</Label>
               <Input
                 type="number"
                 min={0}
@@ -610,10 +619,11 @@ const TimeEntryFormDialog = ({
               />
             </div>
             <div className="min-w-0 space-y-2">
-              <Label>Aperçu calculé</Label>
+              <Label>{t('time.previewLabel')}</Label>
               <div className="min-h-11 h-auto rounded-xl border bg-muted/40 px-3 py-2 flex flex-wrap items-center text-sm gap-x-3 gap-y-1 min-w-0 overflow-hidden">
                 <span className="min-w-0 break-words">
-                  Presté : <strong>{formatHoursDecimal(preview.hours)} h</strong>
+                  {t('time.previewWorked')}{' '}
+                  <strong>{formatHoursDecimal(preview.hours)} h</strong>
                 </span>
                 <span className="text-red-500 shrink-0">
                   OT : {formatHoursDecimal(preview.overtime)} h
@@ -623,8 +633,8 @@ const TimeEntryFormDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Client</Label>
-            {!lockCompanyCam && (
+            <Label>{t('time.clientLabel')}</Label>
+            {showClientPicker && (
               <div className="flex rounded-xl border border-border overflow-hidden p-1 bg-muted/40 gap-1">
                 <button
                   type="button"
@@ -637,7 +647,7 @@ const TimeEntryFormDialog = ({
                   )}
                 >
                   <FolderKanban className="h-3.5 w-3.5" />
-                  Projet app
+                  {t('time.clientApp')}
                 </button>
                 <button
                   type="button"
@@ -658,7 +668,7 @@ const TimeEntryFormDialog = ({
             {lockCompanyCam ? (
               <Input
                 className="h-11 rounded-xl bg-muted"
-                value={ccProjectName || form.companycam_project_name || 'Projet CompanyCam'}
+                value={ccProjectName || form.companycam_project_name || 'CompanyCam'}
                 disabled
               />
             ) : form.client_source === 'app' ? (
@@ -668,10 +678,10 @@ const TimeEntryFormDialog = ({
                 disabled={lockProject}
               >
                 <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Choisir un projet de l'app…" />
+                  <SelectValue placeholder={t('time.clientAppPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Aucun client</SelectItem>
+                  <SelectItem value="none">{t('time.clientNone')}</SelectItem>
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
@@ -689,52 +699,51 @@ const TimeEntryFormDialog = ({
 
             {form.client_name && (
               <p className="text-xs text-muted-foreground px-1">
-                Client enregistré : <span className="font-medium text-foreground">{form.client_name}</span>
+                {t('time.clientSaved')}{' '}
+                <span className="font-medium text-foreground">{form.client_name}</span>
               </p>
             )}
           </div>
 
           <div className="min-w-0 space-y-2">
-            <Label>Projet / tâche</Label>
-            {hasLinkedQuotePostes ? (
-              <QuoteLineItemPicker
-                lineItems={quoteLineItemsProgress}
-                selectedPostes={form.selected_postes || []}
-                quoteTitle={quoteTitle}
+            <Label>{t('time.taskLabel')}</Label>
+            {hasServiceOptions ? (
+              <TypeOfServicePicker
+                options={serviceOptions}
+                selectedServices={form.selected_services || []}
+                dealName={dealName}
                 allowMulti={true}
-                onChange={handleQuotePostesChange}
+                onChange={handleServicesChange}
               />
-            ) : quoteLoading && (form.project_id || quoteLookupCcId || resolvedHubspotContactId) ? (
+            ) : dealLoading && lookingUpDeal ? (
               <div className="h-11 rounded-xl border bg-muted/40 px-3 flex items-center text-sm text-muted-foreground gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Chargement des postes du devis…
+                {t('time.tosLoading')}
               </div>
             ) : (
               <div className="space-y-2">
-                {!form.project_id && !lockCompanyCam && !quoteLookupCcId ? (
+                {!lookingUpDeal ? (
                   <p className="text-[11px] text-muted-foreground px-0.5">
-                    Sélectionnez d&apos;abord un client / projet pour charger les postes du devis.
+                    {t('time.tosNeedProject')}
                   </p>
-                ) : hasLinkedQuoteId ? (
+                ) : hasLinkedDeal ? (
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
-                    Devis lié mais sans postes en snapshot — reliez le devis depuis Source
-                    pour recharger les line items.
+                    {t('time.tosDealEmpty')}
                   </p>
                 ) : (
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 px-0.5">
-                    Liez un devis sur Source — les postes du devis apparaîtront ici (pas le
-                    catalogue produits HubSpot).
+                    {t('time.tosNoDeal')}
                   </p>
                 )}
                 <Input
                   className="h-11 rounded-xl"
-                  placeholder="Saisie libre (optionnel) — ex. SC + SP…"
+                  placeholder={t('time.tosFreePlaceholder')}
                   value={form.task_label}
                   onChange={(e) => {
                     setForm((prev) => ({
                       ...prev,
                       task_label: e.target.value,
-                      selected_postes: [],
+                      selected_services: [],
                     }));
                   }}
                 />
@@ -743,10 +752,10 @@ const TimeEntryFormDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Notes</Label>
+            <Label>{t('time.notesLabel')}</Label>
             <Textarea
               className="rounded-xl min-h-[80px]"
-              placeholder="Ajouter une note…"
+              placeholder={t('time.notesPlaceholder')}
               value={form.notes}
               onChange={(e) => setField('notes', e.target.value)}
             />
@@ -759,7 +768,7 @@ const TimeEntryFormDialog = ({
               className="rounded-xl"
               onClick={() => onOpenChange(false)}
             >
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
@@ -767,7 +776,7 @@ const TimeEntryFormDialog = ({
               className="rounded-xl bg-blue-600 hover:bg-blue-700"
             >
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {entry ? 'Enregistrer' : 'Ajouter'}
+              {entry ? t('common.save') : t('common.add')}
             </Button>
           </DialogFooter>
         </form>

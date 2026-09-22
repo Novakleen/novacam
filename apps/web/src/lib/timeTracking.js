@@ -284,3 +284,144 @@ export async function fetchProjectQuoteSnapshot(
   const preferred = pickPreferredQuoteProject(pool);
   return { data: normalizeQuoteSnapshot(preferred), error: null };
 }
+
+
+/** Split HubSpot deal multi-select `type_of_service` (semicolon / comma / pipe). */
+export function parseTypeOfServiceLabels(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map((s) => String(s || '').trim()).filter(Boolean);
+  }
+  return String(raw || '')
+    .split(/[;|,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Compact task_label from selected type-of-service values (same shape as quote postes). */
+export function formatTypeOfServiceTaskLabel(items = []) {
+  return formatQuoteLineItemTaskLabel(items);
+}
+
+const DEAL_SERVICE_COLS =
+  'id, name, companycam_project_id, hubspot_contact_id, hubspot_deal_id, hubspot_deal_name, hubspot_deal_type_of_service';
+
+function emptyDealServiceSnapshot() {
+  return {
+    id: null,
+    name: null,
+    companycam_project_id: null,
+    hubspot_contact_id: null,
+    hubspot_deal_id: null,
+    hubspot_deal_name: null,
+    hubspot_deal_type_of_service: null,
+    type_of_service_labels: [],
+  };
+}
+
+function normalizeDealServiceSnapshot(row) {
+  if (!row) return emptyDealServiceSnapshot();
+  const raw = row.hubspot_deal_type_of_service || null;
+  return {
+    id: row.id || null,
+    name: row.name || null,
+    companycam_project_id: row.companycam_project_id
+      ? String(row.companycam_project_id)
+      : null,
+    hubspot_contact_id: row.hubspot_contact_id ? String(row.hubspot_contact_id) : null,
+    hubspot_deal_id: row.hubspot_deal_id ? String(row.hubspot_deal_id) : null,
+    hubspot_deal_name: row.hubspot_deal_name || null,
+    hubspot_deal_type_of_service: raw,
+    type_of_service_labels: parseTypeOfServiceLabels(raw),
+  };
+}
+
+function rowHasDealServices(row) {
+  if (!row) return false;
+  if (parseTypeOfServiceLabels(row.hubspot_deal_type_of_service).length > 0) return true;
+  return Boolean(row.hubspot_deal_id);
+}
+
+/** Prefer the row that holds type_of_service (or at least a linked deal). */
+export function pickPreferredDealServiceProject(rows = []) {
+  const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  if (list.length === 0) return null;
+  const withLabels = list.find(
+    (p) => parseTypeOfServiceLabels(p.hubspot_deal_type_of_service).length > 0
+  );
+  if (withLabels) return withLabels;
+  const withDeal = list.find((p) => p.hubspot_deal_id);
+  if (withDeal) return withDeal;
+  return list[0];
+}
+
+/**
+ * Resolve the Novacam `projects` row that holds hubspot_deal_type_of_service
+ * for a time-entry client / chantier selection.
+ *
+ * Looks up by Novacam UUID, companycam_project_id, and/or hubspot_contact_id.
+ * Prefer persisted type_of_service; caller may live-fetch HubSpot when deal_id
+ * is present but labels are empty.
+ */
+export async function fetchProjectDealServiceSnapshot(
+  supabase,
+  { projectId = null, companycamProjectId = null, hubspotContactId = null } = {}
+) {
+  const empty = emptyDealServiceSnapshot();
+  const pid = projectId ? String(projectId) : '';
+  const ccId = companycamProjectId ? String(companycamProjectId) : '';
+  const hsId = hubspotContactId ? String(hubspotContactId) : '';
+  if (!pid && !ccId && !hsId) return { data: empty, error: null };
+
+  const candidates = [];
+  const seen = new Set();
+  const pushAll = (rows) => {
+    for (const row of rows || []) {
+      if (!row?.id || seen.has(row.id)) continue;
+      seen.add(row.id);
+      candidates.push(row);
+    }
+  };
+
+  if (isNovacamProjectUuid(pid)) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(DEAL_SERVICE_COLS)
+      .eq('id', pid)
+      .maybeSingle();
+    if (error) return { data: empty, error };
+    if (data) pushAll([data]);
+  }
+
+  if (ccId) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(DEAL_SERVICE_COLS)
+      .eq('companycam_project_id', ccId)
+      .order('updated_at', { ascending: false })
+      .limit(10);
+    if (error) return { data: empty, error };
+    pushAll(data);
+  }
+
+  if (hsId && !candidates.some(rowHasDealServices)) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(DEAL_SERVICE_COLS)
+      .eq('hubspot_contact_id', hsId)
+      .order('updated_at', { ascending: false })
+      .limit(10);
+    if (error) return { data: empty, error };
+    pushAll(data);
+  }
+
+  let pool = candidates;
+  if (ccId) {
+    const matchingCc = candidates.filter(
+      (p) => String(p.companycam_project_id || '') === ccId
+    );
+    if (matchingCc.length) pool = matchingCc;
+  }
+
+  const preferred = pickPreferredDealServiceProject(pool);
+  return { data: normalizeDealServiceSnapshot(preferred), error: null };
+}
