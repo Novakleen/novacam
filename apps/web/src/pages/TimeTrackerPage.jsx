@@ -82,7 +82,7 @@ const TimeTrackerPage = () => {
           .order('start_time', { ascending: false }),
         supabase
           .from('projects')
-          .select('id, name, is_archived, companycam_project_id, hubspot_contact_id, hubspot_quote_id, hubspot_quote_title, hubspot_quote_line_items')
+          .select('id, name, is_archived, companycam_project_id, hubspot_contact_id, hubspot_deal_id, hubspot_deal_name, hubspot_deal_type_of_service')
           .eq('is_archived', false)
           .order('name'),
         supabase.from('profiles').select('id, full_name, email, initials').order('full_name'),

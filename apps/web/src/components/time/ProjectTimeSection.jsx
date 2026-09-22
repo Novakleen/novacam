@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Clock, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Plus, Clock, RefreshCw, Tags } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { useTranslation } from 'react-i18next';
@@ -19,9 +19,10 @@ import {
 import {
   formatHoursDecimal,
   sumHours,
-  buildQuoteLineItemProgress,
-  fetchProjectQuoteSnapshot,
+  fetchProjectDealServiceSnapshot,
+  parseTypeOfServiceLabels,
 } from '@/lib/timeTracking';
+import { fetchHubSpotDealJobInfo } from '@/lib/hubspotService';
 
 const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubspotContactId = null }) => {
   const { toast } = useToast();
@@ -34,10 +35,11 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
   const [deleting, setDeleting] = useState(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [resolvedHsContactId, setResolvedHsContactId] = useState(hubspotContactId || null);
-  const [projectHs, setProjectHs] = useState({
-    hubspot_quote_id: null,
-    hubspot_quote_title: null,
-    hubspot_quote_line_items: [],
+  const [projectDeal, setProjectDeal] = useState({
+    hubspot_deal_id: null,
+    hubspot_deal_name: null,
+    hubspot_deal_type_of_service: null,
+    type_of_service_labels: [],
   });
 
   const [resolvedProjectId, setResolvedProjectId] = useState(projectId || null);
@@ -46,49 +48,63 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
     setResolvedProjectId(projectId || null);
     if (!projectId && !companycamProjectId && !hubspotContactId) {
       setResolvedHsContactId(null);
-      setProjectHs({
-        hubspot_quote_id: null,
-        hubspot_quote_title: null,
-        hubspot_quote_line_items: [],
+      setProjectDeal({
+        hubspot_deal_id: null,
+        hubspot_deal_name: null,
+        hubspot_deal_type_of_service: null,
+        type_of_service_labels: [],
       });
       return;
     }
     let cancelled = false;
     (async () => {
-      const { data, error } = await fetchProjectQuoteSnapshot(supabase, {
+      const { data, error } = await fetchProjectDealServiceSnapshot(supabase, {
         projectId: projectId || null,
         companycamProjectId: companycamProjectId || null,
         hubspotContactId: hubspotContactId || null,
       });
       if (cancelled) return;
       if (error) {
-        console.warn('ProjectTimeSection quote resolve failed', error);
+        console.warn('ProjectTimeSection deal resolve failed', error);
       }
-      if (data?.id) setResolvedProjectId(data.id);
+      let snapshot = data;
+      if (
+        snapshot?.hubspot_deal_id &&
+        (!snapshot.type_of_service_labels || snapshot.type_of_service_labels.length === 0)
+      ) {
+        try {
+          const live = await fetchHubSpotDealJobInfo(snapshot.hubspot_deal_id);
+          if (!cancelled && live?.typeOfServiceLabels?.length) {
+            snapshot = {
+              ...snapshot,
+              hubspot_deal_type_of_service:
+                live.typeOfService || snapshot.hubspot_deal_type_of_service,
+              hubspot_deal_name: live.dealName || snapshot.hubspot_deal_name,
+              type_of_service_labels: live.typeOfServiceLabels,
+            };
+          }
+        } catch (err) {
+          console.warn('ProjectTimeSection live ToS failed', err);
+        }
+      }
+      if (cancelled) return;
+      if (snapshot?.id) setResolvedProjectId(snapshot.id);
       setResolvedHsContactId(
-        hubspotContactId || data?.hubspot_contact_id || null
+        hubspotContactId || snapshot?.hubspot_contact_id || null
       );
-      setProjectHs({
-        hubspot_quote_id: data?.hubspot_quote_id || null,
-        hubspot_quote_title: data?.hubspot_quote_title || null,
-        hubspot_quote_line_items: Array.isArray(data?.hubspot_quote_line_items)
-          ? data.hubspot_quote_line_items
-          : [],
+      setProjectDeal({
+        hubspot_deal_id: snapshot?.hubspot_deal_id || null,
+        hubspot_deal_name: snapshot?.hubspot_deal_name || null,
+        hubspot_deal_type_of_service: snapshot?.hubspot_deal_type_of_service || null,
+        type_of_service_labels: Array.isArray(snapshot?.type_of_service_labels)
+          ? snapshot.type_of_service_labels
+          : parseTypeOfServiceLabels(snapshot?.hubspot_deal_type_of_service),
       });
     })();
     return () => {
       cancelled = true;
     };
   }, [projectId, companycamProjectId, hubspotContactId]);
-
-  const quoteProgress = useMemo(
-    () =>
-      buildQuoteLineItemProgress(
-        projectHs.hubspot_quote_line_items,
-        entries
-      ),
-    [projectHs.hubspot_quote_line_items, entries]
-  );
 
   const fetchEntries = useCallback(async () => {
     const novaId = resolvedProjectId || projectId || null;
@@ -165,6 +181,7 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
   };
 
   const total = sumHours(entries);
+  const tosLabels = projectDeal.type_of_service_labels || [];
 
   return (
     <div className="space-y-4">
@@ -198,62 +215,27 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
         </div>
       </div>
 
-      {quoteProgress.length > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
+      {tosLabels.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-2">
           <div className="flex items-center gap-2">
-            <FileSpreadsheet className="h-4 w-4 text-primary" />
-            <h4 className="text-sm font-semibold">
-              {t('time.quoteProgressTitle')}
-            </h4>
-            {projectHs.hubspot_quote_title && (
+            <Tags className="h-4 w-4 text-primary" />
+            <h4 className="text-sm font-semibold">{t('time.tosSectionTitle')}</h4>
+            {projectDeal.hubspot_deal_name && (
               <span className="text-xs text-muted-foreground truncate">
-                — {projectHs.hubspot_quote_title}
+                — {projectDeal.hubspot_deal_name}
               </span>
             )}
           </div>
-          <ul className="space-y-2">
-            {quoteProgress.map((li) => {
-              const pct =
-                li.planned > 0
-                  ? Math.min(100, Math.round((li.done / li.planned) * 100))
-                  : li.done > 0
-                    ? 100
-                    : 0;
-              return (
-                <li key={li.id || li.name} className="space-y-1">
-                  <div className="flex items-start justify-between gap-3 text-sm">
-                    <span className="font-medium truncate" title={li.name}>
-                      {li.name}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                      {t('time.quoteProgressDone', {
-                        done: li.done,
-                        planned: li.planned,
-                      })}
-                      {' · '}
-                      <span
-                        className={
-                          li.remaining > 0
-                            ? 'text-amber-700 dark:text-amber-400 font-semibold'
-                            : 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                        }
-                      >
-                        {t('time.quoteProgressRemaining', { remaining: li.remaining })}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        li.remaining <= 0 ? 'bg-emerald-500' : 'bg-blue-500'
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="flex flex-wrap gap-1.5">
+            {tosLabels.map((label) => (
+              <span
+                key={label}
+                className="inline-flex items-center rounded-full border bg-muted/40 px-2.5 py-0.5 text-xs font-medium"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -285,23 +267,20 @@ const ProjectTimeSection = ({ projectId, projectName, companycamProjectId, hubsp
                   name: projectName || t('expenses.project'),
                   companycam_project_id: companycamProjectId || null,
                   hubspot_contact_id: resolvedHsContactId,
-                  hubspot_quote_id: projectHs.hubspot_quote_id,
-                  hubspot_quote_title: projectHs.hubspot_quote_title,
-                  hubspot_quote_line_items: projectHs.hubspot_quote_line_items,
+                  hubspot_deal_id: projectDeal.hubspot_deal_id,
+                  hubspot_deal_name: projectDeal.hubspot_deal_name,
+                  hubspot_deal_type_of_service: projectDeal.hubspot_deal_type_of_service,
                 },
               ]
             : []
         }
         users={users}
-        // Keep locks keyed on the *prop* projectId so an async resolve of the
-        // Novacam UUID (CC → shadow row) does not remount / reset the open form.
         defaultProjectId={projectId || null}
         lockProject={Boolean(projectId)}
         lockCompanyCam={!projectId && Boolean(companycamProjectId)}
         ccProjectId={companycamProjectId || null}
         ccProjectName={projectName || null}
         hubspotContactId={resolvedHsContactId}
-        progressEntries={entries}
         onSuccess={fetchEntries}
       />
 
