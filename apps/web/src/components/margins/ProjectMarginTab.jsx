@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   Fuel,
@@ -42,7 +43,7 @@ import {
 } from '@/lib/hubspotService';
 import { importFromProject, computeLiveFingerprint } from '@/lib/margin/importFromProject';
 import { resolveFuelByDate } from '@/lib/margin/fuel';
-import { formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
+import { formatEntryMonth, formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
 import { productLabel, serviceLabel } from '@/lib/margin/constants';
 import MaPercentBadge from './MaPercentBadge';
 import CompletenessFlags from './CompletenessFlags';
@@ -77,6 +78,7 @@ const ProjectMarginTab = ({
   isAdmin = false,
 }) => {
   const { toast } = useToast();
+  const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [dossier, setDossier] = useState(null);
@@ -573,28 +575,33 @@ const ProjectMarginTab = ({
         <Row
           label={
             cacInfo?.monthKey
-              ? `Acquisition (CAC ads · ${cacInfo.monthKey})`
-              : 'Acquisition (CAC ads)'
+              ? t('margins.cacLineMonthOnly', {
+                  month: formatEntryMonth(cacInfo.monthKey, i18n.language),
+                })
+              : t('margins.cacLinePlain')
           }
           value={
             calc?.cacAdsStatus === 'ok' || cacInfo?.status === 'ok'
               ? formatMoney(calc?.ads)
               : cacInfo?.status === 'zero_clients'
-                ? '0 client gagné ce mois'
+                ? t('margins.cacStatusZeroClients')
                 : cacInfo?.status === 'no_spend'
-                  ? 'pas de dépense pub'
+                  ? t('margins.cacStatusNoSpend')
                   : cacInfo?.status === 'clients_unknown'
-                    ? 'clients non synchronisés'
+                    ? t('margins.cacStatusUnknown')
                     : cacInfo?.status === 'no_entry_date'
-                      ? 'date d’entrée inconnue'
+                      ? t('margins.cacStatusNoEntry')
                       : formatMoney(calc?.ads)
           }
           muted
         />
-        {cacInfo?.entrySource && (
-          <p className="text-[11px] text-muted-foreground pb-1">
-            Mois d’entrée : {cacInfo.entrySource}
-            {cacInfo.monthKey ? ` → ${cacInfo.monthKey}` : ''}
+        {cacInfo?.entrySource && cacInfo.entrySource !== 'contact.createdate' && (
+          <p className="text-[11px] text-amber-700 dark:text-amber-300 pb-1">
+            {t('margins.cacFallbackHint', {
+              source: t(`margins.cacSource_${cacInfo.entrySource.replace(/\./g, '_')}`, {
+                defaultValue: cacInfo.entrySource,
+              }),
+            })}
           </p>
         )}
         <Row

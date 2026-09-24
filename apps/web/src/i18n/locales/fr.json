@@ -505,6 +505,15 @@
     "cacUseHubspot": "Utiliser HubSpot",
     "cacEditSpend": "Éditer les dépenses",
     "cacEditSpendDesc": "Upsert par mois + plateforme.",
-    "cacSpendSaved": "Dépense enregistrée"
+    "cacSpendSaved": "Dépense enregistrée",
+    "cacLinePlain": "CAC ads",
+    "cacLineMonthOnly": "CAC ads — entrée {{month}}",
+    "cacLineWithMonth": "CAC ads — entrée {{month}} — {{amount}}",
+    "cacFallbackHint": "Date d’entrée approximative ({{source}})",
+    "cacEntryHint": "Mois d’entrée contact : {{month}}",
+    "cacStatusNoEntry": "date d’entrée inconnue",
+    "cacSource_deal_createdate": "date de création du deal",
+    "cacSource_project_created_at": "date de création du projet",
+    "cacSource_google_calendar_start": "date calendrier"
   }
 }

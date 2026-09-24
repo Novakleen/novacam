@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Fuel, Pencil, Trash2 } from 'lucide-react';
 import {
   Sheet,
@@ -8,7 +9,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
+import { formatEntryMonth, formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
 import { productLabel, serviceLabel } from '@/lib/margin/constants';
 import MaPercentBadge from './MaPercentBadge';
 import CompletenessFlags from './CompletenessFlags';
@@ -37,7 +38,9 @@ const DossierDetail = ({
   onOpenChange,
   onEdit,
   onDelete,
+  cacInfo = null,
 }) => {
+  const { t, i18n } = useTranslation();
   if (!dossier) return null;
   const hourLines = dossier.hour_lines || [];
   const productLines = dossier.product_lines || [];
@@ -119,18 +122,35 @@ const DossierDetail = ({
               muted
             />
             <Row
-              label="Acquisition (CAC ads)"
+              label={
+                (cacInfo?.monthKey || calc?.cacMonthKey)
+                  ? t('margins.cacLineMonthOnly', {
+                      month: formatEntryMonth(
+                        cacInfo?.monthKey || calc?.cacMonthKey,
+                        i18n.language
+                      ),
+                    })
+                  : t('margins.cacLinePlain')
+              }
               value={
                 calc?.cacAdsStatus && calc.cacAdsStatus !== 'ok'
                   ? calc.cacAdsStatus === 'zero_clients'
-                    ? '0 client gagné'
+                    ? t('margins.cacStatusZeroClients')
                     : calc.cacAdsStatus === 'no_spend'
-                      ? 'pas de dépense pub'
+                      ? t('margins.cacStatusNoSpend')
                       : '—'
                   : formatMoney(calc?.ads)
               }
               muted
             />
+            {(cacInfo?.entrySource || calc?.cacEntrySource) &&
+              (cacInfo?.entrySource || calc?.cacEntrySource) !== 'contact.createdate' && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-300 pb-1">
+                {t('margins.cacFallbackHint', {
+                  source: cacInfo?.entrySource || calc?.cacEntrySource,
+                })}
+              </p>
+            )}
             <Row
               label="Total acquisition"
               value={formatMoney((Number(calc?.com) || 0) + (Number(calc?.ads) || 0))}

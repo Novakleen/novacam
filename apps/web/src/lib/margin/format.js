@@ -53,3 +53,13 @@ export function formatDateTime(iso) {
     timeStyle: 'short',
   }).format(d);
 }
+
+/** Format YYYY-MM as "mai 2026" / "mei 2026" / "May 2026" for locale. */
+export function formatEntryMonth(monthKey, locale = 'fr') {
+  if (!monthKey || !/^\d{4}-\d{2}$/.test(String(monthKey))) return null;
+  const [y, m] = String(monthKey).split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1, 1));
+  const loc = locale?.startsWith('nl') ? 'nl-BE' : locale?.startsWith('en') ? 'en-GB' : 'fr-BE';
+  const month = new Intl.DateTimeFormat(loc, { month: 'long', timeZone: 'UTC' }).format(d);
+  return `${month} ${y}`;
+}
