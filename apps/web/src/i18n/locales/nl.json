@@ -505,6 +505,15 @@
     "cacUseHubspot": "HubSpot gebruiken",
     "cacEditSpend": "Spend bewerken",
     "cacEditSpendDesc": "Upsert per maand + platform.",
-    "cacSpendSaved": "Spend opgeslagen"
+    "cacSpendSaved": "Spend opgeslagen",
+    "cacLinePlain": "CAC ads",
+    "cacLineMonthOnly": "CAC ads — instroom {{month}}",
+    "cacLineWithMonth": "CAC ads — instroom {{month}} — {{amount}}",
+    "cacFallbackHint": "Benaderde instroomdatum ({{source}})",
+    "cacEntryHint": "Contact-instroommaand: {{month}}",
+    "cacStatusNoEntry": "instroomdatum onbekend",
+    "cacSource_deal_createdate": "deal-aanmaakdatum",
+    "cacSource_project_created_at": "project-aanmaakdatum",
+    "cacSource_google_calendar_start": "kalenderdatum"
   }
 }
