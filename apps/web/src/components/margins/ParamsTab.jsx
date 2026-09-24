@@ -27,6 +27,7 @@ import {
   updateProductPrice,
 } from '@/lib/margin/api';
 import { dieselSourceLabel, isDieselFresh, refreshDieselPrice } from '@/lib/margin/diesel';
+import CacAdsPanel from './CacAdsPanel';
 import { formatDateTime, formatNumber } from '@/lib/margin/format';
 
 const Field = ({ label, hint, children }) => (
@@ -73,7 +74,7 @@ const ParamsTab = ({ params, prices, onReload }) => {
       await updateMarginParams({
         eur_h: numOrNull(form.eur_h),
         com_rate: numOrNull(form.com_rate),
-        cac_rate: numOrNull(form.cac_rate),
+        // cac_rate retired in 1.6.18 — CAC ads is monthly €/client (CacAdsPanel)
         consumption_l100: numOrNull(form.consumption_l100),
         diesel_eur_l_fallback: numOrNull(form.diesel_eur_l_fallback),
         diesel_eur_l_live: numOrNull(form.diesel_eur_l_live),
@@ -212,6 +213,7 @@ const ParamsTab = ({ params, prices, onReload }) => {
       <Tabs value={innerTab} onValueChange={setInnerTab}>
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="couts">Coûts &amp; taux</TabsTrigger>
+          <TabsTrigger value="cac">CAC ads</TabsTrigger>
           <TabsTrigger value="carburant">Carburant</TabsTrigger>
           <TabsTrigger value="produits">Produits</TabsTrigger>
           <TabsTrigger value="closers">Closers</TabsTrigger>
@@ -221,7 +223,7 @@ const ParamsTab = ({ params, prices, onReload }) => {
           <Card>
             <CardHeader>
               <CardTitle>Coûts &amp; taux</CardTitle>
-              <CardDescription>Main d’œuvre, commission closer et CAC / ads.</CardDescription>
+              <CardDescription>Main d’œuvre et commission closer. CAC ads → onglet dédié.</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Taux horaire MO (€/h)" hint="eur_h">
@@ -240,17 +242,17 @@ const ParamsTab = ({ params, prices, onReload }) => {
                   onChange={(e) => set('com_rate', e.target.value)}
                 />
               </Field>
-              <Field label="Taux CAC / ads" hint="ex. 0,055 = 5,5 %">
-                <Input
-                  type="number"
-                  step="0.001"
-                  value={form.cac_rate}
-                  onChange={(e) => set('cac_rate', e.target.value)}
-                />
-              </Field>
+              <div className="md:col-span-2 text-sm text-muted-foreground rounded-lg border border-dashed p-3">
+                CAC / ads n’est plus un pourcentage. Voir l’onglet <strong>CAC ads</strong> :
+                coût mensuel = dépense pub ÷ clients gagnés (mois d’entrée lead).
+              </div>
             </CardContent>
           </Card>
           <SaveBar saving={saving} onSave={handleSaveParams} />
+        </TabsContent>
+
+        <TabsContent value="cac" className="mt-4 space-y-4">
+          <CacAdsPanel />
         </TabsContent>
 
         <TabsContent value="carburant" className="mt-4 space-y-4">
@@ -637,7 +639,6 @@ function serialize(params) {
   return {
     eur_h: params?.eur_h ?? 26,
     com_rate: params?.com_rate ?? 0.1,
-    cac_rate: params?.cac_rate ?? 0.055,
     consumption_l100: params?.consumption_l100 ?? 8,
     diesel_eur_l_fallback: params?.diesel_eur_l_fallback ?? 2.47,
     diesel_eur_l_live: params?.diesel_eur_l_live ?? '',

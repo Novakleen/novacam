@@ -30,7 +30,8 @@ import { distinctWorkersOnDate, normalizeFuelAddress } from './fuel';
  * if caHt null: mb/ma null, com=0, ads=0
  * else:
  *   com = closer in commercial_closers ? caHt * com_rate : 0
- *   ads = caHt * cac_rate
+ *   ads = cacAdsAmount (€ fixed from entry-month CAC) when provided; else 0
+ *        (legacy cac_rate % is retired — kept on margin_params but unused)
  *   mb = caHt - direct
  *   ma = mb - com - ads
  *
@@ -42,6 +43,8 @@ import { distinctWorkersOnDate, normalizeFuelAddress } from './fuel';
  * @param {Record<string, number>} input.prices  slug → €/L
  * @param {Record<string, { trips: Array<{ personKey: string, name?: string|null, homeAddress?: string|null, profileId?: string|null, km: number|null }> }>} [input.fuelByDate]
  * @param {number} [input.dieselEurL]
+ * @param {number|null} [input.cacAdsAmount] fixed € CAC ads for this chantier (entry-month)
+ * @param {string|null} [input.cacAdsStatus] 'ok' | 'no_spend' | 'zero_clients' | 'no_entry_date' | 'clients_unknown'
  */
 export function calculateProjectMargin({
   dossier = {},
@@ -52,6 +55,8 @@ export function calculateProjectMargin({
   fuelByDate = {},
   dieselEurL,
   otherExpenses = 0,
+  cacAdsAmount = null,
+  cacAdsStatus = null,
 } = {}) {
   const personHours = sumPersonHours(hourLines);
   const productCost = sumProductCost(productLines, prices);
@@ -103,7 +108,8 @@ export function calculateProjectMargin({
     maPct = null;
   } else {
     com = commercial ? caHt * (Number(params.com_rate) || 0) : 0;
-    ads = caHt * (Number(params.cac_rate) || 0);
+    const cacFixed = toNumberOrNull(cacAdsAmount);
+    ads = cacFixed != null && cacFixed >= 0 ? cacFixed : 0;
     mb = caHt - direct;
     ma = mb - com - ads;
     maPct = caHt !== 0 ? ma / caHt : null;
@@ -139,6 +145,7 @@ export function calculateProjectMargin({
     caHt: caHt == null ? null : roundMoney(caHt),
     com: roundMoney(com),
     ads: roundMoney(ads),
+    cacAdsStatus: cacAdsStatus || (cacAdsAmount != null ? 'ok' : null),
     mb: mb == null ? null : roundMoney(mb),
     ma: ma == null ? null : roundMoney(ma),
     maPct,

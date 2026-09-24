@@ -54,7 +54,7 @@ const MarginsPage = () => {
               Marge chantiers
             </h1>
             <p className="text-gray-500 dark:text-gray-400">
-              Paramétrage (coûts, carburant, produits, closers). Admin uniquement.
+              Paramétrage (coûts, CAC ads, carburant, produits, closers). Admin uniquement.
               Le calcul de marge se fait sur la fiche chantier → onglet Marge.
             </p>
           </div>

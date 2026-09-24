@@ -425,3 +425,95 @@ export async function fetchMarginSnapshots({ projectIds = [], companycamProjectI
 
   return { byProject, byCc };
 }
+
+/* ── Ad spend + CAC entry-month cache (v1.6.18) ─────────────────────────── */
+
+export async function fetchAdSpendRows() {
+  const { data, error } = await supabase
+    .from('margin_ad_spend')
+    .select('*')
+    .order('month', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertAdSpendRow(row) {
+  const payload = {
+    month: row.month,
+    platform: row.platform || 'Meta',
+    spend: Number(row.spend),
+    currency: row.currency || 'EUR',
+    period_start: row.period_start || row.month || null,
+    period_end: row.period_end || null,
+    notes: row.notes || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from('margin_ad_spend')
+    .upsert(payload, { onConflict: 'month,platform' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertAdSpendRows(rows) {
+  const results = [];
+  for (const row of rows || []) {
+    results.push(await upsertAdSpendRow(row));
+  }
+  return results;
+}
+
+export async function deleteAdSpendRow(id) {
+  const { error } = await supabase.from('margin_ad_spend').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchCacEntryCache() {
+  const { data, error } = await supabase
+    .from('margin_cac_entry_cache')
+    .select('*')
+    .order('month', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertCacEntryCacheRows(rows) {
+  if (!rows?.length) return [];
+  const payload = rows.map((r) => ({
+    month: r.month,
+    clients_won: Number(r.clients_won) || 0,
+    hubspot_clients_won:
+      r.hubspot_clients_won == null ? null : Number(r.hubspot_clients_won),
+    spend_total: r.spend_total == null ? null : Number(r.spend_total),
+    cac_per_client: r.cac_per_client == null ? null : Number(r.cac_per_client),
+    entry_date_source: r.entry_date_source || 'contact.createdate',
+    fetched_at: r.fetched_at || new Date().toISOString(),
+    notes: r.notes || null,
+  }));
+  const { data, error } = await supabase
+    .from('margin_cac_entry_cache')
+    .upsert(payload, { onConflict: 'month' })
+    .select();
+  if (error) throw error;
+  return data || [];
+}
+
+/** Load project fields needed to resolve CAC entry month. */
+export async function fetchProjectCacContext({ projectId, companycamProjectId }) {
+  let query = supabase
+    .from('projects')
+    .select(
+      'id, created_at, hubspot_contact_id, hubspot_deal_id, hubspot_deal_closedate, google_calendar_start, companycam_project_id'
+    );
+  if (projectId) query = query.eq('id', projectId);
+  else if (companycamProjectId) {
+    query = query.eq('companycam_project_id', String(companycamProjectId));
+  } else {
+    return null;
+  }
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return data;
+}
