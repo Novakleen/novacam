@@ -24,10 +24,22 @@ import {
   fetchMarginParams,
   fetchProductPrices,
   fetchTeamProfiles,
+  fetchAdSpendRows,
+  fetchCacEntryCache,
+  fetchProjectCacContext,
   pricesMap,
   upsertProjectDossier,
 } from '@/lib/margin/api';
 import { calculateProjectMargin, effectiveDiesel } from '@/lib/margin/calculateProjectMargin';
+import {
+  monthKeyFromDate,
+  resolveCacAdsAmount,
+  resolveProjectEntryDate,
+} from '@/lib/margin/cacAds';
+import {
+  fetchContactCreatedate,
+  fetchDealCreatedate,
+} from '@/lib/hubspotService';
 import { importFromProject, computeLiveFingerprint } from '@/lib/margin/importFromProject';
 import { resolveFuelByDate } from '@/lib/margin/fuel';
 import { formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
@@ -77,6 +89,7 @@ const ProjectMarginTab = ({
   const [closer, setCloser] = useState('');
   const [editingCloser, setEditingCloser] = useState(false);
   const [otherExpenses, setOtherExpenses] = useState(0);
+  const [cacInfo, setCacInfo] = useState({ amount: null, status: null, monthKey: null, source: null });
 
   const load = useCallback(async () => {
     if (!projectId && !companycamProjectId) {
@@ -85,17 +98,47 @@ const ProjectMarginTab = ({
     }
     setLoading(true);
     try {
-      const [d, p, pr, team] = await Promise.all([
+      const [d, p, pr, team, spendRows, cacheRows, projectCtx] = await Promise.all([
         fetchDossierForProject({ projectId, companycamProjectId }),
         fetchMarginParams(),
         fetchProductPrices(),
         fetchTeamProfiles(),
+        fetchAdSpendRows().catch(() => []),
+        fetchCacEntryCache().catch(() => []),
+        fetchProjectCacContext({ projectId, companycamProjectId }).catch(() => null),
       ]);
       setDossier(d);
       setParams(p);
       setPrices(pr);
       setProfiles(team);
       setCloser(d?.closer || '');
+
+      // Resolve entry-month CAC (contact createdate → deal createdate → project dates)
+      let contactCreatedate = null;
+      let dealCreatedate = null;
+      if (projectCtx?.hubspot_contact_id) {
+        try {
+          contactCreatedate = await fetchContactCreatedate(projectCtx.hubspot_contact_id);
+        } catch { /* ignore */ }
+      }
+      if (!contactCreatedate && projectCtx?.hubspot_deal_id) {
+        try {
+          const dealDates = await fetchDealCreatedate(projectCtx.hubspot_deal_id);
+          dealCreatedate = dealDates?.createdate || null;
+        } catch { /* ignore */ }
+      }
+      const entry = resolveProjectEntryDate({
+        contactCreatedate,
+        dealCreatedate,
+        projectCreatedAt: projectCtx?.created_at || null,
+        googleCalendarStart: projectCtx?.google_calendar_start || null,
+      });
+      const monthKey = monthKeyFromDate(entry.date);
+      const resolved = resolveCacAdsAmount({ monthKey, cacheRows, spendRows });
+      setCacInfo({
+        ...resolved,
+        entrySource: entry.source,
+      });
 
       // Autres dépenses live (incluses dans le coût direct à la génération)
       setOtherExpenses(await fetchExpensesHt(projectId, companycamProjectId));
@@ -162,8 +205,10 @@ const ProjectMarginTab = ({
       fuelByDate,
       dieselEurL: diesel,
       otherExpenses,
+      cacAdsAmount: cacInfo?.status === 'ok' ? cacInfo.amount : null,
+      cacAdsStatus: cacInfo?.status || null,
     });
-  }, [dossier, params, priceMap, fuelByDate, diesel, otherExpenses]);
+  }, [dossier, params, priceMap, fuelByDate, diesel, otherExpenses, cacInfo]);
 
   const closerOptions = useMemo(() => {
     const names = new Set(params?.commercial_closers || []);
@@ -230,6 +275,8 @@ const ProjectMarginTab = ({
         fuelByDate: fuel,
         dieselEurL: diesel,
         otherExpenses: imported.otherExpenses || 0,
+        cacAdsAmount: cacInfo?.status === 'ok' ? cacInfo.amount : null,
+        cacAdsStatus: cacInfo?.status || null,
       });
 
       await upsertProjectDossier({
@@ -282,6 +329,8 @@ const ProjectMarginTab = ({
         fuelByDate,
         dieselEurL: diesel,
         otherExpenses,
+        cacAdsAmount: cacInfo?.status === 'ok' ? cacInfo.amount : null,
+        cacAdsStatus: cacInfo?.status || null,
       });
       await upsertProjectDossier({
         dossier: draft,
@@ -521,7 +570,33 @@ const ProjectMarginTab = ({
           value={formatMoney(calc?.com)}
           muted
         />
-        <Row label="Acquisition (CAC)" value={formatMoney(calc?.ads)} muted />
+        <Row
+          label={
+            cacInfo?.monthKey
+              ? `Acquisition (CAC ads · ${cacInfo.monthKey})`
+              : 'Acquisition (CAC ads)'
+          }
+          value={
+            calc?.cacAdsStatus === 'ok' || cacInfo?.status === 'ok'
+              ? formatMoney(calc?.ads)
+              : cacInfo?.status === 'zero_clients'
+                ? '0 client gagné ce mois'
+                : cacInfo?.status === 'no_spend'
+                  ? 'pas de dépense pub'
+                  : cacInfo?.status === 'clients_unknown'
+                    ? 'clients non synchronisés'
+                    : cacInfo?.status === 'no_entry_date'
+                      ? 'date d’entrée inconnue'
+                      : formatMoney(calc?.ads)
+          }
+          muted
+        />
+        {cacInfo?.entrySource && (
+          <p className="text-[11px] text-muted-foreground pb-1">
+            Mois d’entrée : {cacInfo.entrySource}
+            {cacInfo.monthKey ? ` → ${cacInfo.monthKey}` : ''}
+          </p>
+        )}
         <Row
           label="Total acquisition"
           value={formatMoney((Number(calc?.com) || 0) + (Number(calc?.ads) || 0))}

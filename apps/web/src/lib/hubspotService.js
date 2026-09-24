@@ -1676,3 +1676,119 @@ export async function fetchHubSpotQuoteLineItems(quoteId) {
     throw err;
   }
 }
+
+/**
+ * Closed-won (incl. planning + invoiced) clients by HubSpot ENTRY month.
+ * Entry date = contact.createdate (portal has no hs_lifecyclestage_lead_date).
+ * Fallback per deal: deal.createdate when no contact is linked.
+ * Counts unique contacts (or unique deals when no contact).
+ * Recent months' CAC drops as more leads from that month convert later.
+ */
+export async function fetchWonClientsByEntryMonth({
+  fromMonth = '2026-01',
+  toMonth = null,
+} = {}) {
+  const { wonStageIds, invoicedStageIds } = await fetchDealStageClassification();
+  const wonOrInvoiced = new Set([...wonStageIds, ...invoicedStageIds]);
+
+  // Prefer list+associations (same as funnel) over search — associations included.
+  const deals = await fetchAllDeals();
+  const wonDeals = deals.filter((d) => {
+    const stage = d?.properties?.dealstage != null ? String(d.properties.dealstage) : '';
+    return (
+      isStageInSet(stage, wonOrInvoiced) ||
+      looksLikeWonLabel(stage)
+    );
+  });
+
+  const contactIds = new Set();
+  const dealContactMap = new Map();
+  for (const deal of wonDeals) {
+    const assoc = deal.associations?.contacts?.results || [];
+    const contactId = assoc[0]?.id ? String(assoc[0].id) : null;
+    dealContactMap.set(String(deal.id), contactId);
+    if (contactId) contactIds.add(contactId);
+  }
+
+  const contactCreate = new Map();
+  const ids = [...contactIds];
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    try {
+      const data = await invokeHubSpotProxy('/crm/v3/objects/contacts/batch/read', 'POST', {
+        properties: ['createdate'],
+        inputs: chunk.map((id) => ({ id })),
+      });
+      for (const row of data?.results || []) {
+        const cd = row?.properties?.createdate;
+        if (row?.id && cd) contactCreate.set(String(row.id), cd);
+      }
+    } catch (err) {
+      console.warn('[CAC] contact batch read failed', err?.message || err);
+    }
+    await new Promise((r) => setTimeout(r, 80));
+  }
+
+  const monthToClients = new Map();
+  let usedContact = 0;
+  let usedDeal = 0;
+
+  for (const deal of wonDeals) {
+    const dealId = String(deal.id);
+    const contactId = dealContactMap.get(dealId);
+    let entryDate = null;
+    if (contactId && contactCreate.has(contactId)) {
+      entryDate = contactCreate.get(contactId);
+      usedContact += 1;
+    } else {
+      entryDate = deal?.properties?.createdate || null;
+      usedDeal += 1;
+    }
+    if (!entryDate) continue;
+    const d = new Date(entryDate);
+    if (Number.isNaN(d.getTime())) continue;
+    const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (fromMonth && monthKey < fromMonth) continue;
+    if (toMonth && monthKey > toMonth) continue;
+    if (!monthToClients.has(monthKey)) monthToClients.set(monthKey, new Set());
+    const clientKey = contactId ? `c:${contactId}` : `d:${dealId}`;
+    monthToClients.get(monthKey).add(clientKey);
+  }
+
+  const byMonth = {};
+  for (const [month, set] of monthToClients.entries()) {
+    byMonth[month] = set.size;
+  }
+
+  return {
+    byMonth,
+    entryDateSource: 'contact.createdate',
+    fallbackSource: 'deal.createdate',
+    leadLifecycleDateAvailable: false,
+    stats: {
+      deals: wonDeals.length,
+      contactsResolved: usedContact,
+      dealCreateFallback: usedDeal,
+    },
+  };
+}
+
+export async function fetchContactCreatedate(contactId) {
+  if (!contactId) return null;
+  const data = await invokeHubSpotProxy(
+    `/crm/v3/objects/contacts/${contactId}?properties=createdate`
+  );
+  return data?.properties?.createdate || null;
+}
+
+/** Read a deal's createdate. */
+export async function fetchDealCreatedate(dealId) {
+  if (!dealId) return null;
+  const data = await invokeHubSpotProxy(
+    `/crm/v3/objects/deals/${dealId}?properties=createdate,closedate`
+  );
+  return {
+    createdate: data?.properties?.createdate || null,
+    closedate: data?.properties?.closedate || null,
+  };
+}

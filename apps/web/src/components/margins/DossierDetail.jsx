@@ -118,7 +118,19 @@ const DossierDetail = ({
               value={formatMoney(calc?.com)}
               muted
             />
-            <Row label="Acquisition (CAC)" value={formatMoney(calc?.ads)} muted />
+            <Row
+              label="Acquisition (CAC ads)"
+              value={
+                calc?.cacAdsStatus && calc.cacAdsStatus !== 'ok'
+                  ? calc.cacAdsStatus === 'zero_clients'
+                    ? '0 client gagné'
+                    : calc.cacAdsStatus === 'no_spend'
+                      ? 'pas de dépense pub'
+                      : '—'
+                  : formatMoney(calc?.ads)
+              }
+              muted
+            />
             <Row
               label="Total acquisition"
               value={formatMoney((Number(calc?.com) || 0) + (Number(calc?.ads) || 0))}
