@@ -29,7 +29,15 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import ContactAssignmentDialog from '@/components/projects/ContactAssignmentDialog';
-import { resolveInvoiceAmountHt } from '@/lib/hubspotInvoiceAmount';
+import { normalizeHubSpotDate, resolveInvoiceAmountHt } from '@/lib/hubspotInvoiceAmount';
+import {
+  addProjectInvoice,
+  fetchProjectInvoices,
+  refreshProjectInvoicesHt,
+  removeAllProjectInvoices,
+  removeProjectInvoice,
+  sumProjectInvoicesHt,
+} from '@/lib/projectInvoices';
 import {
   fetchHubSpotContactDeals,
   fetchHubSpotInvoiceById,
@@ -38,7 +46,6 @@ import {
   HUBSPOT_DEAL_READ_SCOPES,
   HUBSPOT_LINE_ITEM_READ_SCOPES,
   HUBSPOT_QUOTE_READ_SCOPES,
-  refreshProjectInvoiceAmountHt,
   fetchHubSpotDealJobInfo,
   formatHubSpotTypeOfServiceShort,
 } from '@/lib/hubspotService';
@@ -66,6 +73,7 @@ const INVOICE_PROPERTIES = [
   'hs_invoice_status',
   'hs_title',
   'hs_balance_due',
+  'hs_invoice_date',
 ];
 
 const PROJECT_HS_FIELDS = `
@@ -264,7 +272,19 @@ const normalizeInvoice = (raw) => {
     amountSource: resolved.source,
     currency: props.hs_currency || props.hs_invoice_currency_code || props.currency || 'EUR',
     status: props.hs_invoice_status || props.hs_status || props.status || null,
+    invoiceDate: normalizeHubSpotDate(props.hs_invoice_date),
   };
+};
+
+const formatInvoiceDate = (value, locale) => {
+  if (!value) return null;
+  const d = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return String(value);
+  try {
+    return d.toLocaleDateString(locale || 'fr-BE', { dateStyle: 'short' });
+  } catch {
+    return String(value).slice(0, 10);
+  }
 };
 
 /**
@@ -285,6 +305,7 @@ const ProjectHubSpotAdminPanel = ({
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [linked, setLinked] = useState(null);
+  const [invoiceRows, setInvoiceRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showContactDialog, setShowContactDialog] = useState(false);
@@ -310,16 +331,16 @@ const ProjectHubSpotAdminPanel = ({
       }
       const { data, error } = await query.maybeSingle();
       if (error) throw error;
-      let row = data || null;
+      const row = data || null;
       // Paint linked snapshot first; refresh HT in background (avoid blocking Source panel).
       setLinked(row);
       onLinkedProjectChange?.(row);
-      if (row?.hubspot_invoice_id) {
-        refreshProjectInvoiceAmountHt(supabase, row)
+      const rows = row ? await fetchProjectInvoices(supabase, row, { backfill: true }) : [];
+      setInvoiceRows(rows);
+      if (rows.length) {
+        refreshProjectInvoicesHt(supabase, row, rows)
           .then((refreshed) => {
-            if (!refreshed) return;
-            setLinked(refreshed);
-            onLinkedProjectChange?.(refreshed);
+            if (Array.isArray(refreshed)) setInvoiceRows(refreshed);
           })
           .catch((refreshErr) => {
             console.warn(
@@ -331,6 +352,7 @@ const ProjectHubSpotAdminPanel = ({
     } catch (err) {
       console.warn('[ProjectHubSpotAdminPanel] load failed:', err?.message || err);
       setLinked(null);
+      setInvoiceRows([]);
     } finally {
       setLoading(false);
     }
@@ -426,6 +448,10 @@ const ProjectHubSpotAdminPanel = ({
 
   const handleClearContact = async () => {
     try {
+      if (linked?.id) {
+        await removeAllProjectInvoices(supabase, linked.id);
+        setInvoiceRows([]);
+      }
       await updateHubSpotFields({
         hubspot_contact_id: null,
         hubspot_contact_name: null,
@@ -464,18 +490,34 @@ const ProjectHubSpotAdminPanel = ({
     }
   };
 
-  const handleClearInvoice = async () => {
+  /** Re-read project row + linked invoices after a change (legacy columns mirrored by trigger). */
+  const reloadInvoices = useCallback(
+    async (projectRow) => {
+      if (!projectRow?.id) return;
+      const [{ data: fresh }, rows] = await Promise.all([
+        supabase.from('projects').select(PROJECT_HS_FIELDS).eq('id', projectRow.id).maybeSingle(),
+        fetchProjectInvoices(supabase, projectRow),
+      ]);
+      if (fresh) {
+        setLinked(fresh);
+        onLinkedProjectChange?.(fresh);
+      }
+      setInvoiceRows(rows);
+    },
+    [onLinkedProjectChange]
+  );
+
+  const handleRemoveInvoice = async (invoiceRow) => {
+    if (!invoiceRow) return;
+    setSaving(true);
     try {
-      await updateHubSpotFields({
-        hubspot_invoice_id: null,
-        hubspot_invoice_number: null,
-        hubspot_invoice_amount: null,
-        hubspot_invoice_currency: null,
-        hubspot_invoice_status: null,
-      });
+      await removeProjectInvoice(supabase, linked?.id, invoiceRow);
+      await reloadInvoices(linked);
       toast({
-        title: t('hubspotAdmin.invoiceClearedTitle'),
-        description: t('hubspotAdmin.invoiceClearedDesc'),
+        title: t('hubspotAdmin.invoiceRemovedTitle'),
+        description: t('hubspotAdmin.invoiceRemovedDesc', {
+          number: invoiceRow.invoice_number || invoiceRow.hubspot_invoice_id,
+        }),
       });
     } catch (err) {
       toast({
@@ -483,19 +525,21 @@ const ProjectHubSpotAdminPanel = ({
         title: t('common.error'),
         description: err.message || t('hubspotAdmin.saveError'),
       });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleSelectInvoice = async (invoice) => {
+    setSaving(true);
     try {
-      await updateHubSpotFields({
-        hubspot_invoice_id: String(invoice.id),
-        hubspot_invoice_number: invoice.number ? String(invoice.number) : null,
-        hubspot_invoice_amount:
-          invoice.amount != null && invoice.amount !== '' ? Number(invoice.amount) : null,
-        hubspot_invoice_currency: invoice.currency || 'EUR',
-        hubspot_invoice_status: invoice.status || null,
-      });
+      const row = await ensureLinkedRow();
+      // Pre-1.6.20 single link not yet in project_invoices → persist it first so it is kept
+      if (invoiceRows.some((r) => r.legacy)) {
+        await fetchProjectInvoices(supabase, row, { backfill: true });
+      }
+      await addProjectInvoice(supabase, row.id, invoice);
+      await reloadInvoices(row);
       setShowInvoiceDialog(false);
       toast({
         title: t('hubspotAdmin.invoiceLinkedTitle'),
@@ -509,6 +553,8 @@ const ProjectHubSpotAdminPanel = ({
         title: t('common.error'),
         description: err.message || t('hubspotAdmin.saveError'),
       });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -750,7 +796,8 @@ const ProjectHubSpotAdminPanel = ({
   const contactName = linked?.hubspot_contact_name;
   const contactEmail = linked?.hubspot_contact_email;
   const hasContact = !!linked?.hubspot_contact_id;
-  const hasInvoice = !!linked?.hubspot_invoice_id;
+  const hasInvoice = invoiceRows.length > 0;
+  const invoicesTotalHt = sumProjectInvoicesHt(invoiceRows);
   const hasDeal = !!linked?.hubspot_deal_id;
   const hasQuote = !!linked?.hubspot_quote_id;
   const hasCalendar = !!linked?.google_calendar_event_id;
@@ -762,9 +809,9 @@ const ProjectHubSpotAdminPanel = ({
     linked?.google_calendar_start,
     moneyLocale
   );
-  const amountLabel = formatMoney(
-    linked?.hubspot_invoice_amount,
-    linked?.hubspot_invoice_currency,
+  const invoicesTotalLabel = formatMoney(
+    invoicesTotalHt,
+    invoiceRows[0]?.currency || 'EUR',
     moneyLocale
   );
   const dealAmountLabel = formatMoney(linked?.hubspot_deal_amount, 'EUR', moneyLocale);
@@ -1118,56 +1165,93 @@ const ProjectHubSpotAdminPanel = ({
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                 {t('hubspotAdmin.invoiceLabel')}
+                {invoiceRows.length > 1 ? ` (${invoiceRows.length})` : ''}
               </p>
-              <div className="flex items-center gap-1">
-                {hasInvoice && (
-                  <button
-                    type="button"
-                    onClick={handleClearInvoice}
-                    disabled={saving}
-                    className="h-7 w-7 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
-                    title={t('hubspotAdmin.clearInvoice')}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowInvoiceDialog(true)}
-                  className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                  title={t('hubspotAdmin.linkInvoice')}
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowInvoiceDialog(true)}
+                disabled={saving}
+                className="h-7 w-7 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                title={hasInvoice ? t('hubspotAdmin.addInvoice') : t('hubspotAdmin.linkInvoice')}
+                aria-label={hasInvoice ? t('hubspotAdmin.addInvoice') : t('hubspotAdmin.linkInvoice')}
+              >
+                {hasInvoice ? <Plus className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+              </button>
             </div>
             {hasInvoice ? (
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
-                  <FileText className="h-3.5 w-3.5 text-gray-400" />
-                  {linked.hubspot_invoice_number || `#${linked.hubspot_invoice_id}`}
-                </p>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
-                  {amountLabel && (
-                    <span>
-                      {amountLabel}
-                      {' '}
-                      <span className="text-gray-400">{t('hubspotAdmin.amountHtSuffix')}</span>
+              <div className="space-y-1.5">
+                <ul className="space-y-1.5">
+                  {invoiceRows.map((inv) => {
+                    const invAmount = formatMoney(inv.amount_ht, inv.currency, moneyLocale);
+                    const invDate = formatInvoiceDate(inv.invoice_date, moneyLocale);
+                    return (
+                      <li
+                        key={inv.id || `legacy-${inv.hubspot_invoice_id}`}
+                        className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 dark:border-gray-800 px-2.5 py-2"
+                      >
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5 min-w-0">
+                            <FileText className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                            <span className="truncate">
+                              {inv.invoice_number || `#${inv.hubspot_invoice_id}`}
+                            </span>
+                          </p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                            {invDate && <span>{invDate}</span>}
+                            {invAmount ? (
+                              <span className="tabular-nums">
+                                {invAmount}{' '}
+                                <span className="text-gray-400">{t('hubspotAdmin.amountHtSuffix')}</span>
+                              </span>
+                            ) : (
+                              <span className="text-amber-600">{t('hubspotAdmin.invoiceNoHt')}</span>
+                            )}
+                            {inv.status && <span className="capitalize">{inv.status}</span>}
+                          </div>
+                          <a
+                            href={invoiceHubSpotUrl(inv.hubspot_invoice_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-orange-600 hover:underline"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {t('hubspotAdmin.openInHubSpot')}
+                          </a>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveInvoice(inv)}
+                          disabled={saving}
+                          className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                          title={t('hubspotAdmin.removeInvoice')}
+                          aria-label={t('hubspotAdmin.removeInvoice')}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {invoiceRows.length > 1 && invoicesTotalLabel && (
+                  <div className="flex items-center justify-between text-xs px-1 pt-0.5">
+                    <span className="text-gray-500">
+                      {t('hubspotAdmin.invoicesTotalHt', { count: invoiceRows.length })}
                     </span>
-                  )}
-                  {linked.hubspot_invoice_status && (
-                    <span className="capitalize">{linked.hubspot_invoice_status}</span>
-                  )}
-                </div>
-                <a
-                  href={invoiceHubSpotUrl(linked.hubspot_invoice_id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-orange-600 hover:underline"
+                    <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                      {invoicesTotalLabel}
+                    </span>
+                  </div>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-full sm:w-auto text-xs rounded-lg"
+                  onClick={() => setShowInvoiceDialog(true)}
+                  disabled={saving}
                 >
-                  <ExternalLink className="h-3 w-3" />
-                  {t('hubspotAdmin.openInHubSpot')}
-                </a>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  {t('hubspotAdmin.addInvoice')}
+                </Button>
               </div>
             ) : (
               <div className="flex items-center justify-between gap-2">
@@ -1204,6 +1288,7 @@ const ProjectHubSpotAdminPanel = ({
         contactId={linked?.hubspot_contact_id}
         onSelect={handleSelectInvoice}
         saving={saving}
+        linkedInvoiceIds={invoiceRows.map((r) => String(r.hubspot_invoice_id))}
       />
 
       <DealLinkDialog
@@ -1234,7 +1319,14 @@ const ProjectHubSpotAdminPanel = ({
   );
 };
 
-const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) => {
+const InvoiceLinkDialog = ({
+  open,
+  onOpenChange,
+  contactId,
+  onSelect,
+  saving,
+  linkedInvoiceIds = [],
+}) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [invoices, setInvoices] = useState([]);
@@ -1442,6 +1534,7 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
     let amount = null;
     let currency = 'EUR';
     let status = null;
+    let invoiceDate = null;
     let number = manualNumber.trim() || id;
     try {
       const inv = await fetchHubSpotInvoiceById(id);
@@ -1449,6 +1542,7 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
         amount = inv.amountHt;
         currency = inv.currency || 'EUR';
         status = inv.status || null;
+        invoiceDate = inv.invoiceDate || null;
         if (!manualNumber.trim() && inv.number) number = inv.number;
       }
     } catch (err) {
@@ -1460,10 +1554,13 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
       amount,
       currency,
       status,
+      invoiceDate,
     });
   };
 
   const scopesToShow = missingScopes?.length ? missingScopes : INVOICE_READ_SCOPES;
+  const linkedSet = new Set((linkedInvoiceIds || []).map(String));
+  const manualAlreadyLinked = linkedSet.has(manualId.trim());
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1530,16 +1627,23 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
             </div>
           ) : invoices.length > 0 ? (
-            invoices.map((inv) => (
+            invoices.map((inv) => {
+              const alreadyLinked = linkedSet.has(String(inv.id));
+              return (
               <button
                 key={inv.id}
                 type="button"
                 onClick={() => onSelect(inv)}
-                disabled={saving}
-                className="w-full text-left p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700 transition-colors"
+                disabled={saving || alreadyLinked}
+                className="w-full text-left p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700 transition-colors disabled:opacity-60 disabled:hover:border-gray-200"
               >
-                <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                  {inv.number || inv.id}
+                <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 flex items-center justify-between gap-2">
+                  <span className="truncate">{inv.number || inv.id}</span>
+                  {alreadyLinked && (
+                    <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 px-2 py-0.5">
+                      {t('hubspotAdmin.invoiceAlreadyLinked')}
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
                   {inv.amount != null && (
@@ -1554,11 +1658,13 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
                       {t('hubspotAdmin.amountTtcOnlyWarning')}
                     </span>
                   )}
+                  {inv.invoiceDate && <span>{formatInvoiceDate(inv.invoiceDate, 'fr-BE')}</span>}
                   {inv.status && <span className="capitalize">{inv.status}</span>}
                   <span className="font-mono text-gray-400">#{inv.id}</span>
                 </p>
               </button>
-            ))
+              );
+            })
           ) : (
             <div className="text-center py-6 text-sm text-gray-500 space-y-1">
               {!missingScopes && (
@@ -1607,7 +1713,10 @@ const InvoiceLinkDialog = ({ open, onOpenChange, contactId, onSelect, saving }) 
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={handleManualSave} disabled={!manualId.trim() || saving}>
+          <Button
+            onClick={handleManualSave}
+            disabled={!manualId.trim() || saving || manualAlreadyLinked}
+          >
             {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             {t('hubspotAdmin.saveInvoice')}
           </Button>

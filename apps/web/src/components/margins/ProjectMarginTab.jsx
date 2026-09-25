@@ -294,8 +294,11 @@ const ProjectMarginTab = ({
       toast({
         title: dossier ? 'Marge régénérée' : 'Marge générée',
         description: imported.ca_ht != null
-          ? `CA HT (HTVA) HubSpot : ${formatMoney(imported.ca_ht)}`
-          : 'Pas de facture HubSpot liée — CA HT manquant.',
+          ? t('margins.generatedCaFromInvoices', {
+              count: invoices.length,
+              amount: formatMoney(imported.ca_ht),
+            })
+          : t('margins.generatedNoInvoice'),
       });
       setEditingCloser(false);
       await load();
@@ -368,8 +371,8 @@ const ProjectMarginTab = ({
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Aucune marge générée</h3>
           <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-            La marge se calcule à partir du Suivi (heures, pulvérisation, dépenses) et de la
-            facture HubSpot liée. Paramètres globaux dans Admin → Marge chantiers.
+            La marge se calcule à partir du Suivi (heures, pulvérisation, dépenses) et des
+            factures HubSpot liées. Paramètres globaux dans Admin → Marge chantiers.
           </p>
         </div>
         {isAdmin ? (
@@ -390,6 +393,9 @@ const ProjectMarginTab = ({
 
   const hourLines = dossier.hour_lines || [];
   const productLines = dossier.product_lines || [];
+  const caInvoices = (Array.isArray(dossier.invoices) ? dossier.invoices : []).filter(
+    (inv) => Number.isFinite(Number(inv?.caHt ?? inv?.ca_ht))
+  );
 
   return (
     <div className="space-y-5">
@@ -524,6 +530,15 @@ const ProjectMarginTab = ({
           Décomposition
         </p>
         <Row label="CA HT (HTVA)" value={formatMoney(calc?.caHt ?? dossier.ca_ht)} />
+        {caInvoices.length > 0 && (
+          <p className="text-[11px] text-muted-foreground pb-1 leading-relaxed break-words">
+            {t('margins.caFromInvoices', { count: caInvoices.length })}
+            {' : '}
+            {caInvoices
+              .map((inv, i) => `${inv.ref || t('margins.invoiceFallbackRef', { n: i + 1 })} ${formatMoney(inv.caHt ?? inv.ca_ht)}`)
+              .join(' · ')}
+          </p>
+        )}
         <Row label="Coût produits" value={formatMoney(calc?.productCost)} muted />
         <Row
           label={`Main d’œuvre (${formatHours(calc?.personHours ?? dossier.person_hours)})`}
@@ -691,11 +706,18 @@ const ProjectMarginTab = ({
 
       {Array.isArray(dossier.invoices) && dossier.invoices.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Factures</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">
+            {t('margins.invoicesTitle', { count: dossier.invoices.length })}
+          </p>
           {dossier.invoices.map((inv, i) => (
-            <div key={i} className="text-sm flex justify-between">
-              <span>{inv.ref || `Facture ${i + 1}`}</span>
-              <span className="tabular-nums">{formatMoney(inv.caHt ?? inv.ca_ht)}</span>
+            <div key={inv.hubspot_invoice_id || i} className="text-sm flex justify-between gap-2">
+              <span className="min-w-0 truncate">
+                {inv.ref || t('margins.invoiceFallbackRef', { n: i + 1 })}
+                {inv.invoice_date ? (
+                  <span className="text-muted-foreground text-xs"> · {inv.invoice_date}</span>
+                ) : null}
+              </span>
+              <span className="tabular-nums shrink-0">{formatMoney(inv.caHt ?? inv.ca_ht)}</span>
             </div>
           ))}
         </div>
