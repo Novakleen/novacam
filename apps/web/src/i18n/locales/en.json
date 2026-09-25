@@ -335,7 +335,15 @@
     "season": {
       "SPRING": "Spring",
       "FALL": "Fall"
-    }
+    },
+    "addInvoice": "Add an invoice",
+    "removeInvoice": "Remove this invoice",
+    "invoiceRemovedTitle": "Invoice removed",
+    "invoiceRemovedDesc": "Invoice {{number}} unlinked from the job site.",
+    "invoiceAlreadyLinked": "Already linked",
+    "invoiceNoHt": "Amount excl. VAT unknown",
+    "invoicesTotalHt_one": "Total excl. VAT ({{count}} invoice)",
+    "invoicesTotalHt_other": "Total excl. VAT ({{count}} invoices)"
   },
   "googleCalendar": {
     "label": "Google Calendar intervention",
@@ -514,6 +522,15 @@
     "cacStatusNoEntry": "entry date unknown",
     "cacSource_deal_createdate": "deal create date",
     "cacSource_project_created_at": "project create date",
-    "cacSource_google_calendar_start": "calendar date"
+    "cacSource_google_calendar_start": "calendar date",
+    "caFromInvoices_one": "Revenue from {{count}} invoice",
+    "caFromInvoices_other": "Revenue from {{count}} invoices",
+    "invoicesTitle_one": "Invoice",
+    "invoicesTitle_other": "Invoices ({{count}})",
+    "invoicesTotalHt": "Total excl. VAT",
+    "invoiceFallbackRef": "Invoice {{n}}",
+    "generatedCaFromInvoices_one": "HubSpot revenue excl. VAT: {{amount}} ({{count}} invoice)",
+    "generatedCaFromInvoices_other": "HubSpot revenue excl. VAT: {{amount}} ({{count}} invoices)",
+    "generatedNoInvoice": "No HubSpot invoice linked — revenue excl. VAT missing."
   }
 }

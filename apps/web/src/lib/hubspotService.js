@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/customSupabaseClient';
 import {
   HUBSPOT_INVOICE_AMOUNT_PROPERTIES,
+  normalizeHubSpotDate,
   resolveInvoiceAmountHt,
 } from '@/lib/hubspotInvoiceAmount';
 
@@ -581,6 +582,7 @@ export async function resolveCloserFromContactOwner(contactId) {
  *   amountSource: string|null,
  *   currency: string,
  *   status: string|null,
+ *   invoiceDate: string|null,
  * }|null>}
  */
 export async function fetchHubSpotInvoiceById(invoiceId) {
@@ -608,10 +610,14 @@ export async function fetchHubSpotInvoiceById(invoiceId) {
     amountSource: resolved.source,
     currency: props.hs_currency || 'EUR',
     status: props.hs_invoice_status || null,
+    invoiceDate: normalizeHubSpotDate(props.hs_invoice_date),
   };
 }
 
 /**
+ * @deprecated v1.6.20 — use refreshProjectInvoicesHt (lib/projectInvoices.js), which
+ * refreshes every invoice in project_invoices. Kept for backward compatibility.
+ *
  * Re-fetch HubSpot invoice HT and persist to projects.hubspot_invoice_amount.
  * Self-heals rows that still store TTC from before v1.5.6.
  * On HubSpot failure, returns the project unchanged (caller keeps stored amount).

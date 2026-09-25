@@ -335,7 +335,15 @@
     "season": {
       "SPRING": "Lente",
       "FALL": "Herfst"
-    }
+    },
+    "addInvoice": "Factuur toevoegen",
+    "removeInvoice": "Deze factuur verwijderen",
+    "invoiceRemovedTitle": "Factuur verwijderd",
+    "invoiceRemovedDesc": "Factuur {{number}} ontkoppeld van de werf.",
+    "invoiceAlreadyLinked": "Al gekoppeld",
+    "invoiceNoHt": "Bedrag excl. btw onbekend",
+    "invoicesTotalHt_one": "Totaal excl. btw ({{count}} factuur)",
+    "invoicesTotalHt_other": "Totaal excl. btw ({{count}} facturen)"
   },
   "googleCalendar": {
     "label": "Google Calendar-interventie",
@@ -514,6 +522,15 @@
     "cacStatusNoEntry": "instroomdatum onbekend",
     "cacSource_deal_createdate": "deal-aanmaakdatum",
     "cacSource_project_created_at": "project-aanmaakdatum",
-    "cacSource_google_calendar_start": "kalenderdatum"
+    "cacSource_google_calendar_start": "kalenderdatum",
+    "caFromInvoices_one": "Omzet uit {{count}} factuur",
+    "caFromInvoices_other": "Omzet uit {{count}} facturen",
+    "invoicesTitle_one": "Factuur",
+    "invoicesTitle_other": "Facturen ({{count}})",
+    "invoicesTotalHt": "Totaal excl. btw",
+    "invoiceFallbackRef": "Factuur {{n}}",
+    "generatedCaFromInvoices_one": "Omzet excl. btw HubSpot: {{amount}} ({{count}} factuur)",
+    "generatedCaFromInvoices_other": "Omzet excl. btw HubSpot: {{amount}} ({{count}} facturen)",
+    "generatedNoInvoice": "Geen HubSpot-factuur gekoppeld — omzet excl. btw ontbreekt."
   }
 }

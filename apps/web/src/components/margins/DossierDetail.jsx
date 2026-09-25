@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { formatEntryMonth, formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
-import { productLabel, serviceLabel } from '@/lib/margin/constants';
+import { productLabel, serviceLabel, sumInvoiceCaHt } from '@/lib/margin/constants';
 import MaPercentBadge from './MaPercentBadge';
 import CompletenessFlags from './CompletenessFlags';
 
@@ -229,13 +229,26 @@ const DossierDetail = ({
 
           {Array.isArray(dossier.invoices) && dossier.invoices.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Factures</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                {t('margins.invoicesTitle', { count: dossier.invoices.length })}
+              </p>
               {dossier.invoices.map((inv, i) => (
-                <div key={i} className="text-sm flex justify-between">
-                  <span>{inv.ref || `Facture ${i + 1}`}</span>
-                  <span className="tabular-nums">{formatMoney(inv.caHt ?? inv.ca_ht)}</span>
+                <div key={inv.hubspot_invoice_id || i} className="text-sm flex justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    {inv.ref || t('margins.invoiceFallbackRef', { n: i + 1 })}
+                    {inv.invoice_date ? (
+                      <span className="text-muted-foreground text-xs"> · {inv.invoice_date}</span>
+                    ) : null}
+                  </span>
+                  <span className="tabular-nums shrink-0">{formatMoney(inv.caHt ?? inv.ca_ht)}</span>
                 </div>
               ))}
+              {dossier.invoices.length > 1 && (
+                <div className="text-sm flex justify-between gap-2 border-t border-dashed pt-1 font-medium">
+                  <span>{t('margins.invoicesTotalHt')}</span>
+                  <span className="tabular-nums">{formatMoney(sumInvoiceCaHt(dossier.invoices))}</span>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,9 +1,12 @@
 import { computeWorkedMinutes, minutesToHoursDecimal } from '@/lib/timeTracking';
+import { resolveCloserFromContactOwner } from '@/lib/hubspotService';
 import {
-  refreshProjectInvoiceAmountHt,
-  resolveCloserFromContactOwner,
-} from '@/lib/hubspotService';
-import { mapSprayProductToSlug, mapTaskLabelToService, roundMoney, toNumberOrNull } from './constants';
+  buildDossierInvoicesFromRows,
+  fetchProjectInvoices,
+  invoicesFingerprintPart,
+  refreshProjectInvoicesHt,
+} from '@/lib/projectInvoices';
+import { mapSprayProductToSlug, mapTaskLabelToService, roundMoney } from './constants';
 import { normalizeFuelAddress } from './fuel';
 
 /**
@@ -26,13 +29,14 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
     return { error: 'Aucun projet sélectionné' };
   }
 
-  let project = await resolveProject(supabase, projectId, companycamProjectId);
+  const project = await resolveProject(supabase, projectId, companycamProjectId);
   if (project?.error) return { error: project.error };
 
-  // Self-heal: re-fetch HubSpot invoice HT when an invoice is linked.
-  // projects.hubspot_invoice_amount may still hold TTC from pre-v1.5.6 links.
-  if (project?.hubspot_invoice_id) {
-    project = await refreshProjectInvoiceAmountHt(supabase, project);
+  // Self-heal: re-fetch HT of EVERY linked HubSpot invoice (project_invoices, v1.6.20).
+  // Falls back to the legacy single link (projects.hubspot_invoice_*) when no rows.
+  let invoiceRows = await fetchProjectInvoices(supabase, project, { backfill: true });
+  if (invoiceRows.length) {
+    invoiceRows = await refreshProjectInvoicesHt(supabase, project, invoiceRows);
   }
 
   const [timeRes, sprayRes, expenseRes] = await Promise.all([
@@ -63,7 +67,8 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
   const productLines = buildProductLines(sprayEntries);
   const otherExpenses = sumExpensesHt(expenses);
 
-  const invoices = buildInvoicesFromProject(project);
+  // CA HT = sum of HT amounts of all linked invoices
+  const invoices = buildDossierInvoicesFromRows(invoiceRows);
   const caHt = invoices.length
     ? roundMoney(invoices.reduce((s, i) => s + (Number(i.caHt) || 0), 0))
     : null;
@@ -72,8 +77,7 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
     timeEntries,
     sprayEntries,
     expenses,
-    hubspotInvoiceId: project?.hubspot_invoice_id || null,
-    hubspotInvoiceAmount: project?.hubspot_invoice_amount ?? null,
+    invoiceRows,
   });
 
   const fromProject = normalizeFuelAddress(project?.full_address || project?.address || '');
@@ -101,6 +105,7 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
     hourLines,
     productLines,
     invoices,
+    invoiceRows,
     ca_ht: caHt,
     otherExpenses,
     expenses,
@@ -171,22 +176,6 @@ async function fetchScoped(supabase, table, projectId, companycamProjectId, { se
 
   if (orderBy) query = query.order(orderBy, { ascending: true });
   return query;
-}
-
-function buildInvoicesFromProject(project) {
-  if (!project) return [];
-  // hubspot_invoice_amount must be HTVA (excl. VAT). importFromProject refreshes it
-  // from HubSpot (hs_amount_billed_pre_tax) before calling this builder.
-  const amount = toNumberOrNull(project.hubspot_invoice_amount);
-  if (amount == null || amount <= 0) return [];
-  return [
-    {
-      ref: project.hubspot_invoice_number || project.hubspot_invoice_id || 'HubSpot',
-      caHt: roundMoney(amount),
-      source: 'hubspot',
-      hubspot_invoice_id: project.hubspot_invoice_id || null,
-    },
-  ];
 }
 
 function sumExpensesHt(expenses) {
@@ -308,19 +297,25 @@ async function enrichHourLinesAddresses(supabase, hourLines, timeEntries) {
   return hourLines;
 }
 
-/** Stable SHA-256 of sorted ids+updated_at for Suivi sources + HubSpot invoice. */
+/** Stable SHA-256 of sorted ids+updated_at for Suivi sources + linked HubSpot invoices. */
 export async function buildSourceFingerprint({
   timeEntries = [],
   sprayEntries = [],
   expenses = [],
+  invoiceRows = null,
   hubspotInvoiceId = null,
   hubspotInvoiceAmount = null,
 } = {}) {
+  const rows = Array.isArray(invoiceRows)
+    ? invoiceRows
+    : hubspotInvoiceId
+      ? [{ hubspot_invoice_id: hubspotInvoiceId, amount_ht: hubspotInvoiceAmount }]
+      : [];
   const parts = [
     'time:' + serializeRows(timeEntries),
     'spray:' + serializeRows(sprayEntries),
     'exp:' + serializeRows(expenses),
-    `hs:${hubspotInvoiceId || ''}:${hubspotInvoiceAmount ?? ''}`,
+    invoicesFingerprintPart(rows),
   ];
   return sha256Hex(parts.join('|'));
 }
@@ -339,7 +334,7 @@ export async function computeLiveFingerprint(supabase, { projectId, companycamPr
   const ccId = companycamProjectId || project?.companycam_project_id || null;
   const pid = project?.id || projectId || null;
 
-  const [timeRes, sprayRes, expenseRes] = await Promise.all([
+  const [timeRes, sprayRes, expenseRes, invoiceRows] = await Promise.all([
     fetchScoped(supabase, 'time_entries', pid, ccId, {
       select: 'id, updated_at, created_at',
       orderBy: null,
@@ -352,6 +347,7 @@ export async function computeLiveFingerprint(supabase, { projectId, companycamPr
       select: 'id, updated_at, created_at',
       orderBy: null,
     }),
+    fetchProjectInvoices(supabase, project),
   ]);
 
   if (timeRes.error) return { error: timeRes.error.message };
@@ -362,11 +358,10 @@ export async function computeLiveFingerprint(supabase, { projectId, companycamPr
     timeEntries: timeRes.data || [],
     sprayEntries: sprayRes.data || [],
     expenses: expenseRes.data || [],
-    hubspotInvoiceId: project?.hubspot_invoice_id || null,
-    hubspotInvoiceAmount: project?.hubspot_invoice_amount ?? null,
+    invoiceRows,
   });
 
-  return { fingerprint, project };
+  return { fingerprint, project, invoiceRows };
 }
 
 async function sha256Hex(text) {

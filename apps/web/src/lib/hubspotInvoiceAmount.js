@@ -20,7 +20,23 @@ export const HUBSPOT_INVOICE_AMOUNT_PROPERTIES = [
   'hs_invoice_status',
   'hs_title',
   'hs_balance_due',
+  'hs_invoice_date',
 ];
+
+/**
+ * Normalize a HubSpot date/datetime property (ISO string or epoch ms) to YYYY-MM-DD.
+ * @param {unknown} v
+ * @returns {string|null}
+ */
+export function normalizeHubSpotDate(v) {
+  if (v === '' || v == null) return null;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const n = Number(s);
+  const d = Number.isFinite(n) ? new Date(n) : new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
 
 function toFiniteNumber(v) {
   if (v === '' || v == null) return null;

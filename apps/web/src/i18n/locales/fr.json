@@ -335,7 +335,15 @@
     "season": {
       "SPRING": "Printemps",
       "FALL": "Automne"
-    }
+    },
+    "addInvoice": "Ajouter une facture",
+    "removeInvoice": "Retirer cette facture",
+    "invoiceRemovedTitle": "Facture retirée",
+    "invoiceRemovedDesc": "Facture {{number}} déliée du chantier.",
+    "invoiceAlreadyLinked": "Déjà liée",
+    "invoiceNoHt": "Montant HT inconnu",
+    "invoicesTotalHt_one": "Total HT ({{count}} facture)",
+    "invoicesTotalHt_other": "Total HT ({{count}} factures)"
   },
   "googleCalendar": {
     "label": "Intervention Google Calendar",
@@ -514,6 +522,15 @@
     "cacStatusNoEntry": "date d’entrée inconnue",
     "cacSource_deal_createdate": "date de création du deal",
     "cacSource_project_created_at": "date de création du projet",
-    "cacSource_google_calendar_start": "date calendrier"
+    "cacSource_google_calendar_start": "date calendrier",
+    "caFromInvoices_one": "CA issu de {{count}} facture",
+    "caFromInvoices_other": "CA issu de {{count}} factures",
+    "invoicesTitle_one": "Facture",
+    "invoicesTitle_other": "Factures ({{count}})",
+    "invoicesTotalHt": "Total HT",
+    "invoiceFallbackRef": "Facture {{n}}",
+    "generatedCaFromInvoices_one": "CA HT (HTVA) HubSpot : {{amount}} ({{count}} facture)",
+    "generatedCaFromInvoices_other": "CA HT (HTVA) HubSpot : {{amount}} ({{count}} factures)",
+    "generatedNoInvoice": "Pas de facture HubSpot liée — CA HT manquant."
   }
 }
