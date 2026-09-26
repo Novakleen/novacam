@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Droplets, Building2, FolderKanban } from 'lucide-react';
+import { Loader2, Droplets, Building2, FolderKanban, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -27,10 +27,12 @@ import { todayISODate } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
 import {
+  activeSprayProducts,
   findSprayProduct,
   resolveSprayProductSlug,
   useSprayProducts,
 } from '@/lib/sprayProducts';
+import { fetchSprayVanStock } from '@/lib/fleet/api';
 
 const CUSTOM_PRODUCT = '__custom__';
 
@@ -156,6 +158,31 @@ const SprayEntryFormDialog = ({
     return guess && findSprayProduct(guess, products) ? guess : null;
   }, [form.product_slug, form.product, products, customProduct]);
   const catalogProduct = findSprayProduct(catalogSlug, products);
+  // Inactive catalog products are hidden from the picker unless already linked to this entry
+  const pickerProducts = useMemo(
+    () => activeSprayProducts(products, catalogSlug || entry?.product_slug),
+    [products, catalogSlug, entry?.product_slug]
+  );
+
+  // Fleet (v1.7.0): warn when the technician's van holds less than the quantity (never blocks)
+  const [vanStock, setVanStock] = useState(null);
+  useEffect(() => {
+    if (!open || !form.user_id) {
+      setVanStock(null);
+      return undefined;
+    }
+    let alive = true;
+    fetchSprayVanStock(form.user_id, form.work_date, entry?.id || null)
+      .then((res) => alive && setVanStock(res))
+      .catch(() => alive && setVanStock(null));
+    return () => {
+      alive = false;
+    };
+  }, [open, form.user_id, form.work_date, entry?.id]);
+  const qtyNum = Number(form.product_quantity);
+  const vanAvailable = catalogProduct && vanStock ? vanStock.litres[catalogProduct.slug] || 0 : null;
+  const vanStockLow =
+    vanAvailable != null && Number.isFinite(qtyNum) && qtyNum > 0 && qtyNum > vanAvailable + 1e-9;
   const showCustomInput = !catalogProduct && (customProduct || Boolean(form.product));
   const productSelectValue = catalogProduct
     ? catalogProduct.slug
@@ -481,7 +508,7 @@ const SprayEntryFormDialog = ({
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {products.map((p) => (
+                  {pickerProducts.map((p) => (
                     <SelectItem key={p.slug} value={p.slug}>
                       {p.name}
                     </SelectItem>
@@ -570,6 +597,18 @@ const SprayEntryFormDialog = ({
               />
             </div>
           </div>
+          {vanStockLow && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>
+                {t('fleet.sprayWarning', {
+                  van: vanStock.vanName,
+                  litres: Math.round(vanAvailable * 10) / 10,
+                  product: catalogProduct?.name || '',
+                })}
+              </span>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Matériel utilisé</Label>

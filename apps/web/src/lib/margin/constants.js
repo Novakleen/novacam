@@ -85,9 +85,10 @@ export function productOptions(prices) {
     return prices.map((p) => ({
       slug: p.slug || p.product,
       label: p.name || productLabel(p.slug || p.product),
+      active: p.active !== false,
     })).filter((p) => p.slug);
   }
-  return PRODUCT_SLUGS.map((p) => ({ slug: p.slug, label: p.label }));
+  return PRODUCT_SLUGS.map((p) => ({ slug: p.slug, label: p.label, active: true }));
 }
 
 export function slugifyProductName(name) {

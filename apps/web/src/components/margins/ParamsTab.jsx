@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Loader2, Pencil, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Loader2, Plus, RefreshCw, Save, Trash2, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,25 +9,9 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { SERVICE_CODES, productLabel, slugifyProductName } from '@/lib/margin/constants';
-import {
-  countProductUsage,
-  createProductPrice,
-  deleteProductPrice,
-  updateMarginParams,
-  updateProductPrice,
-} from '@/lib/margin/api';
+import { SERVICE_CODES, productLabel } from '@/lib/margin/constants';
+import { updateMarginParams } from '@/lib/margin/api';
 import { dieselSourceLabel, isDieselFresh, refreshDieselPrice } from '@/lib/margin/diesel';
 import CacAdsPanel from './CacAdsPanel';
 import { formatDateTime, formatNumber } from '@/lib/margin/format';
@@ -40,18 +26,13 @@ const Field = ({ label, hint, children }) => (
 
 const ParamsTab = ({ params, prices, onReload }) => {
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const navigate = useNavigate();
   const [form, setForm] = useState(() => serialize(params));
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [innerTab, setInnerTab] = useState('couts');
 
-  const [editDrafts, setEditDrafts] = useState({});
-  const [editingSlug, setEditingSlug] = useState(null);
-  const [newProduct, setNewProduct] = useState({ name: '', price_eur_l: '' });
-  const [productBusy, setProductBusy] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteUsage, setDeleteUsage] = useState(0);
-  const [deleting, setDeleting] = useState(false);
   const [newCloser, setNewCloser] = useState('');
 
   React.useEffect(() => {
@@ -116,86 +97,6 @@ const ParamsTab = ({ params, prices, onReload }) => {
     }
   };
 
-  const startEditProduct = (row) => {
-    const slug = row.slug;
-    setEditingSlug(slug);
-    setEditDrafts({
-      name: row.name || productLabel(slug) || slug,
-      price_eur_l: row.price_eur_l ?? row.price ?? '',
-    });
-  };
-
-  const saveProductEdit = async (row) => {
-    setProductBusy(true);
-    try {
-      await updateProductPrice(row, {
-        name: String(editDrafts.name || '').trim() || row.name || row.slug,
-        price_eur_l: Number(editDrafts.price_eur_l),
-      });
-      setEditingSlug(null);
-      toast({ title: 'Produit mis à jour' });
-      if (onReload) await onReload();
-    } catch (err) {
-      toast({ variant: 'destructive', title: 'Échec', description: err.message });
-    } finally {
-      setProductBusy(false);
-    }
-  };
-
-  const handleAddProduct = async () => {
-    const name = String(newProduct.name || '').trim();
-    const slug = slugifyProductName(name);
-    const price = Number(newProduct.price_eur_l);
-    if (!name || !slug) {
-      toast({ variant: 'destructive', title: 'Nom requis' });
-      return;
-    }
-    if (!Number.isFinite(price)) {
-      toast({ variant: 'destructive', title: 'Prix invalide' });
-      return;
-    }
-    if ((prices || []).some((p) => p.slug === slug)) {
-      toast({ variant: 'destructive', title: 'Slug déjà existant', description: slug });
-      return;
-    }
-    setProductBusy(true);
-    try {
-      await createProductPrice({ slug, name, price_eur_l: price });
-      setNewProduct({ name: '', price_eur_l: '' });
-      toast({ title: 'Produit ajouté', description: slug });
-      if (onReload) await onReload();
-    } catch (err) {
-      toast({ variant: 'destructive', title: 'Échec', description: err.message });
-    } finally {
-      setProductBusy(false);
-    }
-  };
-
-  const askDeleteProduct = async (row) => {
-    try {
-      const usage = await countProductUsage(row.slug);
-      setDeleteUsage(usage);
-    } catch {
-      setDeleteUsage(0);
-    }
-    setDeleteTarget(row);
-  };
-
-  const confirmDeleteProduct = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await deleteProductPrice(deleteTarget.slug);
-      toast({ title: 'Produit supprimé' });
-      setDeleteTarget(null);
-      if (onReload) await onReload();
-    } catch (err) {
-      toast({ variant: 'destructive', title: 'Suppression impossible', description: err.message });
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   const addCloser = () => {
     const name = newCloser.trim();
     if (!name) return;
@@ -206,7 +107,6 @@ const ParamsTab = ({ params, prices, onReload }) => {
 
   const source = dieselSourceLabel(params);
   const fresh = isDieselFresh(params?.diesel_fetched_at);
-  const autoSlug = slugifyProductName(newProduct.name);
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -399,145 +299,32 @@ const ParamsTab = ({ params, prices, onReload }) => {
         <TabsContent value="produits" className="mt-4 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Prix produits (€ / L)</CardTitle>
-              <CardDescription>
-                CRUD sur <code>margin_product_prices</code> (slug, nom, prix).
-              </CardDescription>
+              <CardTitle>{t('fleet.marginsLink.title')}</CardTitle>
+              <CardDescription>{t('fleet.marginsLink.desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {(prices || []).map((row) => {
-                const slug = row.slug;
-                const isEditing = editingSlug === slug;
-                return (
-                  <div
-                    key={slug}
-                    className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end rounded-xl border p-3"
-                  >
-                    {isEditing ? (
-                      <>
-                        <div className="md:col-span-5">
-                          <Label className="text-xs">Nom</Label>
-                          <Input
-                            value={editDrafts.name}
-                            onChange={(e) =>
-                              setEditDrafts((d) => ({ ...d, name: e.target.value }))
-                            }
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">slug : {slug}</p>
-                        </div>
-                        <div className="md:col-span-3">
-                          <Label className="text-xs">Prix €/L</Label>
-                          <Input
-                            type="number"
-                            step="0.0001"
-                            value={editDrafts.price_eur_l}
-                            onChange={(e) =>
-                              setEditDrafts((d) => ({ ...d, price_eur_l: e.target.value }))
-                            }
-                          />
-                        </div>
-                        <div className="md:col-span-4 flex gap-2 justify-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => saveProductEdit(row)}
-                            disabled={productBusy}
-                          >
-                            {productBusy ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4 mr-1" />
-                            )}
-                            OK
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingSlug(null)}
-                          >
-                            Annuler
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="md:col-span-5">
-                          <p className="font-medium">
-                            {row.name || productLabel(slug) || slug}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{slug}</p>
-                        </div>
-                        <div className="md:col-span-3 tabular-nums">
-                          {formatNumber(row.price_eur_l ?? row.price, 4)} €/L
-                        </div>
-                        <div className="md:col-span-4 flex gap-1 justify-end">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => startEditProduct(row)}
-                            aria-label={`Modifier ${slug}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="text-red-600"
-                            onClick={() => askDeleteProduct(row)}
-                            aria-label={`Supprimer ${slug}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-              {(!prices || !prices.length) && (
-                <p className="text-sm text-muted-foreground">Aucun prix produit en base.</p>
-              )}
-
-              <div className="border-t pt-4 space-y-3">
-                <p className="text-sm font-semibold">Ajouter un produit</p>
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                  <div className="md:col-span-5">
-                    <Label className="text-xs">Nom</Label>
-                    <Input
-                      value={newProduct.name}
-                      onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
-                      placeholder="ex. Nouveau produit"
-                    />
-                    {autoSlug && (
-                      <p className="text-xs text-muted-foreground mt-1">slug : {autoSlug}</p>
-                    )}
-                  </div>
-                  <div className="md:col-span-3">
-                    <Label className="text-xs">Prix €/L</Label>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      value={newProduct.price_eur_l}
-                      onChange={(e) =>
-                        setNewProduct((p) => ({ ...p, price_eur_l: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="md:col-span-4 flex justify-end">
-                    <Button type="button" onClick={handleAddProduct} disabled={productBusy}>
-                      {productBusy ? (
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                      ) : (
-                        <Plus className="h-4 w-4 mr-1" />
-                      )}
-                      Ajouter
-                    </Button>
-                  </div>
-                </div>
+              <div className="divide-y rounded-xl border">
+                {(prices || [])
+                  .filter((row) => row.active !== false)
+                  .map((row) => (
+                    <div key={row.slug} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-3 w-3 rounded-[4px]"
+                          style={{ backgroundColor: row.color || '#1e3a8a' }}
+                        />
+                        {row.name || productLabel(row.slug) || row.slug}
+                      </span>
+                      <span className="tabular-nums font-medium">
+                        {formatNumber(Number(row.price_eur_l ?? row.price ?? 0), 3)} €/L
+                      </span>
+                    </div>
+                  ))}
               </div>
+              <Button type="button" onClick={() => navigate('/fleet/products')}>
+                <Truck className="h-4 w-4 mr-2" />
+                {t('fleet.marginsLink.button')}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -596,30 +383,6 @@ const ParamsTab = ({ params, prices, onReload }) => {
         </TabsContent>
       </Tabs>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer ce produit ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.name || deleteTarget?.slug} ({deleteTarget?.slug}) sera retiré de la
-              liste des prix.
-              {deleteUsage > 0 && (
-                <>
-                  {' '}
-                  Attention : ce produit apparaît dans {deleteUsage} ligne(s) de dossier(s). La
-                  suppression n’efface pas ces lignes.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteProduct} disabled={deleting}>
-              {deleting ? 'Suppression…' : 'Supprimer'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

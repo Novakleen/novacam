@@ -1,8 +1,10 @@
 /**
  * Spray product catalog (v1.6.21).
  *
- * Source of truth: public.margin_product_prices (Admin → Marge chantiers → Paramètres).
- * Read for every role via RPC list_spray_products() (slug + name only; prices stay Admin-only).
+ * Source of truth: public.margin_product_prices (managed in Flotte › Produits since v1.7.0).
+ * Read for every role via RPC list_spray_products() (no prices; prices stay Admin-only).
+ * Rows carry `active`: inactive products stay in the list (history / names) but are hidden
+ * from new-spray pickers — use activeSprayProducts().
  * spray_entries.product_slug links an entry to a catalog product (slug is stable on rename);
  * spray_entries.product keeps the name as saved (fallback when the product was deleted / « Autre »).
  */
@@ -10,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { PRODUCT_SLUGS, mapSprayProductToSlug } from '@/lib/margin/constants';
 
-let cache = null; // Promise<Array<{slug, name}>>
+let cache = null; // Promise<Array<{slug, name, active, color, ...}>>
 const listeners = new Set();
 
 function normalize(s) {
@@ -27,14 +29,27 @@ function sortProducts(rows) {
   );
 }
 
+function toRow(r) {
+  return {
+    slug: r.slug,
+    name: r.name || r.slug,
+    active: r.active !== false,
+    color: r.color || null,
+    pack_litres: r.pack_litres ?? null,
+    default_min_depot: r.default_min_depot ?? null,
+    default_min_van: r.default_min_van ?? null,
+    name_nl: r.name_nl || null,
+    name_en: r.name_en || null,
+    sort: r.sort ?? 0,
+  };
+}
+
 async function loadProducts() {
   // 1) RPC (all signed-in roles)
   try {
     const { data, error } = await supabase.rpc('list_spray_products');
     if (!error && Array.isArray(data)) {
-      return sortProducts(
-        data.filter((r) => r?.slug).map((r) => ({ slug: r.slug, name: r.name || r.slug }))
-      );
+      return sortProducts(data.filter((r) => r?.slug).map(toRow));
     }
     if (error) console.warn('[sprayProducts] rpc failed:', error.message);
   } catch (err) {
@@ -42,17 +57,15 @@ async function loadProducts() {
   }
   // 2) Direct table read (Admin RLS)
   try {
-    const { data, error } = await supabase.from('margin_product_prices').select('slug, name');
+    const { data, error } = await supabase.from('margin_product_prices').select('*');
     if (!error && Array.isArray(data) && data.length) {
-      return sortProducts(
-        data.filter((r) => r?.slug).map((r) => ({ slug: r.slug, name: r.name || r.slug }))
-      );
+      return sortProducts(data.filter((r) => r?.slug).map(toRow));
     }
   } catch {
     /* ignore */
   }
   // 3) Static fallback (offline / migration missing)
-  return sortProducts(PRODUCT_SLUGS.map((p) => ({ slug: p.slug, name: p.label })));
+  return sortProducts(PRODUCT_SLUGS.map((p) => toRow({ slug: p.slug, name: p.label })));
 }
 
 /** Cached catalog fetch. `force` bypasses the cache. */
@@ -97,6 +110,11 @@ export function useSprayProducts() {
     };
   }, []);
   return { products, loading };
+}
+
+/** Products selectable for a new / edited spray: active ones + the currently linked slug. */
+export function activeSprayProducts(products, keepSlug) {
+  return (products || []).filter((p) => p.active !== false || (keepSlug && p.slug === keepSlug));
 }
 
 /** Catalog product for a slug, or null. */
