@@ -9,12 +9,26 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatDateDisplay } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
+import { sprayProductDisplayName, useSprayProducts } from '@/lib/sprayProducts';
 
 const fmtNum = (v, decimals = 0) => {
   if (v == null || v === '') return '—';
   const n = Number(v);
   if (Number.isNaN(n)) return String(v);
   return decimals > 0 ? n.toFixed(decimals) : String(n);
+};
+
+/** Current catalog name when linked (renames), else stored name as-is. */
+const SprayProductCell = ({ row, products, t }) => {
+  const label = sprayProductDisplayName(row, products);
+  const stored = (row.product || '').trim();
+  const differs = stored && label !== '—' && stored.toLowerCase() !== label.toLowerCase();
+  return (
+    <span title={differs ? t('spray.productStoredAs', { name: stored }) : undefined}>
+      {label}
+    </span>
+  );
 };
 
 const SprayEntriesTable = ({
@@ -24,6 +38,8 @@ const SprayEntriesTable = ({
   onDelete,
   emptyMessage = 'Aucune pulvérisation enregistrée.',
 }) => {
+  const { t } = useTranslation();
+  const { products } = useSprayProducts();
   if (loading) {
     return (
       <div className="space-y-2">
@@ -93,7 +109,9 @@ const SprayEntriesTable = ({
                     )}
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap">{userName}</td>
-                  <td className="px-3 py-3 font-medium">{row.product || '—'}</td>
+                  <td className="px-3 py-3 font-medium">
+                    <SprayProductCell row={row} products={products} t={t} />
+                  </td>
                   <td className="px-3 py-3 text-right tabular-nums">
                     {fmtNum(row.surface_m2)}
                   </td>

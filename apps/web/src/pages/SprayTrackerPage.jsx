@@ -26,7 +26,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import SprayEntriesTable from '@/components/spray/SprayEntriesTable';
-import SprayEntryFormDialog, { SPRAY_PRODUCTS } from '@/components/spray/SprayEntryFormDialog';
+import SprayEntryFormDialog from '@/components/spray/SprayEntryFormDialog';
+import {
+  sprayProductDisplayName,
+  sprayProductKey,
+  useSprayProducts,
+} from '@/lib/sprayProducts';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -44,6 +49,7 @@ const SprayTrackerPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { products: sprayProducts } = useSprayProducts();
   const [entries, setEntries] = useState([]);
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
@@ -129,15 +135,14 @@ const SprayTrackerPage = () => {
   const filtered = useMemo(() => {
     return entries.filter((e) => {
       if (filterUser !== 'all' && e.user_id !== filterUser) return false;
-      if (filterProduct !== 'all') {
-        const p = (e.product || '').toLowerCase();
-        if (p !== filterProduct.toLowerCase()) return false;
+      if (filterProduct !== 'all' && sprayProductKey(e, sprayProducts) !== filterProduct) {
+        return false;
       }
       if (dateFrom && e.work_date < dateFrom) return false;
       if (dateTo && e.work_date > dateTo) return false;
       return true;
     });
-  }, [entries, filterUser, filterProduct, dateFrom, dateTo]);
+  }, [entries, filterUser, filterProduct, dateFrom, dateTo, sprayProducts]);
 
   const totals = useMemo(() => {
     let qty = 0;
@@ -151,13 +156,18 @@ const SprayTrackerPage = () => {
     return { qty, surface, hours };
   }, [filtered]);
 
+  // Catalog products (margin params) + free-text / removed products still present on entries
   const productOptions = useMemo(() => {
-    const set = new Set(SPRAY_PRODUCTS.map((p) => p));
+    const map = new Map();
+    sprayProducts.forEach((p) => map.set(`slug:${p.slug}`, p.name));
     entries.forEach((e) => {
-      if (e.product) set.add(e.product);
+      const key = sprayProductKey(e, sprayProducts);
+      if (key && !map.has(key)) map.set(key, sprayProductDisplayName(e, sprayProducts));
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
-  }, [entries]);
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) =>
+      a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' })
+    );
+  }, [entries, sprayProducts]);
 
   const handleDelete = async () => {
     if (!deleting?.id) return;
@@ -199,7 +209,7 @@ const SprayTrackerPage = () => {
         formatDateDisplay(e.work_date),
         e.client_name || e.companycam_project_name || e.projects?.name || '',
         e.profiles?.full_name || '',
-        e.product || '',
+        sprayProductDisplayName(e, sprayProducts).replace(/^—$/, ''),
         e.surface_m2 ?? '',
         e.spray_hours ?? '',
         e.method || '',
@@ -336,8 +346,8 @@ const SprayTrackerPage = () => {
             <SelectContent>
               <SelectItem value="all">Tous les produits</SelectItem>
               {productOptions.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
+                <SelectItem key={p.value} value={p.value}>
+                  {p.label}
                 </SelectItem>
               ))}
             </SelectContent>

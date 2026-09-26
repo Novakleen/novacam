@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2, Droplets, Building2, FolderKanban } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
@@ -25,14 +26,13 @@ import {
 import { todayISODate } from '@/lib/timeTracking';
 import { cn } from '@/lib/utils';
 import CompanyCamProjectPicker from '@/components/time/CompanyCamProjectPicker';
+import {
+  findSprayProduct,
+  resolveSprayProductSlug,
+  useSprayProducts,
+} from '@/lib/sprayProducts';
 
-export const SPRAY_PRODUCTS = [
-  'Amphiclean',
-  'Biomix',
-  'Algimouss',
-  'Algivert',
-  'Product Kleenku',
-];
+const CUSTOM_PRODUCT = '__custom__';
 
 export const SPRAY_EQUIPMENT = [
   'Gladiator pump',
@@ -57,6 +57,7 @@ const emptyForm = (defaults = {}) => ({
   project_id: defaults.project_id || '',
   work_date: defaults.work_date || todayISODate(),
   product: defaults.product || '',
+  product_slug: defaults.product_slug || '',
   surface_m2: defaults.surface_m2 ?? '',
   spray_hours: defaults.spray_hours ?? '',
   method: defaults.method || '',
@@ -85,13 +86,17 @@ const SprayEntryFormDialog = ({
 }) => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const { products, loading: productsLoading } = useSprayProducts();
   const [saving, setSaving] = useState(false);
+  const [customProduct, setCustomProduct] = useState(false);
   const [form, setForm] = useState(() =>
     emptyForm({ user_id: user?.id, project_id: defaultProjectId || '' })
   );
 
   useEffect(() => {
     if (!open) return;
+    setCustomProduct(false);
     if (entry) {
       const hasCc = Boolean(entry.companycam_project_id);
       const hasApp = Boolean(entry.project_id);
@@ -106,6 +111,7 @@ const SprayEntryFormDialog = ({
         project_id: entry.project_id || '',
         work_date: entry.work_date || todayISODate(),
         product: entry.product || '',
+        product_slug: entry.product_slug || '',
         surface_m2: entry.surface_m2 ?? '',
         spray_hours: entry.spray_hours ?? '',
         method: entry.method || '',
@@ -139,6 +145,26 @@ const SprayEntryFormDialog = ({
   }, [open, entry, user?.id, defaultProjectId, lockProject, lockCompanyCam, ccProjectId, ccProjectName, defaultSurfaceM2]);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  // Catalog slug for the current form: explicit link, else legacy name match (unlinked entries).
+  const catalogSlug = useMemo(() => {
+    if (form.product_slug) {
+      return findSprayProduct(form.product_slug, products) ? form.product_slug : null;
+    }
+    if (customProduct) return null;
+    const guess = resolveSprayProductSlug(form.product, products);
+    return guess && findSprayProduct(guess, products) ? guess : null;
+  }, [form.product_slug, form.product, products, customProduct]);
+  const catalogProduct = findSprayProduct(catalogSlug, products);
+  const showCustomInput = !catalogProduct && (customProduct || Boolean(form.product));
+  const productSelectValue = catalogProduct
+    ? catalogProduct.slug
+    : showCustomInput
+      ? CUSTOM_PRODUCT
+      : '';
+  // Linked product removed from the catalog → keep stored name as free text
+  const productRemovedFromCatalog =
+    Boolean(form.product_slug) && !productsLoading && !findSprayProduct(form.product_slug, products);
 
   const handleClientSourceChange = (source) => {
     if (lockProject) return;
@@ -218,7 +244,8 @@ const SprayEntryFormDialog = ({
       toast({ variant: 'destructive', title: 'Erreur', description: 'La date est obligatoire.' });
       return;
     }
-    if (!form.product?.trim()) {
+    const productName = (catalogProduct ? catalogProduct.name : form.product || '').trim();
+    if (!productName) {
       toast({ variant: 'destructive', title: 'Erreur', description: 'Indiquez le produit.' });
       return;
     }
@@ -252,7 +279,8 @@ const SprayEntryFormDialog = ({
       user_id: form.user_id,
       project_id: projectId,
       work_date: form.work_date,
-      product: form.product.trim(),
+      product: productName,
+      product_slug: catalogProduct ? catalogProduct.slug : null,
       surface_m2: toNum(form.surface_m2),
       spray_hours: toNum(form.spray_hours),
       method: form.method?.trim() || null,
@@ -421,31 +449,58 @@ const SprayEntryFormDialog = ({
             <div className="space-y-2">
               <Label>Produit</Label>
               <Select
-                value={form.product || 'custom'}
+                value={productSelectValue}
+                disabled={productsLoading && !products.length}
                 onValueChange={(v) => {
-                  if (v === 'custom') setField('product', '');
-                  else setField('product', v);
+                  if (v === CUSTOM_PRODUCT) {
+                    setCustomProduct(true);
+                    setForm((prev) => ({
+                      ...prev,
+                      product_slug: '',
+                      // keep a typed/stored free-text name; clear a catalog name
+                      product: catalogProduct ? '' : prev.product,
+                    }));
+                  } else {
+                    const picked = findSprayProduct(v, products);
+                    setCustomProduct(false);
+                    setForm((prev) => ({
+                      ...prev,
+                      product_slug: v,
+                      product: picked?.name || prev.product,
+                    }));
+                  }
                 }}
               >
                 <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Choisir un produit" />
+                  <SelectValue
+                    placeholder={
+                      productsLoading && !products.length
+                        ? t('spray.productsLoading')
+                        : t('spray.productPlaceholder')
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {SPRAY_PRODUCTS.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
+                  {products.map((p) => (
+                    <SelectItem key={p.slug} value={p.slug}>
+                      {p.name}
                     </SelectItem>
                   ))}
-                  <SelectItem value="custom">Autre…</SelectItem>
+                  <SelectItem value={CUSTOM_PRODUCT}>{t('spray.productOther')}</SelectItem>
                 </SelectContent>
               </Select>
-              {!SPRAY_PRODUCTS.includes(form.product) && (
+              {showCustomInput && (
                 <Input
                   className="h-11 rounded-xl mt-2"
-                  placeholder="Nom du produit"
+                  placeholder={t('spray.productNamePlaceholder')}
                   value={form.product}
-                  onChange={(e) => setField('product', e.target.value)}
+                  onChange={(e) => setForm((prev) => ({ ...prev, product: e.target.value, product_slug: '' }))}
                 />
+              )}
+              {productRemovedFromCatalog && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {t('spray.productNotInCatalog')}
+                </p>
               )}
             </div>
             <div className="space-y-2">
