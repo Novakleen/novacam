@@ -21,8 +21,12 @@ const emptyLine = (defaultSlug = 'biomix') => ({
 });
 
 const ProductLinesEditor = ({ lines = [], onChange, prices }) => {
-  const options = productOptions(prices);
-  const defaultSlug = options[0]?.slug || 'biomix';
+  const allOptions = productOptions(prices);
+  // Inactive products (Flotte › Produits) are hidden for new lines but kept on existing ones
+  const options = allOptions.filter((p) => p.active !== false);
+  const optionsFor = (slug) =>
+    allOptions.filter((p) => p.active !== false || p.slug === slug);
+  const defaultSlug = options[0]?.slug || allOptions[0]?.slug || 'biomix';
   const update = (index, patch) => {
     onChange(lines.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   };
@@ -64,7 +68,7 @@ const ProductLinesEditor = ({ lines = [], onChange, prices }) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {options.map((p) => (
+                  {optionsFor(line.product || defaultSlug).map((p) => (
                     <SelectItem key={p.slug} value={p.slug}>
                       {p.label}
                     </SelectItem>

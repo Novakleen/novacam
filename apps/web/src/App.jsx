@@ -31,6 +31,7 @@ import BugHunterPage from '@/pages/BugHunterPage';
 import TimeTrackerPage from '@/pages/TimeTrackerPage';
 import SprayTrackerPage from '@/pages/SprayTrackerPage';
 import MarginsPage from '@/pages/MarginsPage';
+import FleetPage from '@/pages/FleetPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
 
 const PrivateRoute = ({ children }) => {
@@ -82,6 +83,7 @@ const MEMBER_ALLOWED_PREFIXES = [
   '/photos',
   '/time-tracker',
   '/spray-tracker',
+  '/fleet',
   '/profile',
   '/project/',
   '/project-cc/',
@@ -214,6 +216,9 @@ function AppRoutes() {
 
           <Route path="/time-tracker" element={<PrivateRoute><TimeTrackerPage /></PrivateRoute>} />
           <Route path="/spray-tracker" element={<PrivateRoute><SprayTrackerPage /></PrivateRoute>} />
+          <Route path="/fleet" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
+          <Route path="/fleet/:section" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
+          <Route path="/fleet/:section/:id" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/margins" element={<RoleRoute allowedRoles={['Admin']}><MarginsPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />

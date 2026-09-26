@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { 
   Home, Image as ImageIcon, Users, Briefcase, Bell, Monitor, Map as MapIcon, 
   Menu, X, LogOut, Moon, Sun, User, UserPlus, UploadCloud, Link as LinkIcon,
-  Bug, ChevronRight, MessageSquare, BarChart3, Camera, Clock, Droplets, PieChart
+  Bug, ChevronRight, MessageSquare, BarChart3, Camera, Clock, Droplets, PieChart, Truck
 } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -130,6 +130,7 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
     if (location.pathname === '/bug-hunter') return t('nav.bugHunter');
     if (location.pathname === '/time-tracker') return t('nav.timeTracker');
     if (location.pathname === '/spray-tracker') return t('nav.sprayTracker');
+    if (location.pathname.startsWith('/fleet')) return t('nav.fleet');
     if (location.pathname === '/map') return t('nav.mapView');
     if (location.pathname === '/photos') return t('nav.photos');
     if (location.pathname === '/users') return t('nav.teamMembers');
@@ -199,6 +200,12 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
         <SidebarItem 
           icon={Droplets} label={t('nav.sprayTracker')} path="/spray-tracker"
           isActive={location.pathname === '/spray-tracker'} onClick={() => navigate('/spray-tracker')}
+          isNew
+          badgeNew={t('common.new')} badgeSoon={t('common.soon')}
+        />
+        <SidebarItem 
+          icon={Truck} label={t('nav.fleet')} path="/fleet"
+          isActive={location.pathname.startsWith('/fleet')} onClick={() => navigate('/fleet')}
           isNew
           badgeNew={t('common.new')} badgeSoon={t('common.soon')}
         />
