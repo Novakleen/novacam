@@ -6,7 +6,8 @@ import {
   invoicesFingerprintPart,
   refreshProjectInvoicesHt,
 } from '@/lib/projectInvoices';
-import { mapSprayProductToSlug, mapTaskLabelToService, roundMoney } from './constants';
+import { fetchSprayProducts, resolveSprayProductSlug } from '@/lib/sprayProducts';
+import { mapTaskLabelToService, roundMoney } from './constants';
 import { normalizeFuelAddress } from './fuel';
 
 /**
@@ -64,7 +65,8 @@ export async function importFromProject(supabase, projectIdOrOpts, maybeCcId) {
 
   let hourLines = buildHourLines(timeEntries);
   hourLines = await enrichHourLinesAddresses(supabase, hourLines, timeEntries);
-  const productLines = buildProductLines(sprayEntries);
+  const sprayProducts = await fetchSprayProducts().catch(() => []);
+  const productLines = buildProductLines(sprayEntries, sprayProducts);
   const otherExpenses = sumExpensesHt(expenses);
 
   // CA HT = sum of HT amounts of all linked invoices
@@ -221,11 +223,12 @@ function buildHourLines(entries) {
   return [...groups.values()];
 }
 
-function buildProductLines(entries) {
+function buildProductLines(entries, sprayProducts = []) {
   const groups = new Map();
 
   for (const e of entries) {
-    const slug = mapSprayProductToSlug(e.product);
+    // product_slug (catalog link) → exact catalog name → legacy keyword heuristics
+    const slug = resolveSprayProductSlug(e, sprayProducts);
     if (!slug) continue;
     const liters = Number(e.product_quantity);
     if (!Number.isFinite(liters) || liters <= 0) continue;

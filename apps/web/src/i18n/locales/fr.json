@@ -235,7 +235,13 @@
     "loadError": "Impossible de charger les pulvérisations du projet.",
     "deleteTitle": "Supprimer cette entrée ?",
     "deleteDesc": "Cette action est définitive et retirera la pulvérisation du projet.",
-    "deletedDesc": "La pulvérisation a été supprimée."
+    "deletedDesc": "La pulvérisation a été supprimée.",
+    "productPlaceholder": "Choisir un produit",
+    "productsLoading": "Chargement des produits…",
+    "productOther": "Autre…",
+    "productNamePlaceholder": "Nom du produit",
+    "productNotInCatalog": "Ce produit n’est plus dans le catalogue — le nom enregistré est conservé.",
+    "productStoredAs": "Enregistré comme : {{name}}"
   },
   "app": {
     "versionLine": "v{{version}} · {{month}}"

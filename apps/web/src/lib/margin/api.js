@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/customSupabaseClient';
 import { MARGIN_PARAMS_ID, sumInvoiceCaHt } from './constants';
+import { invalidateSprayProducts } from '@/lib/sprayProducts';
 
 export async function fetchMarginParams() {
   const { data, error } = await supabase
@@ -27,8 +28,13 @@ export async function fetchProductPrices() {
     .from('margin_product_prices')
     .select('*');
   if (error) throw error;
+  // Sorted by display name (same order as spray product pickers)
   return (data || []).sort((a, b) =>
-    String(a.slug || a.product || '').localeCompare(String(b.slug || b.product || ''))
+    String(a.name || a.slug || a.product || '').localeCompare(
+      String(b.name || b.slug || b.product || ''),
+      'fr',
+      { sensitivity: 'base' }
+    )
   );
 }
 
@@ -43,6 +49,7 @@ export async function updateProductPrice(row, patch) {
   else query = query.eq('slug', row.slug || row);
   const { data, error } = await query.select().maybeSingle();
   if (error) throw error;
+  invalidateSprayProducts();
   return data;
 }
 
@@ -58,12 +65,14 @@ export async function createProductPrice({ slug, name, price_eur_l }) {
     .select()
     .single();
   if (error) throw error;
+  invalidateSprayProducts();
   return data;
 }
 
 export async function deleteProductPrice(slug) {
   const { error } = await supabase.from('margin_product_prices').delete().eq('slug', slug);
   if (error) throw error;
+  invalidateSprayProducts();
 }
 
 /** Soft check: count dossier product lines using this slug. */

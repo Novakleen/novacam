@@ -235,7 +235,13 @@
     "loadError": "Unable to load project spray entries.",
     "deleteTitle": "Delete this entry?",
     "deleteDesc": "This action is permanent and will remove the spray entry from the project.",
-    "deletedDesc": "The spray entry has been deleted."
+    "deletedDesc": "The spray entry has been deleted.",
+    "productPlaceholder": "Choose a product",
+    "productsLoading": "Loading products…",
+    "productOther": "Other…",
+    "productNamePlaceholder": "Product name",
+    "productNotInCatalog": "This product is no longer in the catalog — the saved name is kept.",
+    "productStoredAs": "Saved as: {{name}}"
   },
   "app": {
     "versionLine": "v{{version}} · {{month}}"

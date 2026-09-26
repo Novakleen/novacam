@@ -235,7 +235,13 @@
     "loadError": "Besproeiingen van het project kunnen niet worden geladen.",
     "deleteTitle": "Deze entry verwijderen?",
     "deleteDesc": "Deze actie is definitief en verwijdert de besproeiing van het project.",
-    "deletedDesc": "De besproeiing is verwijderd."
+    "deletedDesc": "De besproeiing is verwijderd.",
+    "productPlaceholder": "Kies een product",
+    "productsLoading": "Producten laden…",
+    "productOther": "Ander…",
+    "productNamePlaceholder": "Productnaam",
+    "productNotInCatalog": "Dit product staat niet meer in de catalogus — de opgeslagen naam blijft behouden.",
+    "productStoredAs": "Opgeslagen als: {{name}}"
   },
   "app": {
     "versionLine": "v{{version}} · {{month}}"
