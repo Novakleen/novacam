@@ -56,6 +56,7 @@ const VanPlan = ({
   canDrag,
   canEditPlan,
   isAdmin,
+  canPlace = isAdmin,
   editing,
   onEditingChange,
   onZone,
@@ -215,7 +216,7 @@ const VanPlan = ({
               }}
               onChange={(id, rect) => setDrafts((d) => ({ ...d, [id]: rect }))}
               onCommit={commit}
-              onQuickAdd={isAdmin ? (id) => onQuickAdd?.(tree.byId.get(id)) : undefined}
+              onQuickAdd={canPlace ? (id) => onQuickAdd?.(tree.byId.get(id)) : undefined}
             />
           )}
         </VanSvg>
@@ -234,12 +235,16 @@ const VanPlan = ({
                   {Math.round(selZone.rect.w)}×{Math.round(selZone.rect.h)} cm
                 </span>
               </div>
-              {isAdmin && (
+              {(isAdmin || canPlace) && (
                 <div className="flex flex-wrap gap-2">
+                  {canPlace && (
                   <Button size="sm" className="rounded-full font-bold" style={{ backgroundColor: YELLOW, color: NAVY }} onClick={() => onQuickAdd?.(selNode)}>
                     <Plus className="h-4 w-4 mr-1" />
                     {t('fleet.plan.quickAdd')}
                   </Button>
+                  )}
+                  {isAdmin && (
+                  <>
                   <Button size="sm" variant="outline" className="rounded-full" onClick={() => onEditZone?.(selNode)}>
                     <Pencil className="h-4 w-4 mr-1" />
                     {t('fleet.plan.rename')}
@@ -248,6 +253,8 @@ const VanPlan = ({
                     <Trash2 className="h-4 w-4 mr-1" />
                     {t('fleet.plan.deleteZone')}
                   </Button>
+                  </>
+                  )}
                 </div>
               )}
             </div>

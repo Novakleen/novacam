@@ -4,7 +4,12 @@
  * fleet_nodes: depot / van (roots, id = stock_locations.id) → zone → caisse / machine → materiel.
  * Litres are NOT in the tree: they stay in stock_balances per depot / van location.
  * Condition is derived server-side from open tickets (worst severity), never written by the UI.
- * Members only write through RPCs (fleet_report_damage / fleet_ticket_action / fleet_move_node).
+ * Members only write through RPCs (fleet_report_damage / fleet_ticket_action / fleet_move_node /
+ * fleet_place_article).
+ *
+ * v1.10.0: caisse / machine / materiel nodes and kit items reference a catalog article
+ * (fleet_articles). Name, translations, icon and kind come from the article (DB trigger);
+ * only zones keep free names. Per-instance fields: qty, serial, brand, model, notes.
  */
 import { supabase } from '@/lib/customSupabaseClient';
 
@@ -15,6 +20,7 @@ export const RESOLUTIONS = ['repare', 'remplace', 'retrouve'];
 export const ZONE_KEYS = ['cab', 'bulkhead', 'left_shelf', 'right_shelf', 'floor'];
 export const CONTAINER_KINDS = ['depot', 'van', 'zone', 'caisse', 'machine'];
 export const ITEM_KINDS = ['caisse', 'machine', 'materiel'];
+export const ARTICLE_KINDS = ITEM_KINDS;
 export const PHOTO_BUCKET = 'fleet-photos';
 
 export const CONDITION_COLORS = {
@@ -35,7 +41,7 @@ function throwIf(error) {
 
 export async function fetchInventory() {
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
-  const [nodes, tickets, kits, kitItems] = await Promise.all([
+  const [nodes, tickets, kits, kitItems, articles] = await Promise.all([
     supabase.from('fleet_nodes').select('*').order('sort').order('name'),
     supabase
       .from('fleet_tickets')
@@ -44,6 +50,7 @@ export async function fetchInventory() {
       .order('reported_at', { ascending: false }),
     supabase.from('fleet_kits').select('*').order('sort'),
     supabase.from('fleet_kit_items').select('*').order('sort'),
+    supabase.from('fleet_articles').select('*').order('sort').order('name'),
   ]);
   throwIf(nodes.error);
   return {
@@ -51,6 +58,7 @@ export async function fetchInventory() {
     tickets: tickets.error ? [] : tickets.data || [],
     kits: kits.error ? [] : kits.data || [],
     kitItems: kitItems.error ? [] : kitItems.data || [],
+    articles: articles.error ? [] : articles.data || [],
   };
 }
 
@@ -156,11 +164,14 @@ export async function moveNode(nodeId, parentId, qty = null) {
 }
 
 // ─── Admin CRUD ───────────────────────────────────────────────────────────────
-const NODE_FIELDS = ['parent_id', 'kind', 'name', 'name_nl', 'name_en', 'qty', 'serial', 'brand', 'model', 'notes', 'icon', 'sort', 'active', 'zone_key', 'plan_x', 'plan_y', 'plan_w', 'plan_h'];
+const ZONE_FIELDS = ['parent_id', 'kind', 'name', 'name_nl', 'name_en', 'icon', 'sort', 'active', 'zone_key', 'plan_x', 'plan_y', 'plan_w', 'plan_h'];
+// Items: label / icon / kind come from the article (DB trigger) — only per-instance fields are written.
+const ITEM_FIELDS = ['parent_id', 'article_id', 'qty', 'serial', 'brand', 'model', 'notes', 'sort', 'active'];
 
 function nodePayload(n) {
   const out = {};
-  for (const k of NODE_FIELDS) {
+  const isItem = ITEM_KINDS.includes(n.kind) || Boolean(n.article_id);
+  for (const k of isItem ? ITEM_FIELDS : ZONE_FIELDS) {
     if (!(k in n)) continue;
     let v = n[k];
     if (k === 'qty' || k === 'sort') v = v === '' || v == null ? (k === 'qty' ? 1 : 0) : Number(v);
@@ -168,7 +179,12 @@ function nodePayload(n) {
     else if (typeof v === 'string') v = v.trim() || null;
     out[k] = v;
   }
-  if (out.kind === 'machine') out.qty = 1;
+  if (n.kind === 'machine') out.qty = 1;
+  if (isItem && !n.id) {
+    // Insert needs kind + a placeholder name; the trigger replaces both from the article.
+    out.kind = n.kind;
+    out.name = n.name || '-';
+  }
   return out;
 }
 
@@ -205,32 +221,70 @@ export async function applyKit(nodeId, kitId) {
   return data || 0;
 }
 
-/**
- * v1.9.4: create a crate (caisse) under `parentId` and copy a crate kit's items into it.
- * Name falls back to the kit's name. If the kit copy fails, the crate is kept and the
- * error carries code KIT_APPLY_FAILED + `crate` so the UI can say so explicitly.
- */
-export async function createCaisseFromKit({ parentId, kit, fields = {} }) {
-  const name = String(fields.name || '').trim() || kit?.name || '';
-  const saved = await saveNode({
-    ...fields,
-    kind: 'caisse',
-    parent_id: parentId,
-    name,
-    name_nl: String(fields.name_nl || '').trim() || (fields.name ? null : kit?.name_nl) || null,
-    name_en: String(fields.name_en || '').trim() || (fields.name ? null : kit?.name_en) || null,
-    qty: 1,
+/** v1.10.0: put a catalog article into a container (crate articles are filled with their default kit). */
+export async function placeArticle(parentId, articleId, qty = 1) {
+  const { data, error } = await supabase.rpc('fleet_place_article', {
+    p_parent: parentId,
+    p_article: articleId,
+    p_qty: Math.max(1, Number(qty) || 1),
   });
-  if (!kit?.id) return { saved, added: 0 };
-  try {
-    const added = await applyKit(saved.id, kit.id);
-    return { saved, added };
-  } catch (err) {
-    const e = new Error(err?.message || 'KIT_APPLY_FAILED');
-    e.code = 'KIT_APPLY_FAILED';
-    e.crate = saved;
+  throwIf(error);
+  return data;
+}
+
+// ─── Catalog (admin) ──────────────────────────────────────────────────────────
+export async function saveArticle(a) {
+  const payload = {
+    kind: a.kind,
+    name: String(a.name || '').trim(),
+    name_nl: String(a.name_nl || '').trim() || null,
+    name_en: String(a.name_en || '').trim() || null,
+    icon: a.icon || null,
+    default_kit_id: a.kind === 'caisse' ? a.default_kit_id || null : null,
+    notes: String(a.notes || '').trim() || null,
+    active: a.active !== false,
+    sort: Number(a.sort) || 0,
+  };
+  const q = a.id
+    ? supabase.from('fleet_articles').update(payload).eq('id', a.id)
+    : supabase.from('fleet_articles').insert(payload);
+  const { data, error } = await q.select().single();
+  throwIf(error);
+  return data;
+}
+
+/** Hard delete only works for unused articles (FK restrict); otherwise deactivate. */
+export async function deleteArticle(id) {
+  const { data, error } = await supabase.from('fleet_articles').delete().eq('id', id).select('id');
+  throwIf(error);
+  if (!data?.length) {
+    const e = new Error('FLEET_ARTICLE_NOT_DELETED');
+    e.code = 'FLEET_ARTICLE_NOT_DELETED';
     throw e;
   }
+}
+
+/** Fleet-wide usage of each article: instances, quantity, per root, condition counts. */
+export function articleUsage(nodes, byId) {
+  const out = new Map();
+  for (const n of nodes || []) {
+    if (!n.article_id) continue;
+    let u = out.get(n.article_id);
+    if (!u) {
+      u = { instances: 0, qty: 0, byRoot: new Map(), damaged_usable: 0, broken: 0, missing: 0 };
+      out.set(n.article_id, u);
+    }
+    const q = n.kind === 'materiel' ? Number(n.qty) || 0 : 1;
+    u.instances += 1;
+    u.qty += q;
+    const root = byId?.get(n.root_id);
+    const key = root?.id || n.root_id;
+    const r = u.byRoot.get(key) || { root, qty: 0 };
+    r.qty += q;
+    u.byRoot.set(key, r);
+    if (n.condition && n.condition !== 'ok') u[n.condition] = (u[n.condition] || 0) + q;
+  }
+  return out;
 }
 
 export async function saveKit(kit) {
@@ -255,7 +309,9 @@ export async function saveKitItem(item) {
     kit_id: item.kit_id,
     parent_item_id: item.parent_item_id || null,
     kind: item.kind,
-    name: String(item.name || '').trim(),
+    // v1.10.0: non-zone kit items are catalog articles (label synced by trigger).
+    article_id: item.kind === 'zone' ? null : item.article_id || null,
+    name: String(item.name || '').trim() || '-',
     name_nl: String(item.name_nl || '').trim() || null,
     name_en: String(item.name_en || '').trim() || null,
     zone_key: item.kind === 'zone' ? item.zone_key : null,

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Boxes, Droplets, History, LayoutGrid, Loader2, RefreshCw, Truck, Warehouse } from 'lucide-react';
+import { AlertTriangle, Boxes, Droplets, History, LayoutGrid, Loader2, Package, RefreshCw, Truck, Warehouse } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -16,6 +16,7 @@ import ProductsPanel from '@/components/fleet/ProductsPanel';
 import MovesPanel from '@/components/fleet/MovesPanel';
 import TicketsPanel from '@/components/fleet/TicketsPanel';
 import KitsPanel from '@/components/fleet/KitsPanel';
+import ArticlesPanel from '@/components/fleet/ArticlesPanel';
 import FleetSearch from '@/components/fleet/FleetSearch';
 
 const UNKNOWN_VAN_WINDOW_DAYS = 30;
@@ -27,6 +28,7 @@ const UNKNOWN_VAN_WINDOW_DAYS = 30;
  * /fleet/products       → catalog (admin)
  * /fleet/moves          → litre timeline
  * /fleet/kits           → kit templates (admin)
+ * /fleet/articles       → central article catalog (admin, v1.10.0)
  * /fleet/van/:id        → van sheet (SVG van + drill-down)   ?node=<id> focuses an item
  * /fleet/depot          → depot sheet
  */
@@ -121,6 +123,7 @@ const FleetPage = () => {
     if (section === 'moves') return 'moves';
     if (section === 'todo') return 'todo';
     if (section === 'kits' || section === 'equipment') return isAdmin ? 'kits' : 'mine';
+    if (section === 'articles') return isAdmin ? 'articles' : 'mine';
     return isAdmin ? 'overview' : 'mine';
   })();
 
@@ -143,6 +146,7 @@ const FleetPage = () => {
         ['todo', '/fleet/todo', AlertTriangle, t('fleet.tabs.todo'), openTicketCount],
         ['products', '/fleet/products', Droplets, t('fleet.tabs.products')],
         ['moves', '/fleet/moves', History, t('fleet.tabs.moves')],
+        ['articles', '/fleet/articles', Package, t('fleet.tabs.articles')],
         ['kits', '/fleet/kits', Boxes, t('fleet.tabs.kits')],
       ]
     : [
@@ -181,6 +185,8 @@ const FleetPage = () => {
         return <MovesPanel moves={moves} data={data} index={index} loading={movesLoading} />;
       case 'todo':
         return <TicketsPanel data={data} index={index} isAdmin={isAdmin} myRootId={myRootId} onReload={reload} />;
+      case 'articles':
+        return <ArticlesPanel data={data} index={index} onReload={reload} />;
       case 'kits':
         return <KitsPanel data={data} index={index} onReload={reload} />;
       case 'depot':

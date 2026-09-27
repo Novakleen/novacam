@@ -13,7 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { applyKit, createCaisseFromKit, deleteKitItem, nodeName, saveKit, saveKitItem, ZONE_KEYS } from '@/lib/fleet/inventory';
+import { applyKit, deleteKitItem, nodeName, placeArticle, saveKit, saveKitItem, ZONE_KEYS } from '@/lib/fleet/inventory';
+import { fleet_norm } from '@/lib/fleet/catalog';
 import { NAVY, SectionCard, YELLOW } from './FleetUI';
 import NodeIcon, { NODE_ICONS } from './NodeIcon';
 import useConfirm from './useConfirm';
@@ -50,20 +51,21 @@ const KitsPanel = ({ data, index, onReload }) => {
   ]);
   const [crateTarget, setCrateTarget] = useState('');
 
+  // v1.10.0: a crate kit is placed through the crate article that uses it as default kit.
+  const crateArticle = kit
+    ? (data.articles || []).find((a) => a.kind === 'caisse' && a.default_kit_id === kit.id && a.active !== false) || null
+    : null;
+
   const addCrateToVan = async () => {
-    if (!kit || !crateTarget) return;
+    if (!crateArticle || !crateTarget) return;
     setBusy('crate');
     try {
-      const { saved, added } = await createCaisseFromKit({ parentId: crateTarget, kit });
-      toast({ title: t('fleet.node.crateFromKit', { count: added, name: nodeName(saved, lang) }) });
+      await placeArticle(crateTarget, crateArticle.id, 1);
+      const dest = crateTargets.find((o) => o.id === crateTarget)?.label || '';
+      toast({ title: t('fleet.articles.placed', { count: 1, name: nodeName(crateArticle, lang), dest }) });
       onReload();
     } catch (err) {
-      toast({
-        variant: 'destructive',
-        title: err?.code === 'KIT_APPLY_FAILED' ? t('fleet.node.kitApplyFailed') : t('fleet.kits.failed'),
-        description: err.message,
-      });
-      if (err?.code === 'KIT_APPLY_FAILED') onReload();
+      toast({ variant: 'destructive', title: t('fleet.kits.failed'), description: err.message });
     } finally {
       setBusy('');
     }
@@ -192,6 +194,9 @@ const KitsPanel = ({ data, index, onReload }) => {
           {kit.target_kind === 'caisse' && crateTargets.length > 0 && (
             <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-2">
               <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{t('fleet.kits.addToVan')}</p>
+              {!crateArticle ? (
+                <p className="text-sm text-gray-500">{t('fleet.articles.noCrateArticleForKit')}</p>
+              ) : (
               <div className="flex flex-wrap gap-2">
                 <select
                   className="h-10 flex-1 min-w-[12rem] rounded-full border border-gray-200 dark:border-gray-700 bg-transparent px-3 text-sm"
@@ -211,13 +216,14 @@ const KitsPanel = ({ data, index, onReload }) => {
                   {t('fleet.kits.addCrate')}
                 </Button>
               </div>
+              )}
             </div>
           )}
         </SectionCard>
       )}
 
       {confirmDialog}
-      <KitItemDialog value={itemDlg} items={items} lang={lang} kitTarget={kit?.target_kind} onClose={() => setItemDlg(null)} onDone={onReload} />
+      <KitItemDialog value={itemDlg} items={items} articles={data.articles || []} lang={lang} kitTarget={kit?.target_kind} onClose={() => setItemDlg(null)} onDone={onReload} />
       <KitDialog value={kitDlg} onClose={() => setKitDlg(null)} onDone={(k) => { if (k?.id) setKitId(k.id); onReload(); }} />
     </div>
   );
@@ -273,17 +279,29 @@ const KitDialog = ({ value, onClose, onDone }) => {
   );
 };
 
-const KitItemDialog = ({ value, items, lang, kitTarget, onClose, onDone }) => {
+const KitItemDialog = ({ value, items, articles = [], lang, kitTarget, onClose, onDone }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [form, setForm] = useState({});
-  useEffect(() => setForm(value || {}), [value]);
+  const [query, setQuery] = useState('');
+  useEffect(() => {
+    setForm(value || {});
+    setQuery('');
+  }, [value]);
   if (!value) return null;
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const isZone = form.kind === 'zone';
   const parents = items.filter((i) => i.kind !== 'materiel' && i.id !== form.id);
+  const picked = articles.find((a) => a.id === form.article_id) || null;
+  const q = fleet_norm(query);
+  const choices = articles
+    .filter((a) => a.active !== false || a.id === form.article_id)
+    .filter((a) => !q || [a.name, a.name_nl, a.name_en].some((n) => fleet_norm(n).includes(q)))
+    .sort((x, y) => KIT_KINDS.indexOf(x.kind) - KIT_KINDS.indexOf(y.kind) || nodeName(x, lang).localeCompare(nodeName(y, lang)));
+  const pick = (a) => setForm((f) => ({ ...f, article_id: a.id, kind: a.kind, name: a.name }));
   const submit = async () => {
     try {
-      const def = form.kind === 'zone' && !(form.plan_w > 0) ? DEFAULT_ZONE_GEOM[form.zone_key] || { x: 60, y: 120, w: 40, h: 40 } : null;
+      const def = isZone && !(form.plan_w > 0) ? DEFAULT_ZONE_GEOM[form.zone_key] || { x: 60, y: 120, w: 40, h: 40 } : null;
       await saveKitItem(def ? { ...form, plan_x: def.x, plan_y: def.y, plan_w: def.w, plan_h: def.h } : form);
       onClose();
       onDone();
@@ -291,7 +309,7 @@ const KitItemDialog = ({ value, items, lang, kitTarget, onClose, onDone }) => {
       toast({ variant: 'destructive', title: t('fleet.kits.failed'), description: err.message });
     }
   };
-  const valid = String(form.name || '').trim();
+  const valid = isZone ? String(form.name || '').trim() : Boolean(form.article_id);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md max-h-[92vh] overflow-y-auto rounded-3xl">
@@ -299,37 +317,79 @@ const KitItemDialog = ({ value, items, lang, kitTarget, onClose, onDone }) => {
           <DialogTitle>{value.id ? t('fleet.kits.editItem') : t('fleet.kits.addItem')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="grid grid-cols-4 gap-1.5">
-            {KIT_KINDS.filter((k) => k !== 'zone' || kitTarget !== 'caisse').map((k) => (
-              <button key={k} type="button" onClick={() => set('kind', k)} className={cn('h-10 rounded-xl border text-xs font-bold', form.kind === k ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')} style={form.kind === k ? { backgroundColor: NAVY } : undefined}>
-                {t(`fleet.kinds.${k}`)}
-              </button>
-            ))}
-          </div>
-          {form.kind === 'zone' && (
-            <div className="flex flex-wrap gap-1.5">
-              {ZONE_KEYS.map((z) => (
-                <button key={z} type="button" onClick={() => set('zone_key', form.zone_key === z ? null : z)} className={cn('rounded-full px-3 h-9 text-xs font-semibold border', form.zone_key === z ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')} style={form.zone_key === z ? { backgroundColor: NAVY } : undefined}>
-                  {t(`fleet.zones.${z}`)}
-                </button>
-              ))}
+          {kitTarget !== 'caisse' && (
+            <div className="grid grid-cols-2 gap-1.5">
+              {['zone', 'article'].map((k) => {
+                const active = k === 'zone' ? isZone : !isZone;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setForm((f) => (k === 'zone' ? { ...f, kind: 'zone', article_id: null } : { ...f, kind: picked?.kind || 'materiel' }))}
+                    className={cn('h-10 rounded-xl border text-xs font-bold', active ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')}
+                    style={active ? { backgroundColor: NAVY } : undefined}
+                  >
+                    {k === 'zone' ? t('fleet.kinds.zone') : t('fleet.articles.fromCatalog')}
+                  </button>
+                );
+              })}
             </div>
           )}
-          <div className="space-y-1.5">
-            <Label>{t('fleet.node.name')} (FR)</Label>
-            <Input className="h-11 rounded-xl" value={form.name || ''} onChange={(e) => set('name', e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input className="h-11 rounded-xl" placeholder="NL" value={form.name_nl || ''} onChange={(e) => set('name_nl', e.target.value)} />
-            <Input className="h-11 rounded-xl" placeholder="EN" value={form.name_en || ''} onChange={(e) => set('name_en', e.target.value)} />
-          </div>
-          {form.kind === 'materiel' && (
+          {isZone ? (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {ZONE_KEYS.map((z) => (
+                  <button key={z} type="button" onClick={() => set('zone_key', form.zone_key === z ? null : z)} className={cn('rounded-full px-3 h-9 text-xs font-semibold border', form.zone_key === z ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')} style={form.zone_key === z ? { backgroundColor: NAVY } : undefined}>
+                    {t(`fleet.zones.${z}`)}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t('fleet.node.name')} (FR)</Label>
+                <Input className="h-11 rounded-xl" value={form.name || ''} onChange={(e) => set('name', e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input className="h-11 rounded-xl" placeholder="NL" value={form.name_nl || ''} onChange={(e) => set('name_nl', e.target.value)} />
+                <Input className="h-11 rounded-xl" placeholder="EN" value={form.name_en || ''} onChange={(e) => set('name_en', e.target.value)} />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(NODE_ICONS).map(([key, Icon]) => (
+                  <button key={key} type="button" onClick={() => set('icon', form.icon === key ? '' : key)} className={cn('h-10 w-10 rounded-xl border flex items-center justify-center', form.icon === key ? 'border-transparent' : 'border-gray-200 dark:border-gray-700')} style={form.icon === key ? { backgroundColor: NAVY, color: YELLOW } : undefined} aria-label={key}>
+                    <Icon className="h-4 w-4" />
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>{t('fleet.articles.article')}</Label>
+              <Input className="h-10 rounded-xl" placeholder={t('fleet.articles.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+              <ul className="max-h-56 overflow-y-auto space-y-1">
+                {choices.length === 0 && <li className="text-sm text-gray-500 py-3 text-center">{t('fleet.articles.none')}</li>}
+                {choices.map((a) => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      onClick={() => pick(a)}
+                      className={cn('w-full flex items-center gap-2 rounded-xl border p-2 text-left', form.article_id === a.id ? 'border-[#0b1f4d] ring-2 ring-[#0b1f4d]/20' : 'border-gray-100 dark:border-gray-800')}
+                    >
+                      <NodeIcon node={a} className="h-8 w-8" />
+                      <span className="flex-1 min-w-0 truncate text-sm font-semibold">{nodeName(a, lang)}</span>
+                      <span className="text-[11px] text-gray-500">{t(`fleet.kinds.${a.kind}`)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-gray-500">{t('fleet.articles.kitHint')}</p>
+            </div>
+          )}
+          {!isZone && picked?.kind === 'materiel' && (
             <div className="space-y-1.5">
               <Label>{t('fleet.node.qty')}</Label>
               <Input type="number" min={1} className="h-11 rounded-xl" value={form.qty ?? 1} onChange={(e) => set('qty', e.target.value)} />
             </div>
           )}
-          {form.kind !== 'zone' && parents.length > 0 && (
+          {!isZone && parents.length > 0 && (
             <div className="space-y-1.5">
               <Label>{t('fleet.kits.parent')}</Label>
               <select className="h-11 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent px-3" value={form.parent_item_id || ''} onChange={(e) => set('parent_item_id', e.target.value || null)}>
@@ -342,13 +402,6 @@ const KitItemDialog = ({ value, items, lang, kitTarget, onClose, onDone }) => {
               </select>
             </div>
           )}
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(NODE_ICONS).map(([key, Icon]) => (
-              <button key={key} type="button" onClick={() => set('icon', form.icon === key ? '' : key)} className={cn('h-10 w-10 rounded-xl border flex items-center justify-center', form.icon === key ? 'border-transparent' : 'border-gray-200 dark:border-gray-700')} style={form.icon === key ? { backgroundColor: NAVY, color: YELLOW } : undefined} aria-label={key}>
-                <Icon className="h-4 w-4" />
-              </button>
-            ))}
-          </div>
           <div className="space-y-1.5">
             <Label>{t('fleet.kits.sort')}</Label>
             <Input type="number" className="h-11 rounded-xl" value={form.sort ?? 0} onChange={(e) => set('sort', e.target.value)} />

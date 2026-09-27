@@ -129,6 +129,7 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = fal
           canDrag={canDrag}
           canEditPlan={canEditPlan}
           isAdmin={isAdmin}
+          canPlace={canAct}
           editing={editing}
           onEditingChange={setEditing}
           onZone={(id) => {
@@ -208,7 +209,7 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = fal
           {t('fleet.inv.issuesOnly')} {issueCount > 0 && `(${issueCount})`}
         </button>
         <div className="flex-1" />
-        {isAdmin && current.kind !== 'van' && (
+        {canAct && current.kind !== 'van' && (
           <Button size="sm" variant="outline" className="rounded-full" onClick={() => openDialog('edit', { parent: current })}>
             <Plus className="h-4 w-4 mr-1" />
             {t('fleet.inv.add')}

@@ -4,15 +4,17 @@ import NodeSheet from './NodeSheet';
 import ReportDialog from './ReportDialog';
 import MoveNodeDialog from './MoveNodeDialog';
 import NodeEditDialog from './NodeEditDialog';
+import PlaceArticleDialog from './PlaceArticleDialog';
 import TicketSheet from './TicketSheet';
 
 /**
  * All inventory dialogs, driven by one state object:
  *   { sheet: node, report: node, move: node, edit: { node?, parent? }, ticket: ticket }
- * `ctx` = { tree, tickets, kits, isAdmin, canActNode(node), canMoveNode(node), moveRoots, lang, profileById, onReload, onOpen(node) }
+ *   edit.node → NodeEditDialog; edit.parent (no node) → PlaceArticleDialog (catalog picker, v1.10.0)
+ * `ctx` = { tree, tickets, kits, articles, isAdmin, canActNode(node), canMoveNode(node), moveRoots, lang, profileById, onReload, onOpen(node) }
  */
 const InventoryDialogs = ({ state, setState, ctx }) => {
-  const { tree, tickets, kits, isAdmin, canActNode, canMoveNode, moveRoots, lang, profileById, onReload, onOpen } = ctx;
+  const { tree, tickets, kits, articles, isAdmin, canActNode, canMoveNode, moveRoots, lang, profileById, onReload, onOpen } = ctx;
   const close = (key) => setState((s) => ({ ...s, [key]: null }));
   const refresh = () => onReload?.();
   // Always show the fresh row after a reload
@@ -65,10 +67,17 @@ const InventoryDialogs = ({ state, setState, ctx }) => {
         }}
       />
       <NodeEditDialog
-        open={Boolean(state.edit)}
+        open={Boolean(state.edit?.node)}
         onOpenChange={(o) => !o && close('edit')}
         node={state.edit?.node ? fresh(state.edit.node) : null}
+        lang={lang}
+        onDone={refresh}
+      />
+      <PlaceArticleDialog
+        open={Boolean(state.edit?.parent && !state.edit?.node)}
+        onOpenChange={(o) => !o && close('edit')}
         parent={state.edit?.parent ? fresh(state.edit.parent) : null}
+        articles={articles || []}
         kits={kits}
         lang={lang}
         onDone={refresh}
