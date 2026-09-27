@@ -283,6 +283,7 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
           tree,
           tickets: data.tickets,
           kits: data.kits,
+          articles: data.articles,
           isAdmin,
           canActNode: (n) => isAdmin || (canEdit && n.root_id === location.id),
           canMoveNode: (n) => isAdmin || Boolean(myRootId && (n.root_id === myRootId || n.root_id === index.depot?.id)),
