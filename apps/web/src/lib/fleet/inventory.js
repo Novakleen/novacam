@@ -205,6 +205,34 @@ export async function applyKit(nodeId, kitId) {
   return data || 0;
 }
 
+/**
+ * v1.9.4: create a crate (caisse) under `parentId` and copy a crate kit's items into it.
+ * Name falls back to the kit's name. If the kit copy fails, the crate is kept and the
+ * error carries code KIT_APPLY_FAILED + `crate` so the UI can say so explicitly.
+ */
+export async function createCaisseFromKit({ parentId, kit, fields = {} }) {
+  const name = String(fields.name || '').trim() || kit?.name || '';
+  const saved = await saveNode({
+    ...fields,
+    kind: 'caisse',
+    parent_id: parentId,
+    name,
+    name_nl: String(fields.name_nl || '').trim() || (fields.name ? null : kit?.name_nl) || null,
+    name_en: String(fields.name_en || '').trim() || (fields.name ? null : kit?.name_en) || null,
+    qty: 1,
+  });
+  if (!kit?.id) return { saved, added: 0 };
+  try {
+    const added = await applyKit(saved.id, kit.id);
+    return { saved, added };
+  } catch (err) {
+    const e = new Error(err?.message || 'KIT_APPLY_FAILED');
+    e.code = 'KIT_APPLY_FAILED';
+    e.crate = saved;
+    throw e;
+  }
+}
+
 export async function saveKit(kit) {
   const payload = {
     name: String(kit.name || '').trim(),

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import {
@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { applyKit, ITEM_KINDS, nodeName, saveNode } from '@/lib/fleet/inventory';
+import { createCaisseFromKit, ITEM_KINDS, nodeName, saveNode } from '@/lib/fleet/inventory';
 import { NAVY, YELLOW } from './FleetUI';
 import { NODE_ICONS } from './NodeIcon';
 
@@ -26,10 +26,13 @@ const NodeEditDialog = ({ open, onOpenChange, node, parent, kits = [], lang, onD
   const [form, setForm] = useState({});
   const [kitId, setKitId] = useState('');
   const [saving, setSaving] = useState(false);
+  // Values last auto-filled from a kit: only those (or empty fields) get replaced on the next pick.
+  const autoFill = useRef({});
 
   useEffect(() => {
     if (!open) return;
     setKitId('');
+    autoFill.current = {};
     setForm(
       node
         ? { ...node }
@@ -40,18 +43,47 @@ const NodeEditDialog = ({ open, onOpenChange, node, parent, kits = [], lang, onD
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const editableKind = !node || ITEM_KINDS.includes(node.kind);
   const caisseKits = kits.filter((k) => k.target_kind === 'caisse' && k.active !== false);
+  const selectedKit = !node && form.kind === 'caisse' ? caisseKits.find((k) => k.id === kitId) || null : null;
+  const canSave = Boolean(String(form.name || '').trim()) || Boolean(selectedKit);
+
+  const pickKit = (k) => {
+    setKitId(k.id);
+    const next = k.id ? { name: k.name || '', name_nl: k.name_nl || '', name_en: k.name_en || '', icon: k.icon || '' } : { name: '', name_nl: '', name_en: '', icon: '' };
+    const prev = autoFill.current;
+    setForm((f) => {
+      const out = { ...f };
+      for (const key of Object.keys(next)) {
+        const cur = f[key] || '';
+        if (!cur || (prev[key] && cur === prev[key])) out[key] = next[key];
+      }
+      return out;
+    });
+    autoFill.current = next;
+  };
 
   const submit = async () => {
-    if (!String(form.name || '').trim()) return;
+    if (!canSave) return;
     setSaving(true);
     try {
-      const saved = await saveNode({ ...form, parent_id: node ? node.parent_id : parent?.id });
-      if (!node && kitId && saved.kind === 'caisse') await applyKit(saved.id, kitId);
-      toast({ title: t('fleet.node.saved') });
+      let saved;
+      if (selectedKit) {
+        const res = await createCaisseFromKit({ parentId: parent?.id, kit: selectedKit, fields: form });
+        saved = res.saved;
+        toast({ title: t('fleet.node.crateFromKit', { count: res.added, name: nodeName(saved, lang) }) });
+      } else {
+        saved = await saveNode({ ...form, parent_id: node ? node.parent_id : parent?.id });
+        toast({ title: t('fleet.node.saved') });
+      }
       onOpenChange(false);
       onDone?.(saved);
     } catch (err) {
-      toast({ variant: 'destructive', title: t('fleet.node.saveFailed'), description: err.message });
+      if (err?.code === 'KIT_APPLY_FAILED') {
+        toast({ variant: 'destructive', title: t('fleet.node.kitApplyFailed'), description: err.message });
+        onOpenChange(false);
+        onDone?.(err.crate);
+      } else {
+        toast({ variant: 'destructive', title: t('fleet.node.saveFailed'), description: err.message });
+      }
     } finally {
       setSaving(false);
     }
@@ -83,7 +115,7 @@ const NodeEditDialog = ({ open, onOpenChange, node, parent, kits = [], lang, onD
           <p className="text-xs text-gray-500 -mt-2">{t(`fleet.kindHints.${form.kind || 'materiel'}`)}</p>
           <div className="space-y-1.5">
             <Label>{t('fleet.node.name')} (FR)</Label>
-            <Input className="h-11 rounded-xl" value={form.name || ''} onChange={(e) => set('name', e.target.value)} />
+            <Input className="h-11 rounded-xl" value={form.name || ''} placeholder={selectedKit ? selectedKit.name : undefined} onChange={(e) => set('name', e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -125,7 +157,7 @@ const NodeEditDialog = ({ open, onOpenChange, node, parent, kits = [], lang, onD
                   <button
                     key={k.id || 'none'}
                     type="button"
-                    onClick={() => setKitId(k.id)}
+                    onClick={() => pickKit(k)}
                     className={cn('rounded-full border px-3 h-9 text-sm font-medium', kitId === k.id ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')}
                     style={kitId === k.id ? { backgroundColor: NAVY } : undefined}
                   >
@@ -133,6 +165,7 @@ const NodeEditDialog = ({ open, onOpenChange, node, parent, kits = [], lang, onD
                   </button>
                 ))}
               </div>
+              {selectedKit && <p className="text-xs text-gray-500">{t('fleet.node.kitPrefillHint')}</p>}
             </div>
           )}
           <div className="space-y-1.5">
@@ -161,7 +194,7 @@ const NodeEditDialog = ({ open, onOpenChange, node, parent, kits = [], lang, onD
           <Button variant="outline" className="rounded-full" onClick={() => onOpenChange(false)} disabled={saving}>
             {t('common.cancel')}
           </Button>
-          <Button className="rounded-full h-11 px-6 font-bold" style={{ backgroundColor: YELLOW, color: NAVY }} onClick={submit} disabled={saving || !String(form.name || '').trim()}>
+          <Button className="rounded-full h-11 px-6 font-bold" style={{ backgroundColor: YELLOW, color: NAVY }} onClick={submit} disabled={saving || !canSave}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {t('common.save')}
           </Button>
