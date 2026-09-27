@@ -255,8 +255,13 @@ export function buildFleetIndex(data, lang) {
     return { litres, min, state, override: b?.min_litres ?? null };
   };
 
+  /** v1.9.0: only products physically present (litres > 0) are shown for a van / the depot. */
+  const presentProducts = (location) =>
+    location ? products.filter((p) => stockFor(location, p).litres > 0) : [];
+
+  /** Stock alerts count present products below their threshold (absent products are not shown). */
   const locationAlerts = (location) =>
-    activeProducts.filter((p) => stockFor(location, p).state === 'out').length;
+    presentProducts(location).filter((p) => stockFor(location, p).state === 'out').length;
 
   /** Non-ok item counts for a van (by fleet_vans.id) or a location id. */
   const conditionCountsForLocation = (locationId) => tree.conditionCounts(locationId);
@@ -281,6 +286,7 @@ export function buildFleetIndex(data, lang) {
     tree,
     stockFor,
     locationAlerts,
+    presentProducts,
     conditionCountsForLocation,
     locationLabel,
   };

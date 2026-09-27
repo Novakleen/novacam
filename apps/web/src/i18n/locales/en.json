@@ -699,7 +699,8 @@
       "nameRequired": "Name required",
       "priceInvalid": "Invalid price",
       "stockByLocation": "Stock per location",
-      "purchaseToDepot": "Purchase → depot"
+      "purchaseToDepot": "Purchase → depot",
+      "addToVan": "Add product (from depot)"
     },
     "marginsLink": {
       "title": "Products → Fleet",
@@ -870,6 +871,31 @@
     "search": {
       "placeholder": "Where is… ? (pump, seals, serial)",
       "none": "No results"
+    },
+    "plan": {
+      "edit": "Edit plan",
+      "done": "Done",
+      "editHint": "Drag a zone to move it, the yellow handles to resize it (5 cm grid). Saved automatically.",
+      "selectZone": "Tap a zone to select it.",
+      "quickAdd": "Add in zone",
+      "rename": "Rename",
+      "deleteZone": "Delete zone",
+      "addZone": "New zone",
+      "reset": "Default layout",
+      "resetConfirm": "Put the standard zones back in their original place?",
+      "newZone": "New zone",
+      "zoneNotEmpty": "Empty the zone before deleting it",
+      "saveFailed": "Could not save the plan",
+      "dragHint": "Press and hold an item, then drag it to a zone or box",
+      "saveDefault": "Use as default layout",
+      "saveDefaultConfirm": "New vans will start with this layout. Continue?",
+      "savedDefault_one": "{{count}} zone saved to the kit",
+      "savedDefault_other": "{{count}} zones saved to the kit"
+    },
+    "dnd": {
+      "moved": "{{name}} → {{dest}}",
+      "invalid": "Can't move it there",
+      "handle": "Drag to move"
     }
   }
 }

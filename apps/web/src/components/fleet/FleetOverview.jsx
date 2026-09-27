@@ -4,12 +4,12 @@ import { AlertTriangle, ChevronRight, HelpCircle, Plus, Wrench } from 'lucide-re
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { firstName, initialsOf, productName } from '@/lib/fleet/api';
-import { nodeName } from '@/lib/fleet/inventory';
 import { Avatarish, CondPill, MiniGauge, NAVY, VanPictogram, YELLOW } from './FleetUI';
 import VanSvg from './VanSvg';
+import { buildPlanZones } from './VanPlan';
 import VanEditDialog from './VanEditDialog';
 
-const MAX_GAUGES = 3;
+const MAX_GAUGES = 4;
 
 function sinceLabel(iso, lang) {
   if (!iso) return '';
@@ -27,7 +27,6 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
   const [createOpen, setCreateOpen] = useState(false);
 
   const vans = data.vans.filter((v) => isAdmin || index.locationByVan.get(v.id));
-  const gaugeProducts = index.activeProducts.slice(0, MAX_GAUGES);
 
   const vanCards = vans.map((van) => {
     const loc = index.locationByVan.get(van.id);
@@ -101,12 +100,7 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
           const current = index.currentAssignment.get(van.id);
           const driver = current ? index.profileById.get(current.user_id) : null;
           const root = loc ? index.tree.byId.get(loc.id) : null;
-          const miniZones = {};
-          if (root) {
-            for (const z of index.tree.childrenOf(root.id).filter((c) => c.kind === 'zone')) {
-              miniZones[z.zone_key] = { worst: index.tree.worst(z.id), label: nodeName(z, lang), blocks: [] };
-            }
-          }
+          const miniZones = root ? buildPlanZones(root, index.tree, lang, null, { withBlocks: false }) : [];
           return (
             <button
               key={van.id}
@@ -139,12 +133,13 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
                   <span className="text-sm text-gray-400">{t('fleet.noDriver')}</span>
                 )}
               </div>
-              <div className="space-y-2.5">
-                {loc &&
-                  gaugeProducts.map((p) => (
+              {loc && index.presentProducts(loc).length > 0 && (
+                <div className="space-y-2.5">
+                  {index.presentProducts(loc).slice(0, MAX_GAUGES).map((p) => (
                     <MiniGauge key={p.slug} label={productName(p, lang)} color={p.color} stock={index.stockFor(loc, p)} />
                   ))}
-              </div>
+                </div>
+              )}
               <div className="flex items-center gap-2 flex-wrap">
                 <ConditionChips counts={issues} t={t} />
                 {alerts > 0 && (
@@ -174,11 +169,13 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
               </div>
               <ChevronRight className="h-5 w-5 text-gray-300" />
             </div>
-            <div className="space-y-2.5">
-              {gaugeProducts.map((p) => (
-                <MiniGauge key={p.slug} label={productName(p, lang)} color={p.color} stock={index.stockFor(index.depot, p)} />
-              ))}
-            </div>
+            {index.presentProducts(index.depot).length > 0 && (
+              <div className="space-y-2.5">
+                {index.presentProducts(index.depot).slice(0, MAX_GAUGES).map((p) => (
+                  <MiniGauge key={p.slug} label={productName(p, lang)} color={p.color} stock={index.stockFor(index.depot, p)} />
+                ))}
+              </div>
+            )}
             {depotAlerts > 0 && (
               <span className="inline-block rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-2.5 py-1 text-xs font-bold">
                 {t('fleet.stockAlertChip', { count: depotAlerts })}
