@@ -9,6 +9,7 @@ import { NAVY, YELLOW } from './FleetUI';
 import VanSvg, { DEFAULT_ZONE_GEOM, nodeRect } from './VanSvg';
 import ZoneEditOverlay from './ZoneEditOverlay';
 import { DragBlockWrap, DropZoneWrap } from './FleetDnd';
+import useConfirm from './useConfirm';
 
 export function blockSub(node, tree, t) {
   if (node.kind === 'materiel') return `× ${node.qty}`;
@@ -65,6 +66,7 @@ const VanPlan = ({
 }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const [confirm, confirmDialog] = useConfirm();
   const svgRef = useRef(null);
   const [drafts, setDrafts] = useState({});
   const [editSel, setEditSel] = useState(null);
@@ -122,7 +124,7 @@ const VanPlan = ({
       toast({ variant: 'destructive', title: t('fleet.plan.zoneNotEmpty') });
       return;
     }
-    if (!window.confirm(t('fleet.node.confirmDelete', { name: nodeName(selNode, lang) }))) return;
+    if (!(await confirm({ title: t('fleet.node.confirmDelete', { name: nodeName(selNode, lang) }) }))) return;
     try {
       await deleteNode(selNode.id);
       setEditSel(null);
@@ -133,7 +135,7 @@ const VanPlan = ({
   };
 
   const resetLayout = async () => {
-    if (!window.confirm(t('fleet.plan.resetConfirm'))) return;
+    if (!(await confirm({ title: t('fleet.plan.resetConfirm'), destructive: false }))) return;
     setBusy(true);
     try {
       for (const z of zones) {
@@ -149,7 +151,7 @@ const VanPlan = ({
   };
 
   const saveAsDefault = async () => {
-    if (!window.confirm(t('fleet.plan.saveDefaultConfirm'))) return;
+    if (!(await confirm({ title: t('fleet.plan.saveDefaultConfirm'), destructive: false }))) return;
     setBusy(true);
     try {
       const n = await saveLayoutAsKitDefault(zones.map((z) => ({ rect: z.rect, kit_item_id: tree.byId.get(z.id)?.kit_item_id })));
@@ -272,6 +274,7 @@ const VanPlan = ({
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 };

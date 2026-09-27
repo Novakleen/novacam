@@ -2,6 +2,7 @@
   "common": {
     "save": "Enregistrer",
     "cancel": "Annuler",
+    "confirm": "Confirmer",
     "delete": "Supprimer",
     "edit": "Modifier",
     "add": "Ajouter",
@@ -843,6 +844,11 @@
       "failed": "Action impossible",
       "resyncWith": "Resync {{name}}",
       "confirmDelete": "Supprimer « {{name}} » du kit ?",
+      "deleteChildren_one": "Cela supprime aussi {{count}} élément contenu dans cet article du kit.",
+      "deleteChildren_other": "Cela supprime aussi les {{count}} éléments contenus dans cet article du kit.",
+      "deleteKeepsVans": "Les articles déjà créés dans les vans sont conservés : ils sont seulement détachés du kit.",
+      "deleted": "« {{name}} » supprimé du kit",
+      "deleteNotAllowed": "Suppression refusée : seul un administrateur peut modifier les kits.",
       "target": {
         "van": "van",
         "caisse": "caisse"
