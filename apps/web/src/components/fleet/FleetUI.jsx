@@ -160,3 +160,24 @@ export const RoundAction = ({ icon: Icon, label, onClick, variant = 'default', d
     <span className="text-xs font-semibold text-center leading-tight max-w-[5.5rem]">{label}</span>
   </button>
 );
+
+export const COND_STYLES = {
+  ok: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  damaged_usable: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
+  broken: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  missing: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+};
+export const COND_DOT = {
+  ok: 'bg-emerald-500',
+  damaged_usable: 'bg-yellow-400',
+  broken: 'bg-red-500',
+  missing: 'bg-gray-400',
+};
+
+/** Coloured condition pill (label passed in, already translated). */
+export const CondPill = ({ condition = 'ok', label, className }) => (
+  <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold', COND_STYLES[condition], className)}>
+    <span className={cn('h-2 w-2 rounded-full', COND_DOT[condition])} />
+    {label}
+  </span>
+);

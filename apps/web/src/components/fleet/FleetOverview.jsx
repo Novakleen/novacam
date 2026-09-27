@@ -4,10 +4,12 @@ import { AlertTriangle, ChevronRight, HelpCircle, Plus, Wrench } from 'lucide-re
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { firstName, initialsOf, productName } from '@/lib/fleet/api';
-import { Avatarish, MiniGauge, NAVY, VanPictogram, YELLOW } from './FleetUI';
+import { nodeName } from '@/lib/fleet/inventory';
+import { Avatarish, CondPill, MiniGauge, NAVY, VanPictogram, YELLOW } from './FleetUI';
+import VanSvg from './VanSvg';
 import VanEditDialog from './VanEditDialog';
 
-const MAX_GAUGES = 5;
+const MAX_GAUGES = 3;
 
 function sinceLabel(iso, lang) {
   if (!iso) return '';
@@ -18,7 +20,7 @@ function sinceLabel(iso, lang) {
   });
 }
 
-const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpenDepot, onReload }) => {
+const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpenDepot, onOpenTodo, onReload }) => {
   const { t } = useTranslation();
   const lang = index.lang;
   const [filter, setFilter] = useState('all');
@@ -30,17 +32,18 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
   const vanCards = vans.map((van) => {
     const loc = index.locationByVan.get(van.id);
     const alerts = loc ? index.locationAlerts(loc) : 0;
-    const issues = index.equipmentIssues(van.id);
+    const counts = loc ? index.conditionCountsForLocation(loc.id) : { broken: 0, damaged_usable: 0, missing: 0 };
+    const issues = { ...counts, total: counts.broken + counts.damaged_usable + counts.missing };
     return { van, loc, alerts, issues };
   });
   const depotAlerts = index.depot ? index.locationAlerts(index.depot) : 0;
   const totalStockAlerts = vanCards.reduce((s, c) => s + c.alerts, 0) + depotAlerts;
-  const totalBroken = vanCards.reduce((s, c) => s + c.issues.broken, 0);
-  const totalMissing = vanCards.reduce((s, c) => s + c.issues.missing, 0);
+  const openTickets = index.tree.openTickets.length;
+  const openRed = index.tree.openTickets.filter((tk) => tk.severity === 'broken').length;
 
   const shown =
     filter === 'alerts'
-      ? vanCards.filter((c) => c.alerts > 0 || c.issues.broken + c.issues.missing > 0)
+      ? vanCards.filter((c) => c.alerts > 0 || c.issues.total > 0)
       : vanCards;
   const showDepot = index.depot && (filter === 'all' || depotAlerts > 0 || unknownVanCount > 0);
 
@@ -55,10 +58,11 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
           tone={totalStockAlerts ? 'red' : 'green'}
         />
         <Counter
-          value={totalBroken + totalMissing}
-          label={t('fleet.banner.kitIssues', { count: totalBroken + totalMissing })}
+          value={openTickets}
+          label={t('fleet.banner.todo', { count: openTickets })}
           icon={Wrench}
-          tone={totalBroken ? 'red' : totalMissing ? 'amber' : 'green'}
+          tone={openRed ? 'red' : openTickets ? 'amber' : 'green'}
+          onClick={onOpenTodo}
         />
         <Counter
           value={unknownVanCount}
@@ -96,7 +100,13 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
         {shown.map(({ van, loc, alerts, issues }) => {
           const current = index.currentAssignment.get(van.id);
           const driver = current ? index.profileById.get(current.user_id) : null;
-          const kitCount = issues.broken + issues.missing;
+          const root = loc ? index.tree.byId.get(loc.id) : null;
+          const miniZones = {};
+          if (root) {
+            for (const z of index.tree.childrenOf(root.id).filter((c) => c.kind === 'zone')) {
+              miniZones[z.zone_key] = { worst: index.tree.worst(z.id), label: nodeName(z, lang), blocks: [] };
+            }
+          }
           return (
             <button
               key={van.id}
@@ -104,12 +114,12 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
               onClick={() => onOpenVan(van.id)}
               className={cn(
                 'text-left rounded-3xl bg-white dark:bg-gray-900 border p-4 shadow-sm hover:shadow-md transition-shadow space-y-4',
-                alerts || kitCount ? 'border-red-200 dark:border-red-900' : 'border-gray-100 dark:border-gray-800',
+                alerts || issues.broken ? 'border-red-200 dark:border-red-900' : 'border-gray-100 dark:border-gray-800',
                 van.active === false && 'opacity-60'
               )}
             >
               <div className="flex items-center gap-3">
-                <VanPictogram photoUrl={van.photo_url} />
+                <VanSvg zones={miniZones} mini title={van.name} className="h-24 w-12 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-lg font-black truncate">{van.name}</p>
                   <p className="text-xs text-gray-500 truncate">{van.plate || t('fleet.van.noPlate')}</p>
@@ -136,7 +146,7 @@ const FleetOverview = ({ data, index, isAdmin, unknownVanCount, onOpenVan, onOpe
                   ))}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <KitChip count={kitCount} broken={issues.broken} t={t} />
+                <ConditionChips counts={issues} t={t} />
                 {alerts > 0 && (
                   <span className="rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-2.5 py-1 text-xs font-bold">
                     {t('fleet.stockAlertChip', { count: alerts })}
@@ -199,8 +209,14 @@ const TONES = {
   green: 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900',
 };
 
-const Counter = ({ value, label, icon: Icon, tone }) => (
-  <div className={cn('rounded-3xl border p-3 sm:p-4', TONES[tone])}>
+const Counter = ({ value, label, icon: Icon, tone, onClick }) => (
+  <div
+    role={onClick ? 'button' : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onClick={onClick}
+    onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
+    className={cn('rounded-3xl border p-3 sm:p-4', onClick && 'cursor-pointer', TONES[tone])}
+  >
     <div className="flex items-center justify-between">
       <span className="text-3xl sm:text-4xl font-black tabular-nums leading-none">{value}</span>
       <Icon className="h-5 w-5 opacity-70" />
@@ -209,22 +225,16 @@ const Counter = ({ value, label, icon: Icon, tone }) => (
   </div>
 );
 
-export const KitChip = ({ count, broken, t }) =>
-  count === 0 ? (
-    <span className="rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-2.5 py-1 text-xs font-bold">
-      {t('fleet.kitOk')}
-    </span>
+/** « 1 jaune, 1 rouge » style chips; green « Tout OK » when nothing is reported. */
+export const ConditionChips = ({ counts, t }) =>
+  counts.total === 0 ? (
+    <CondPill condition="ok" label={t('fleet.allOk')} />
   ) : (
-    <span
-      className={cn(
-        'rounded-full px-2.5 py-1 text-xs font-bold',
-        broken
-          ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+    <>
+      {['broken', 'damaged_usable', 'missing'].map((c) =>
+        counts[c] > 0 ? <CondPill key={c} condition={c} label={t(`fleet.condCount.${c}`, { count: counts[c] })} /> : null
       )}
-    >
-      {t('fleet.kitIssues', { count })}
-    </span>
+    </>
   );
 
 export default FleetOverview;

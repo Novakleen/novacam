@@ -553,9 +553,6 @@
     "history_other": "Historiek ({{count}})",
     "threshold": "Drempel {{litres}} L",
     "override": "specifiek",
-    "kitOk": "Kit OK",
-    "kitIssues_one": "{{count}} item",
-    "kitIssues_other": "{{count}} items",
     "stockAlertChip_one": "{{count}} voorraadalarm",
     "stockAlertChip_other": "{{count}} voorraadalarmen",
     "recentMoves": "Laatste bewegingen",
@@ -571,16 +568,17 @@
       "overview": "Overzicht",
       "products": "Producten",
       "moves": "Bewegingen",
-      "equipment": "Materiaal",
-      "myVan": "Mijn bestelwagen"
+      "myVan": "Mijn bestelwagen",
+      "todo": "Te behandelen",
+      "kits": "Kits"
     },
     "banner": {
       "stockAlerts_one": "voorraadalarm",
       "stockAlerts_other": "voorraadalarmen",
-      "kitIssues_one": "item kapot / ontbrekend",
-      "kitIssues_other": "items kapot / ontbrekend",
       "unknownVan_one": "bespuiting onbekende wagen (30 d)",
-      "unknownVan_other": "bespuitingen onbekende wagen (30 d)"
+      "unknownVan_other": "bespuitingen onbekende wagen (30 d)",
+      "todo_one": "melding te behandelen",
+      "todo_other": "meldingen te behandelen"
     },
     "filter": {
       "all": "Alle",
@@ -646,20 +644,6 @@
       "insufficient": "Onvoldoende voorraad: {{qty}} L ingevoerd, {{applied}} L afgeboekt",
       "readOnlyHint": "Alleen lezen. Bespuitingen worden automatisch aangemaakt: pas de bespuiting van de werf aan om te corrigeren."
     },
-    "equipment": {
-      "status": {
-        "ok": "OK",
-        "missing": "Ontbreekt",
-        "broken": "Kapot"
-      },
-      "notePlaceholder": "Notitie (bv. lans geplooid)",
-      "serialPlaceholder": "Serienummer",
-      "resync": "Template synchroniseren",
-      "resynced_one": "{{count}} item toegevoegd",
-      "resynced_other": "{{count}} items toegevoegd",
-      "saveFailed": "Bijwerken mislukt",
-      "empty": "Geen items. Synchroniseer de template."
-    },
     "reassign": {
       "button": "Toewijzen",
       "title": "{{van}} toewijzen",
@@ -717,23 +701,175 @@
       "stockByLocation": "Voorraad per locatie",
       "purchaseToDepot": "Aankoop → depot"
     },
-    "template": {
-      "title": "Materiaaltemplate",
-      "hint": "Standaardlijst die naar elke nieuwe wagen gekopieerd wordt. « Template synchroniseren » voegt nieuwe items toe zonder statussen te overschrijven.",
-      "add": "Item",
-      "edit": "Item wijzigen",
-      "name": "Naam",
-      "serialized": "serienr.",
-      "serializedLabel": "Met serienummer (pomp / machine)",
-      "active": "Actief",
-      "resyncHint": "Bestaande wagens krijgen nieuwe items via « Template synchroniseren ».",
-      "saved": "Template opgeslagen",
-      "saveFailed": "Opslaan mislukt"
-    },
     "marginsLink": {
       "title": "Producten → Vloot",
       "desc": "De productcatalogus (naam, prijs excl. btw / L, actief, drempels) beheer je voortaan in Vloot › Producten. De marges gebruiken nog steeds deze prijzen × liters.",
       "button": "Producten beheren → Vloot"
+    },
+    "allOk": "Alles OK",
+    "condCount": {
+      "broken_one": "{{count}} rood",
+      "broken_other": "{{count}} rood",
+      "damaged_usable_one": "{{count}} geel",
+      "damaged_usable_other": "{{count}} geel",
+      "missing_one": "{{count}} ontbreekt",
+      "missing_other": "{{count}} ontbreken"
+    },
+    "cond": {
+      "ok": "OK",
+      "damaged_usable": "Beschadigd maar bruikbaar",
+      "broken": "Defect",
+      "missing": "Ontbreekt"
+    },
+    "kinds": {
+      "depot": "Depot",
+      "van": "Bestelwagen",
+      "zone": "Zone",
+      "caisse": "Kist",
+      "machine": "Machine",
+      "materiel": "Materiaal"
+    },
+    "kindHints": {
+      "caisse": "Container: kan andere items bevatten.",
+      "machine": "Uniek toestel: serienummer, foto's, staat.",
+      "materiel": "Geteld in stuks (aantal)."
+    },
+    "zones": {
+      "cab": "Cabine",
+      "bulkhead": "Zone tussenschot",
+      "left_shelf": "Rekken links",
+      "right_shelf": "Rekken rechts",
+      "floor": "Laadvloer"
+    },
+    "status": {
+      "signale": "Gemeld",
+      "vu": "Gezien",
+      "en_reparation": "In herstelling",
+      "commande": "Besteld",
+      "resolu": "Opgelost"
+    },
+    "resolutions": {
+      "repare": "Hersteld",
+      "remplace": "Vervangen",
+      "retrouve": "Teruggevonden"
+    },
+    "report": {
+      "title": "Probleem melden",
+      "cta": "Melden",
+      "sent": "Melding verstuurd",
+      "failed": "Melden mislukt",
+      "hint": {
+        "damaged_usable": "Gebarsten, verbogen… nog bruikbaar",
+        "broken": "Defect, niet meer gebruiken",
+        "missing": "Niet te vinden in de bestelwagen"
+      },
+      "qty": "Hoeveel zijn getroffen? (van {{total}})",
+      "photo": "Foto",
+      "notePlaceholder": "Notitie (optioneel)",
+      "send": "Versturen"
+    },
+    "moveNode": {
+      "title": "Verplaatsen naar…",
+      "cta": "Verplaatsen",
+      "done": "Verplaatst",
+      "failed": "Verplaatsen mislukt",
+      "withContents_one": "met {{count}} item erin",
+      "withContents_other": "met {{count}} items erin",
+      "qty": "Aantal te verplaatsen (van {{total}})",
+      "here": "hier",
+      "confirm": "Hierheen verplaatsen"
+    },
+    "node": {
+      "saved": "Opgeslagen",
+      "saveFailed": "Opslaan mislukt",
+      "editTitle": "Bewerken",
+      "addTitle": "Item toevoegen",
+      "addIn": "In {{name}}",
+      "name": "Naam",
+      "qty": "Aantal",
+      "serial": "Serienummer",
+      "brand": "Merk",
+      "model": "Model",
+      "prefillKit": "Vooraf invullen met een kit",
+      "noKit": "Leeg",
+      "icon": "Icoon",
+      "notes": "Notities",
+      "confirmDelete": "« {{name}} » verwijderen?",
+      "worstInside": "(slechtste staat van de inhoud)",
+      "open_one": "Openen ({{count}})",
+      "open_other": "Openen ({{count}})",
+      "addPhoto": "Foto",
+      "openTickets": "Open meldingen",
+      "history": "Geschiedenis"
+    },
+    "ticket": {
+      "failed": "Actie mislukt",
+      "qty_one": "{{count}} stuk",
+      "qty_other": "{{count}} stuks",
+      "ev": {
+        "created": "Gemeld: {{sev}}",
+        "severity": "Verergerd: {{from}} → {{to}}",
+        "status": "Status: {{to}}",
+        "resolved": "Opgelost: {{res}}",
+        "cost": "Kost: {{cost}} €",
+        "photo": "Foto toegevoegd",
+        "comment": "Opmerking"
+      },
+      "notePlaceholder": "Opmerking…",
+      "comment": "Reageren",
+      "addPhoto": "Foto",
+      "escalate": "Naar rood",
+      "adminActions": "Opvolging admin",
+      "cost": "Kost (€)",
+      "reopen": "Heropenen"
+    },
+    "inv": {
+      "title": "Inventaris",
+      "itemsCount_one": "{{count}} item",
+      "itemsCount_other": "{{count}} items",
+      "details": "Details",
+      "issuesOnly": "Problemen",
+      "add": "Toevoegen",
+      "noIssues": "Geen problemen hier",
+      "empty": "Leeg"
+    },
+    "kits": {
+      "intro": "Kits vullen een nieuwe bestelwagen of kist vooraf in. « Resync » voegt enkel ontbrekende items toe, zonder iets te overschrijven.",
+      "resynced_one": "{{count}} item toegevoegd",
+      "resynced_other": "{{count}} items toegevoegd",
+      "resyncedVan_one": "{{name}}: {{count}} item toegevoegd",
+      "resyncedVan_other": "{{name}}: {{count}} items toegevoegd",
+      "failed": "Actie mislukt",
+      "resyncWith": "Resync {{name}}",
+      "confirmDelete": "« {{name}} » uit de kit verwijderen?",
+      "target": {
+        "van": "bestelwagen",
+        "caisse": "kist"
+      },
+      "new": "Nieuwe kit",
+      "edit": "Kit bewerken",
+      "defaultHint": "Standaardkit: automatisch toegepast op elke nieuwe bestelwagen.",
+      "empty": "Lege kit",
+      "applyToVans": "Resync op een bestelwagen",
+      "caisseHint": "Toepassen vanuit een kist (Inventaris › kist › Resync) of bij het aanmaken van een kist.",
+      "editItem": "Item bewerken",
+      "addItem": "Aan kit toevoegen",
+      "parent": "In",
+      "topLevel": "Hoofdniveau",
+      "sort": "Volgorde"
+    },
+    "todo": {
+      "today": "vandaag",
+      "daysAgo_one": "{{count}} dag geleden",
+      "daysAgo_other": "{{count}} dagen geleden",
+      "open": "Open ({{count}})",
+      "resolved": "Opgelost",
+      "nothing": "Niets te behandelen 🎉",
+      "noResolved": "Geen recent opgeloste meldingen"
+    },
+    "search": {
+      "placeholder": "Waar is… ? (pomp, dichtingen, serienummer)",
+      "none": "Geen resultaten"
     }
   }
 }
