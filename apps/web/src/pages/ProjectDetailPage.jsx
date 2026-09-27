@@ -180,7 +180,7 @@ const ProjectDetailPage = () => {
         .from('projects')
         .select(
           `
-          id, name, description, address, full_address, status, is_starred, is_archived,
+          id, name, description, instructions, address, full_address, latitude, longitude, is_starred, is_archived,
           created_at, updated_at, created_by, companycam_project_id,
           hubspot_contact_id, hubspot_contact_name, hubspot_contact_email,
           hubspot_invoice_id, hubspot_deal_id, hubspot_deal_surface_m2,
