@@ -699,7 +699,8 @@
       "nameRequired": "Nom requis",
       "priceInvalid": "Prix invalide",
       "stockByLocation": "Stock par lieu",
-      "purchaseToDepot": "Achat → dépôt"
+      "purchaseToDepot": "Achat → dépôt",
+      "addToVan": "Ajouter du produit (depuis le dépôt)"
     },
     "marginsLink": {
       "title": "Produits → Flotte",
@@ -870,6 +871,31 @@
     "search": {
       "placeholder": "Où est… ? (pompe, joints, n° de série)",
       "none": "Aucun résultat"
+    },
+    "plan": {
+      "edit": "Modifier le plan",
+      "done": "Terminer",
+      "editHint": "Glissez une zone pour la déplacer, les poignées jaunes pour la redimensionner (grille de 5 cm). Enregistré automatiquement.",
+      "selectZone": "Touchez une zone pour la sélectionner.",
+      "quickAdd": "Ajouter dans la zone",
+      "rename": "Renommer",
+      "deleteZone": "Supprimer la zone",
+      "addZone": "Nouvelle zone",
+      "reset": "Disposition par défaut",
+      "resetConfirm": "Remettre les zones standard à leur place d'origine ?",
+      "newZone": "Nouvelle zone",
+      "zoneNotEmpty": "Videz la zone avant de la supprimer",
+      "saveFailed": "Enregistrement du plan impossible",
+      "dragHint": "Maintenez un élément puis glissez-le vers une zone ou une caisse",
+      "saveDefault": "Utiliser comme disposition par défaut",
+      "saveDefaultConfirm": "Les nouveaux vans utiliseront cette disposition. Continuer ?",
+      "savedDefault_one": "{{count}} zone enregistrée dans le kit",
+      "savedDefault_other": "{{count}} zones enregistrées dans le kit"
+    },
+    "dnd": {
+      "moved": "{{name}} → {{dest}}",
+      "invalid": "Déplacement impossible ici",
+      "handle": "Glisser pour déplacer"
     }
   }
 }

@@ -1,34 +1,35 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, ChevronRight, Home, Plus, RefreshCcw } from 'lucide-react';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
+import { AlertTriangle, ChevronRight, GripVertical, Home, Plus, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { applyKit, isContainer, nodeName, ZONE_KEYS } from '@/lib/fleet/inventory';
+import { applyKit, isContainer, moveNode, nodeName } from '@/lib/fleet/inventory';
 import { CondPill } from './FleetUI';
 import NodeIcon from './NodeIcon';
-import VanSvg from './VanSvg';
+import VanPlan, { blockSub } from './VanPlan';
+import { DragHandle, DropTarget, fleetCollision, useFleetSensors } from './FleetDnd';
 
-function subLabel(node, tree, t) {
-  if (node.kind === 'materiel') return `× ${node.qty}`;
-  if (node.kind === 'machine' && node.serial) return `N° ${node.serial}`;
-  if (isContainer(node)) {
-    const n = tree.childrenOf(node.id).length;
-    return t('fleet.inv.itemsCount', { count: n });
-  }
-  return '';
-}
+const subLabel = blockSub;
 
 /**
  * Folder-like drill-down of one root (van or depot). For vans, the SVG van is the top level:
  * tap a zone to open it, tap a block (caisse / machine / item) to open it or its sheet.
+ * v1.9.0: drag & drop (SVG blocks and list rows → zones, caisses, breadcrumb) + editable plan.
  */
-const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, openDialog, onReload }) => {
+const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = false, lang, focus, openDialog, onReload }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [cwd, setCwd] = useState(root.id);
   const [issuesOnly, setIssuesOnly] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [dragId, setDragId] = useState(null);
+  const [moving, setMoving] = useState(false);
+  const lastDrag = useRef(0);
+  const sensors = useFleetSensors();
+  const canDrag = canAct && !moving;
 
   useEffect(() => {
     setCwd(root.id);
@@ -50,35 +51,47 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, open
   const path = tree.path(current.id);
   const zoneInPath = path.find((p) => p.kind === 'zone');
 
-  const zones = useMemo(() => {
-    if (root.kind !== 'van') return null;
-    const out = {};
-    for (const z of tree.childrenOf(root.id).filter((c) => c.kind === 'zone')) {
-      out[z.zone_key] = {
-        id: z.id,
-        label: nodeName(z, lang),
-        worst: tree.worst(z.id),
-        blocks: tree.childrenOf(z.id).map((c) => ({
-          id: c.id,
-          label: nodeName(c, lang),
-          sub: subLabel(c, tree, t),
-          kind: c.kind,
-          condition: tree.worst(c.id),
-        })),
-      };
-    }
-    return out;
-  }, [root, tree, lang, t]);
-
-  const zoneIdByKey = (key) => zones?.[key]?.id;
+  const zoneNodes = useMemo(
+    () => (root.kind === 'van' ? tree.childrenOf(root.id).filter((c) => c.kind === 'zone') : []),
+    [root, tree]
+  );
+  const recentlyDragged = () => Date.now() - lastDrag.current < 350;
 
   const children = tree.childrenOf(current.id).filter((c) => !issuesOnly || tree.worst(c.id) !== 'ok');
   const issueCount = tree.descendants(current.id).filter((n) => n.condition !== 'ok').length;
 
   const openNode = (n) => {
+    if (recentlyDragged()) return;
     if (isContainer(n)) setCwd(n.id);
     else openDialog('sheet', n);
   };
+
+  // Drop → the same permission-checked RPC as the move dialog (technicians: own van only)
+  const onDragEnd = async ({ active, over }) => {
+    lastDrag.current = Date.now();
+    setDragId(null);
+    const nodeId = active?.data?.current?.nodeId;
+    const target = over?.data?.current?.nodeId;
+    if (!nodeId || !target) return;
+    const node = tree.byId.get(nodeId);
+    const dest = tree.byId.get(target);
+    if (!node || !dest || target === node.id || target === node.parent_id) return;
+    if (!isContainer(dest) || tree.descendants(node.id).some((d) => d.id === target)) {
+      toast({ variant: 'destructive', title: t('fleet.dnd.invalid') });
+      return;
+    }
+    setMoving(true);
+    try {
+      await moveNode(nodeId, target);
+      toast({ title: t('fleet.dnd.moved', { name: nodeName(node, lang), dest: nodeName(dest, lang) }) });
+      onReload?.();
+    } catch (err) {
+      toast({ variant: 'destructive', title: t('fleet.moveNode.failed'), description: err.message });
+    } finally {
+      setMoving(false);
+    }
+  };
+  const dragNode = dragId ? tree.byId.get(dragId) : null;
 
   const kitTarget = current.kind === 'van' ? 'van' : current.kind === 'caisse' ? 'caisse' : null;
   const applicableKits = kitTarget ? (kits || []).filter((k) => k.target_kind === kitTarget && k.active !== false) : [];
@@ -96,38 +109,60 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, open
   };
 
   return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={fleetCollision}
+      onDragStart={({ active }) => setDragId(active?.data?.current?.nodeId || null)}
+      onDragCancel={() => {
+        lastDrag.current = Date.now();
+        setDragId(null);
+      }}
+      onDragEnd={onDragEnd}
+    >
     <div className="space-y-3">
-      {zones && (
-        <div className="rounded-3xl bg-gradient-to-b from-slate-100 to-white dark:from-gray-900 dark:to-gray-950 p-3 flex justify-center">
-          <VanSvg
-            zones={zones}
-            title={nodeName(root, lang)}
-            selectedZone={zoneInPath?.zone_key}
-            onZone={(key) => zoneIdByKey(key) && setCwd(zoneIdByKey(key))}
-            onBlock={(id) => {
-              const n = tree.byId.get(id);
-              if (n) openNode(n);
-            }}
-            className="w-full max-w-[340px] h-auto select-none"
-          />
-        </div>
+      {root.kind === 'van' && (
+        <VanPlan
+          root={root}
+          tree={tree}
+          lang={lang}
+          selectedZoneId={zoneInPath?.id}
+          canDrag={canDrag}
+          canEditPlan={canEditPlan}
+          isAdmin={isAdmin}
+          editing={editing}
+          onEditingChange={setEditing}
+          onZone={(id) => {
+            if (!recentlyDragged()) setCwd(id);
+          }}
+          onBlock={(id) => {
+            const n = tree.byId.get(id);
+            if (n) openNode(n);
+          }}
+          onQuickAdd={(zone) => zone && openDialog('edit', { parent: zone })}
+          onEditZone={(zone) => openDialog('edit', { node: zone })}
+          onReload={onReload}
+        />
       )}
-      {zones && (
+      {zoneNodes.length > 0 && !editing && (
         <div className="flex flex-wrap gap-1.5 justify-center">
-          {ZONE_KEYS.filter((k) => zones[k]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setCwd(zones[k].id)}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 h-9 text-xs font-semibold',
-                zoneInPath?.zone_key === k ? 'border-[#0b1f4d] bg-[#0b1f4d] text-white' : 'border-gray-200 dark:border-gray-700'
-              )}
-            >
-              {zones[k].worst !== 'ok' && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: zones[k].worst === 'broken' ? '#ef4444' : zones[k].worst === 'missing' ? '#9ca3af' : '#eab308' }} />}
-              {zones[k].label}
-            </button>
-          ))}
+          {zoneNodes.map((z) => {
+            const worst = tree.worst(z.id);
+            return (
+              <DropTarget key={z.id} nodeId={z.id} scope="chip" disabled={!dragId} className="rounded-full" overClassName="ring-4 ring-yellow-300">
+                <button
+                  type="button"
+                  onClick={() => setCwd(z.id)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 h-9 text-xs font-semibold',
+                    zoneInPath?.id === z.id ? 'border-[#0b1f4d] bg-[#0b1f4d] text-white' : 'border-gray-200 dark:border-gray-700'
+                  )}
+                >
+                  {worst !== 'ok' && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: worst === 'broken' ? '#ef4444' : worst === 'missing' ? '#9ca3af' : '#eab308' }} />}
+                  {nodeName(z, lang)}
+                </button>
+              </DropTarget>
+            );
+          })}
         </div>
       )}
 
@@ -136,6 +171,7 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, open
         {path.map((p, i) => (
           <React.Fragment key={p.id}>
             {i > 0 && <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />}
+            <DropTarget nodeId={p.id} scope="crumb" disabled={!dragId || p.kind === 'van'} className="shrink-0 rounded-full" overClassName="ring-4 ring-yellow-300">
             <button
               type="button"
               onClick={() => setCwd(p.id)}
@@ -144,6 +180,7 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, open
               {i === 0 && <Home className="h-3.5 w-3.5" />}
               {nodeName(p, lang)}
             </button>
+            </DropTarget>
           </React.Fragment>
         ))}
       </nav>
@@ -195,11 +232,27 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, open
             const worst = tree.worst(c.id);
             const reportable = !['zone'].includes(c.kind);
             return (
-              <li key={c.id} className="flex items-center gap-2">
+              <li key={c.id} className="flex items-center gap-1.5">
+                {canDrag && c.kind !== 'zone' && (
+                  <DragHandle
+                    nodeId={c.id}
+                    label={t('fleet.dnd.handle')}
+                    className="h-12 w-7 shrink-0 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-grab active:cursor-grabbing"
+                  >
+                    <GripVertical className="h-5 w-5" />
+                  </DragHandle>
+                )}
+                <DropTarget
+                  nodeId={c.id}
+                  scope="row"
+                  disabled={!dragId || !isContainer(c) || dragId === c.id}
+                  className="flex-1 min-w-0 rounded-2xl"
+                  overClassName="ring-4 ring-yellow-300"
+                >
                 <button
                   type="button"
                   onClick={() => openNode(c)}
-                  className="flex-1 min-w-0 flex items-center gap-3 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 text-left active:scale-[0.99] transition"
+                  className="w-full min-w-0 flex items-center gap-3 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 text-left active:scale-[0.99] transition"
                 >
                   <NodeIcon node={c} />
                   <span className="flex-1 min-w-0">
@@ -209,6 +262,7 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, open
                   {worst !== 'ok' && <CondPill condition={worst} label={t(`fleet.cond.${worst}`)} className="shrink-0" />}
                   {isContainer(c) && <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />}
                 </button>
+                </DropTarget>
                 {canAct && reportable && (
                   <button
                     type="button"
@@ -226,6 +280,15 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, lang, focus, open
         </ul>
       )}
     </div>
+      <DragOverlay dropAnimation={null}>
+        {dragNode ? (
+          <div className="inline-flex items-center gap-2 rounded-2xl bg-white dark:bg-gray-900 shadow-2xl ring-2 ring-yellow-400 px-3 py-2 pointer-events-none">
+            <NodeIcon node={dragNode} className="h-8 w-8" />
+            <span className="font-bold text-sm max-w-[180px] truncate">{nodeName(dragNode, lang)}</span>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 };
 

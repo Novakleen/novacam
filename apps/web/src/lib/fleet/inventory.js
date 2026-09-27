@@ -156,7 +156,7 @@ export async function moveNode(nodeId, parentId, qty = null) {
 }
 
 // ─── Admin CRUD ───────────────────────────────────────────────────────────────
-const NODE_FIELDS = ['parent_id', 'kind', 'name', 'name_nl', 'name_en', 'qty', 'serial', 'brand', 'model', 'notes', 'icon', 'sort', 'active'];
+const NODE_FIELDS = ['parent_id', 'kind', 'name', 'name_nl', 'name_en', 'qty', 'serial', 'brand', 'model', 'notes', 'icon', 'sort', 'active', 'zone_key', 'plan_x', 'plan_y', 'plan_w', 'plan_h'];
 
 function nodePayload(n) {
   const out = {};
@@ -164,6 +164,7 @@ function nodePayload(n) {
     if (!(k in n)) continue;
     let v = n[k];
     if (k === 'qty' || k === 'sort') v = v === '' || v == null ? (k === 'qty' ? 1 : 0) : Number(v);
+    else if (k.startsWith('plan_')) v = v === '' || v == null ? null : Number(v);
     else if (typeof v === 'string') v = v.trim() || null;
     out[k] = v;
   }
@@ -179,6 +180,18 @@ export async function saveNode(node) {
   const { data, error } = await q.select().single();
   throwIf(error);
   return data;
+}
+
+/** Zone geometry (cm, cargo coordinates). Admin or the van's technician (RPC-checked). */
+export async function setZoneGeometry(nodeId, rect) {
+  const { error } = await supabase.rpc('fleet_set_zone_geometry', {
+    p_node: nodeId,
+    p_x: rect.x,
+    p_y: rect.y,
+    p_w: rect.w,
+    p_h: rect.h,
+  });
+  throwIf(error);
 }
 
 export async function deleteNode(nodeId) {
@@ -223,12 +236,33 @@ export async function saveKitItem(item) {
     sort: Number(item.sort) || 0,
     active: item.active !== false,
   };
+  if (item.kind === 'zone' && item.plan_w > 0) {
+    Object.assign(payload, { plan_x: item.plan_x, plan_y: item.plan_y, plan_w: item.plan_w, plan_h: item.plan_h });
+  } else if (item.kind !== 'zone') {
+    Object.assign(payload, { plan_x: null, plan_y: null, plan_w: null, plan_h: null });
+  }
   const q = item.id
     ? supabase.from('fleet_kit_items').update(payload).eq('id', item.id)
     : supabase.from('fleet_kit_items').insert(payload);
   const { data, error } = await q.select().single();
   throwIf(error);
   return data;
+}
+
+/** Admin: copy a van's zone layout into its kit items (new vans start with it). */
+export async function saveLayoutAsKitDefault(zones) {
+  let n = 0;
+  for (const z of zones) {
+    if (!z.kit_item_id || !z.rect) continue;
+    const { error } = await supabase
+      .from('fleet_kit_items')
+      .update({ plan_x: z.rect.x, plan_y: z.rect.y, plan_w: z.rect.w, plan_h: z.rect.h })
+      .eq('id', z.kit_item_id)
+      .eq('kind', 'zone');
+    throwIf(error);
+    n += 1;
+  }
+  return n;
 }
 
 export async function deleteKitItem(id) {

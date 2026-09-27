@@ -23,7 +23,7 @@ import {
   productName,
   setLocationMin,
 } from '@/lib/fleet/api';
-import { Avatarish, BigGauge, CondPill, RoundAction, SectionCard, VanPictogram } from './FleetUI';
+import { Avatarish, BigGauge, CondPill, NAVY, RoundAction, SectionCard, VanPictogram, YELLOW } from './FleetUI';
 import InventoryBrowser from './InventoryBrowser';
 import InventoryDialogs from './InventoryDialogs';
 import MoveDialog from './MoveDialog';
@@ -66,6 +66,7 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
   const tree = index.tree;
   const rootNode = tree.byId.get(location.id) || null;
   const counts = index.conditionCountsForLocation(location.id);
+  const present = index.presentProducts(location);
   const vansForTransfer = data.vans.filter((v) => v.active !== false && (isAdmin || index.locationByVan.get(v.id)));
   const locMoves = (moves || []).filter((m) => m.from_location_id === location.id || m.to_location_id === location.id);
 
@@ -120,6 +121,7 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
             kits={data.kits}
             isAdmin={isAdmin}
             canAct={canEdit}
+            canEditPlan={Boolean(van) && (isAdmin || canEdit)}
             lang={lang}
             focus={focus}
             openDialog={(key, value) => setDialogs((d) => ({ ...d, [key]: value }))}
@@ -128,8 +130,9 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
         </SectionCard>
       )}
 
-      {/* Produits */}
-      <SectionCard title={t('fleet.productsLitres')} icon={Droplets}>
+      {/* Produits: only products present in this location (litres > 0) */}
+      {present.length > 0 ? (
+        <SectionCard title={t('fleet.productsLitres')} icon={Droplets}>
         {canEdit && (
           <div className="flex justify-around gap-2">
             <RoundAction
@@ -144,9 +147,8 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
             )}
           </div>
         )}
-        {index.activeProducts.length === 0 && <p className="text-sm text-gray-500">{t('fleet.noProducts')}</p>}
         <div className="grid gap-3 sm:grid-cols-2">
-          {index.activeProducts.map((p) => {
+          {present.map((p) => {
             const stock = index.stockFor(location, p);
             return (
               <BigGauge
@@ -199,7 +201,23 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
             );
           })}
         </div>
-      </SectionCard>
+        </SectionCard>
+      ) : (
+        canEdit && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button className="rounded-full h-11 font-bold" style={{ backgroundColor: YELLOW, color: NAVY }} onClick={() => openMove('transfer')}>
+              <Droplets className="h-4 w-4 mr-2" />
+              {isDepot ? t('fleet.actions.transferToVan') : t('fleet.products.addToVan')}
+            </Button>
+            {isAdmin && (
+              <Button variant="outline" className="rounded-full h-11" onClick={() => openMove('purchase')}>
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                {t('fleet.actions.purchase')}
+              </Button>
+            )}
+          </div>
+        )
+      )}
 
       {/* Qui */}
       {van && (

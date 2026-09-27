@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { applyKit, deleteKitItem, nodeName, saveKit, saveKitItem, ZONE_KEYS } from '@/lib/fleet/inventory';
 import { NAVY, SectionCard, YELLOW } from './FleetUI';
 import NodeIcon, { NODE_ICONS } from './NodeIcon';
+import { DEFAULT_ZONE_GEOM } from './VanSvg';
 
 const KIT_KINDS = ['zone', 'caisse', 'machine', 'materiel'];
 
@@ -211,14 +212,15 @@ const KitItemDialog = ({ value, items, lang, onClose, onDone }) => {
   const parents = items.filter((i) => i.kind !== 'materiel' && i.id !== form.id);
   const submit = async () => {
     try {
-      await saveKitItem(form);
+      const def = form.kind === 'zone' && !(form.plan_w > 0) ? DEFAULT_ZONE_GEOM[form.zone_key] || { x: 60, y: 120, w: 40, h: 40 } : null;
+      await saveKitItem(def ? { ...form, plan_x: def.x, plan_y: def.y, plan_w: def.w, plan_h: def.h } : form);
       onClose();
       onDone();
     } catch (err) {
       toast({ variant: 'destructive', title: t('fleet.kits.failed'), description: err.message });
     }
   };
-  const valid = String(form.name || '').trim() && (form.kind !== 'zone' || form.zone_key);
+  const valid = String(form.name || '').trim();
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md max-h-[92vh] overflow-y-auto rounded-3xl">
@@ -236,7 +238,7 @@ const KitItemDialog = ({ value, items, lang, onClose, onDone }) => {
           {form.kind === 'zone' && (
             <div className="flex flex-wrap gap-1.5">
               {ZONE_KEYS.map((z) => (
-                <button key={z} type="button" onClick={() => set('zone_key', z)} className={cn('rounded-full px-3 h-9 text-xs font-semibold border', form.zone_key === z ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')} style={form.zone_key === z ? { backgroundColor: NAVY } : undefined}>
+                <button key={z} type="button" onClick={() => set('zone_key', form.zone_key === z ? null : z)} className={cn('rounded-full px-3 h-9 text-xs font-semibold border', form.zone_key === z ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')} style={form.zone_key === z ? { backgroundColor: NAVY } : undefined}>
                   {t(`fleet.zones.${z}`)}
                 </button>
               ))}

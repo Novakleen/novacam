@@ -2,13 +2,17 @@ import React from 'react';
 
 /**
  * Original top-down cargo view of a Peugeot Expert L3-class van (no official assets).
- * Units ≈ cm: cargo floor 164 × 286 (Expert L3 ≈ 1.63 m × 2.86 m), cab at the top,
- * rear doors at the bottom, sliding side door on the right (passenger side).
- * NovaKleen colours: navy body, yellow accents, black trim.
+ * SVG units ≈ cm. Cargo floor 164 × 286 (Expert L3 ≈ 1.63 m × 2.86 m) starts at CARGO_ORIGIN;
+ * cab at the top, rear doors at the bottom, sliding side door on the right.
+ *
+ * Zones are free rectangles stored per van on the node (plan_x/y/w/h, cm relative to the cargo
+ * floor's top-left corner; the cab sits at negative y).
  *
  * props:
- *  zones:   { [zone_key]: { label, worst, blocks: [{ id, label, condition, count }] } }
- *  onZone(zoneKey), onBlock(blockId), selectedZone, mini (no text), title
+ *  zones: [{ id, key, label, worst, rect: {x,y,w,h}, blocks: [{ id, label, sub, kind, condition }] }]
+ *  onZone(id), onBlock(id), selectedZoneId, mini, grid, dimBlocks
+ *  ZoneWrap / BlockWrap: optional wrapper components ({ zone|block, children }) — used for drag & drop
+ *  children: overlay rendered last, in cargo coordinates (plan editor handles)
  */
 export const VAN_NAVY = '#0b1f4d';
 export const VAN_YELLOW = '#facc15';
@@ -21,46 +25,78 @@ export const COND_FILL = {
   missing: '#9ca3af',
 };
 
-// Zone rectangles inside the cargo / cab (x, y, w, h)
-export const ZONE_RECTS = {
-  cab: { x: 46, y: 104, w: 148, h: 78 },
-  bulkhead: { x: 40, y: 199, w: 160, h: 44 },
-  left_shelf: { x: 40, y: 247, w: 40, h: 229 },
-  floor: { x: 84, y: 247, w: 72, h: 229 },
-  right_shelf: { x: 160, y: 305, w: 40, h: 171 },
+export const CARGO_ORIGIN = { x: 38, y: 195 };
+export const CARGO_SIZE = { w: 164, h: 286 };
+/** Editable plan area in cargo cm (cab included, negative y). */
+export const PLAN_BOUNDS = { minX: 0, maxX: 164, minY: -91, maxY: 286 };
+
+/** Default Expert L3 layout (same values as the kit seed). */
+export const DEFAULT_ZONE_GEOM = {
+  cab: { x: 8, y: -91, w: 148, h: 78 },
+  bulkhead: { x: 2, y: 4, w: 160, h: 44 },
+  left_shelf: { x: 2, y: 52, w: 40, h: 229 },
+  floor: { x: 46, y: 52, w: 72, h: 229 },
+  right_shelf: { x: 122, y: 110, w: 40, h: 171 },
 };
 
-const ZONE_ORDER = ['cab', 'bulkhead', 'left_shelf', 'floor', 'right_shelf'];
+export function nodeRect(node) {
+  if (node && node.plan_w > 0 && node.plan_h > 0) {
+    return { x: Number(node.plan_x), y: Number(node.plan_y), w: Number(node.plan_w), h: Number(node.plan_h) };
+  }
+  return DEFAULT_ZONE_GEOM[node?.zone_key] || { x: 62, y: 120, w: 40, h: 40 };
+}
 
 function truncate(s, n) {
   const str = String(s || '');
   return str.length > n ? `${str.slice(0, n - 1)}…` : str;
 }
 
-function blockLayout(zoneKey, count) {
-  const r = ZONE_RECTS[zoneKey];
-  const horizontal = zoneKey === 'bulkhead' || zoneKey === 'cab';
+const Pass = ({ children }) => children;
+
+/** Grid of blocks inside a zone rect (SVG coords). */
+export function blockLayout(r) {
   const pad = 3;
-  if (horizontal) {
-    const cols = Math.max(1, Math.min(count, 3));
-    const w = (r.w - pad * (cols + 1)) / cols;
-    const h = Math.min(30, r.h - 16);
-    return { horizontal, max: 3, pos: (i) => ({ x: r.x + pad + i * (w + pad), y: r.y + r.h - h - pad, w, h }) };
-  }
-  const h = 34;
-  const max = Math.floor((r.h - 14) / (h + pad));
-  return { horizontal, max, pos: (i) => ({ x: r.x + pad, y: r.y + 14 + i * (h + pad), w: r.w - pad * 2, h }) };
+  const cols = Math.max(1, Math.min(4, Math.floor(r.w / 52)));
+  const bh = Math.min(34, Math.max(16, r.h - 17));
+  const rows = Math.max(1, Math.floor((r.h - 14 + pad) / (bh + pad)));
+  const bw = (r.w - pad * (cols + 1)) / cols;
+  return {
+    max: cols * rows,
+    pos: (i) => ({
+      x: r.x + pad + (i % cols) * (bw + pad),
+      y: r.y + 14 + Math.floor(i / cols) * (bh + pad),
+      w: bw,
+      h: bh,
+    }),
+  };
 }
 
-const VanSvg = ({ zones = {}, onZone, onBlock, selectedZone, mini = false, title, className, style }) => {
+const VanSvg = ({
+  zones = [],
+  onZone,
+  onBlock,
+  selectedZoneId,
+  mini = false,
+  grid = false,
+  dimBlocks = false,
+  ZoneWrap = Pass,
+  BlockWrap = Pass,
+  title,
+  className,
+  style,
+  svgRef,
+  children,
+}) => {
   const clickable = (fn) => (fn ? { cursor: 'pointer' } : undefined);
+  const O = CARGO_ORIGIN;
   return (
     <svg
+      ref={svgRef}
       viewBox="0 0 240 520"
       role="img"
       aria-label={title || 'Van'}
       className={className}
-      style={style}
+      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', ...style }}
       xmlns="http://www.w3.org/2000/svg"
     >
       {title && <title>{title}</title>}
@@ -82,7 +118,6 @@ const VanSvg = ({ zones = {}, onZone, onBlock, selectedZone, mini = false, title
         d="M40 12 Q120 2 200 12 Q220 16 222 40 L222 486 Q222 500 208 502 L32 502 Q18 500 18 486 L18 40 Q20 16 40 12 Z"
         fill={VAN_NAVY}
       />
-      {/* Yellow side stripes */}
       <rect x="18" y="200" width="5" height="280" fill={VAN_YELLOW} />
       <rect x="217" y="200" width="5" height="280" fill={VAN_YELLOW} />
 
@@ -93,7 +128,6 @@ const VanSvg = ({ zones = {}, onZone, onBlock, selectedZone, mini = false, title
           NOVAKLEEN
         </text>
       )}
-      {/* Windscreen */}
       <path d="M40 70 L200 70 L194 98 L46 98 Z" fill="#9fb7d9" opacity="0.85" />
 
       {/* Cab floor + seats */}
@@ -106,12 +140,22 @@ const VanSvg = ({ zones = {}, onZone, onBlock, selectedZone, mini = false, title
       {/* Bulkhead */}
       <rect x="30" y="188" width="180" height="7" fill={VAN_BLACK} />
 
-      {/* Cargo floor 164 × 286 */}
-      <rect x="38" y="195" width="164" height="286" fill="#e5e7eb" />
-      {/* floor ribs */}
-      {Array.from({ length: 13 }, (_, i) => (
-        <line key={i} x1="40" x2="200" y1={215 + i * 20} y2={215 + i * 20} stroke="#d1d5db" strokeWidth="1" />
-      ))}
+      {/* Cargo floor */}
+      <rect x={O.x} y={O.y} width={CARGO_SIZE.w} height={CARGO_SIZE.h} fill="#e5e7eb" />
+      {!grid &&
+        Array.from({ length: 13 }, (_, i) => (
+          <line key={i} x1="40" x2="200" y1={215 + i * 20} y2={215 + i * 20} stroke="#d1d5db" strokeWidth="1" />
+        ))}
+      {grid && (
+        <g stroke="#94a3b8" strokeWidth="0.4" opacity="0.7">
+          {Array.from({ length: 17 }, (_, i) => (
+            <line key={`v${i}`} x1={O.x + i * 10} x2={O.x + i * 10} y1={O.y - 91} y2={O.y + CARGO_SIZE.h} />
+          ))}
+          {Array.from({ length: 38 }, (_, i) => (
+            <line key={`h${i}`} x1={O.x} x2={O.x + CARGO_SIZE.w} y1={O.y - 91 + i * 10} y2={O.y - 91 + i * 10} />
+          ))}
+        </g>
+      )}
 
       {/* Sliding side door (right) */}
       <rect x="202" y="205" width="16" height="96" fill={VAN_YELLOW} opacity="0.9" />
@@ -122,106 +166,111 @@ const VanSvg = ({ zones = {}, onZone, onBlock, selectedZone, mini = false, title
         </text>
       )}
 
-      {/* Rear doors */}
+      {/* Rear doors + lights */}
       <rect x="38" y="481" width="81" height="14" fill={VAN_YELLOW} />
       <rect x="121" y="481" width="81" height="14" fill={VAN_YELLOW} />
       <line x1="120" y1="481" x2="120" y2="495" stroke={VAN_BLACK} strokeWidth="2" />
       <rect x="110" y="485" width="6" height="6" rx="1" fill={VAN_BLACK} />
       <rect x="124" y="485" width="6" height="6" rx="1" fill={VAN_BLACK} />
-      {/* Lights */}
       <rect x="22" y="486" width="10" height="12" rx="2" fill="#dc2626" />
       <rect x="208" y="486" width="10" height="12" rx="2" fill="#dc2626" />
       <rect x="40" y="14" width="22" height="8" rx="3" fill="#fde68a" />
       <rect x="178" y="14" width="22" height="8" rx="3" fill="#fde68a" />
 
       {/* Zones */}
-      {ZONE_ORDER.map((key) => {
-        const r = ZONE_RECTS[key];
-        const z = zones[key];
-        const worst = z?.worst || 'ok';
-        const selected = selectedZone === key;
+      {zones.map((z) => {
+        const r = { x: z.rect.x + O.x, y: z.rect.y + O.y, w: z.rect.w, h: z.rect.h };
+        const inCab = z.rect.y < 0;
+        const worst = z.worst || 'ok';
+        const selected = selectedZoneId === z.id;
         const tint = worst === 'ok' ? '#ffffff' : COND_FILL[worst];
-        const blocks = z?.blocks || [];
-        const layout = blockLayout(key, blocks.length);
+        const blocks = z.blocks || [];
+        const layout = blockLayout(r);
         const shown = blocks.slice(0, layout.max);
         const hidden = blocks.length - shown.length;
         return (
-          <g key={key} onClick={onZone ? () => onZone(key) : undefined} style={clickable(onZone)}>
-            <rect
-              x={r.x}
-              y={r.y}
-              width={r.w}
-              height={r.h}
-              rx="4"
-              fill={tint}
-              fillOpacity={worst === 'ok' ? (key === 'cab' ? 0.08 : 0.55) : 0.3}
-              stroke={selected ? VAN_YELLOW : key === 'cab' ? '#93c5fd' : '#9ca3af'}
-              strokeWidth={selected ? 3 : 1}
-              strokeDasharray={key === 'floor' || key === 'cab' ? '4 3' : undefined}
-            />
-            {!mini && z?.label && (
-              <text
-                x={r.x + 3}
-                y={key === 'cab' ? r.y + r.h - 4 : r.y + 10}
-                fontSize="7"
-                fontWeight="700"
-                fill={key === 'cab' ? '#dbeafe' : '#374151'}
-                fontFamily="Arial, Helvetica, sans-serif"
-              >
-                {truncate(z.label, key === 'left_shelf' || key === 'right_shelf' ? 10 : 24)}
-              </text>
-            )}
-            {!mini &&
-              shown.map((b, i) => {
-                const p = layout.pos(i);
-                const chars = Math.max(4, Math.floor(p.w / 4.6));
-                return (
-                  <g
-                    key={b.id}
-                    onClick={
-                      onBlock
-                        ? (e) => {
-                            e.stopPropagation();
-                            onBlock(b.id);
-                          }
-                        : undefined
-                    }
-                    style={clickable(onBlock)}
-                  >
-                    <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="4" fill={b.kind === 'machine' ? VAN_NAVY : '#ffffff'} stroke={VAN_NAVY} strokeWidth="1" />
-                    <rect x={p.x} y={p.y} width="4" height={p.h} rx="2" fill={COND_FILL[b.condition || 'ok']} />
-                    <text
-                      x={p.x + 7}
-                      y={p.y + p.h / 2 - (b.sub ? 2 : -3)}
-                      fontSize="8"
-                      fontWeight="700"
-                      fill={b.kind === 'machine' ? VAN_YELLOW : VAN_NAVY}
-                      fontFamily="Arial, Helvetica, sans-serif"
-                    >
-                      {truncate(b.label, chars)}
-                    </text>
-                    {b.sub && (
-                      <text x={p.x + 7} y={p.y + p.h / 2 + 9} fontSize="6.5" fill={b.kind === 'machine' ? '#e5e7eb' : '#6b7280'} fontFamily="Arial, Helvetica, sans-serif">
-                        {truncate(b.sub, chars + 2)}
-                      </text>
-                    )}
-                    {b.condition && b.condition !== 'ok' && (
-                      <circle cx={p.x + p.w - 6} cy={p.y + 6} r="4.5" fill={COND_FILL[b.condition]} stroke="#fff" strokeWidth="1.2" />
-                    )}
-                  </g>
-                );
-              })}
-            {!mini && hidden > 0 && (
-              <text x={r.x + r.w - 4} y={r.y + r.h - 4} textAnchor="end" fontSize="8" fontWeight="700" fill={VAN_NAVY} fontFamily="Arial, Helvetica, sans-serif">
-                +{hidden}
-              </text>
-            )}
-            {mini && worst !== 'ok' && (
-              <circle cx={r.x + r.w / 2} cy={r.y + Math.min(r.h / 2, 30)} r="11" fill={COND_FILL[worst]} stroke="#fff" strokeWidth="3" />
-            )}
-          </g>
+          <ZoneWrap key={z.id} zone={z}>
+            <g onClick={onZone ? () => onZone(z.id) : undefined} style={clickable(onZone)}>
+              <rect
+                x={r.x}
+                y={r.y}
+                width={r.w}
+                height={r.h}
+                rx="4"
+                fill={tint}
+                fillOpacity={worst === 'ok' ? (inCab ? 0.08 : 0.55) : 0.3}
+                stroke={selected ? VAN_YELLOW : inCab ? '#93c5fd' : '#9ca3af'}
+                strokeWidth={selected ? 3 : 1}
+                strokeDasharray={z.key === 'floor' || inCab ? '4 3' : undefined}
+              />
+              {!mini && z.label && (
+                <text
+                  x={r.x + 3}
+                  y={inCab && !blocks.length ? r.y + r.h - 4 : r.y + 10}
+                  fontSize="7"
+                  fontWeight="700"
+                  fill={inCab ? '#dbeafe' : '#374151'}
+                  fontFamily="Arial, Helvetica, sans-serif"
+                >
+                  {truncate(z.label, Math.max(6, Math.floor(r.w / 4.2)))}
+                </text>
+              )}
+              {!mini &&
+                shown.map((b, i) => {
+                  const p = layout.pos(i);
+                  const chars = Math.max(4, Math.floor(p.w / 4.6));
+                  return (
+                    <BlockWrap key={b.id} block={b}>
+                      <g
+                        onClick={
+                          onBlock
+                            ? (e) => {
+                                e.stopPropagation();
+                                onBlock(b.id);
+                              }
+                            : undefined
+                        }
+                        style={clickable(onBlock)}
+                        opacity={dimBlocks ? 0.55 : 1}
+                      >
+                        <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="4" fill={b.kind === 'machine' ? VAN_NAVY : '#ffffff'} stroke={b.highlight ? VAN_YELLOW : VAN_NAVY} strokeWidth={b.highlight ? 2.5 : 1} />
+                        <rect x={p.x} y={p.y} width="4" height={p.h} rx="2" fill={COND_FILL[b.condition || 'ok']} />
+                        <text
+                          x={p.x + 7}
+                          y={p.y + p.h / 2 - (b.sub && p.h >= 26 ? 2 : -3)}
+                          fontSize="8"
+                          fontWeight="700"
+                          fill={b.kind === 'machine' ? VAN_YELLOW : VAN_NAVY}
+                          fontFamily="Arial, Helvetica, sans-serif"
+                        >
+                          {truncate(b.label, chars)}
+                        </text>
+                        {b.sub && p.h >= 26 && (
+                          <text x={p.x + 7} y={p.y + p.h / 2 + 9} fontSize="6.5" fill={b.kind === 'machine' ? '#e5e7eb' : '#6b7280'} fontFamily="Arial, Helvetica, sans-serif">
+                            {truncate(b.sub, chars + 2)}
+                          </text>
+                        )}
+                        {b.condition && b.condition !== 'ok' && (
+                          <circle cx={p.x + p.w - 6} cy={p.y + 6} r="4.5" fill={COND_FILL[b.condition]} stroke="#fff" strokeWidth="1.2" />
+                        )}
+                      </g>
+                    </BlockWrap>
+                  );
+                })}
+              {!mini && hidden > 0 && (
+                <text x={r.x + r.w - 4} y={r.y + r.h - 4} textAnchor="end" fontSize="8" fontWeight="700" fill={VAN_NAVY} fontFamily="Arial, Helvetica, sans-serif">
+                  +{hidden}
+                </text>
+              )}
+              {mini && worst !== 'ok' && (
+                <circle cx={r.x + r.w / 2} cy={r.y + Math.min(r.h / 2, 30)} r="11" fill={COND_FILL[worst]} stroke="#fff" strokeWidth="3" />
+              )}
+            </g>
+          </ZoneWrap>
         );
       })}
+
+      {children && <g transform={`translate(${O.x} ${O.y})`}>{children}</g>}
     </svg>
   );
 };
