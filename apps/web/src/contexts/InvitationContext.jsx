@@ -184,8 +184,7 @@ export const InvitationProvider = ({ children }) => {
         .update({ 
           token: newToken,
           expires_at: newExpiresAt,
-          status: 'pending',
-          updated_at: new Date().toISOString()
+          status: 'pending'
         })
         .eq('id', invitationId)
         .select()

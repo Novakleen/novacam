@@ -288,7 +288,7 @@ const ProjectDetailPage = () => {
         .select(
           `
           id, project_id, file_url, file_type, thumbnail_url, description,
-          created_at, uploaded_by, is_starred,
+          created_at, uploaded_by,
           uploaded_by_profile:profiles!uploaded_by(full_name, initials),
           media_tags(tag_id, tags(name))
         `
