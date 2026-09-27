@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { applyKit, deleteKitItem, nodeName, saveKit, saveKitItem, ZONE_KEYS } from '@/lib/fleet/inventory';
+import { applyKit, createCaisseFromKit, deleteKitItem, nodeName, saveKit, saveKitItem, ZONE_KEYS } from '@/lib/fleet/inventory';
 import { NAVY, SectionCard, YELLOW } from './FleetUI';
 import NodeIcon, { NODE_ICONS } from './NodeIcon';
 import useConfirm from './useConfirm';
@@ -39,6 +39,35 @@ const KitsPanel = ({ data, index, onReload }) => {
   const vansRoots = data.vans
     .map((v) => ({ van: v, node: index.tree.byId.get(index.locationByVan.get(v.id)?.id) }))
     .filter((x) => x.node);
+
+  // v1.9.4: where a crate kit can be dropped — a van itself or one of its zones.
+  const crateTargets = vansRoots.flatMap(({ van, node }) => [
+    { id: node.id, label: van.name },
+    ...index.tree
+      .childrenOf(node.id)
+      .filter((c) => c.kind === 'zone')
+      .map((z) => ({ id: z.id, label: `${van.name} › ${nodeName(z, lang)}` })),
+  ]);
+  const [crateTarget, setCrateTarget] = useState('');
+
+  const addCrateToVan = async () => {
+    if (!kit || !crateTarget) return;
+    setBusy('crate');
+    try {
+      const { saved, added } = await createCaisseFromKit({ parentId: crateTarget, kit });
+      toast({ title: t('fleet.node.crateFromKit', { count: added, name: nodeName(saved, lang) }) });
+      onReload();
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: err?.code === 'KIT_APPLY_FAILED' ? t('fleet.node.kitApplyFailed') : t('fleet.kits.failed'),
+        description: err.message,
+      });
+      if (err?.code === 'KIT_APPLY_FAILED') onReload();
+    } finally {
+      setBusy('');
+    }
+  };
 
   const resyncVan = async (node) => {
     setBusy(node.id);
@@ -160,11 +189,35 @@ const KitsPanel = ({ data, index, onReload }) => {
             </div>
           )}
           {kit.target_kind === 'caisse' && <p className="text-xs text-gray-500">{t('fleet.kits.caisseHint')}</p>}
+          {kit.target_kind === 'caisse' && crateTargets.length > 0 && (
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{t('fleet.kits.addToVan')}</p>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  className="h-10 flex-1 min-w-[12rem] rounded-full border border-gray-200 dark:border-gray-700 bg-transparent px-3 text-sm"
+                  value={crateTarget}
+                  onChange={(e) => setCrateTarget(e.target.value)}
+                  aria-label={t('fleet.kits.addToVan')}
+                >
+                  <option value="">{t('fleet.kits.chooseVanTarget')}</option>
+                  {crateTargets.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <Button size="sm" className="rounded-full h-10 font-bold" style={{ backgroundColor: YELLOW, color: NAVY }} disabled={!crateTarget || busy === 'crate'} onClick={addCrateToVan}>
+                  {busy === 'crate' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                  {t('fleet.kits.addCrate')}
+                </Button>
+              </div>
+            </div>
+          )}
         </SectionCard>
       )}
 
       {confirmDialog}
-      <KitItemDialog value={itemDlg} items={items} lang={lang} onClose={() => setItemDlg(null)} onDone={onReload} />
+      <KitItemDialog value={itemDlg} items={items} lang={lang} kitTarget={kit?.target_kind} onClose={() => setItemDlg(null)} onDone={onReload} />
       <KitDialog value={kitDlg} onClose={() => setKitDlg(null)} onDone={(k) => { if (k?.id) setKitId(k.id); onReload(); }} />
     </div>
   );
@@ -220,7 +273,7 @@ const KitDialog = ({ value, onClose, onDone }) => {
   );
 };
 
-const KitItemDialog = ({ value, items, lang, onClose, onDone }) => {
+const KitItemDialog = ({ value, items, lang, kitTarget, onClose, onDone }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [form, setForm] = useState({});
@@ -247,7 +300,7 @@ const KitItemDialog = ({ value, items, lang, onClose, onDone }) => {
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-4 gap-1.5">
-            {KIT_KINDS.map((k) => (
+            {KIT_KINDS.filter((k) => k !== 'zone' || kitTarget !== 'caisse').map((k) => (
               <button key={k} type="button" onClick={() => set('kind', k)} className={cn('h-10 rounded-xl border text-xs font-bold', form.kind === k ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')} style={form.kind === k ? { backgroundColor: NAVY } : undefined}>
                 {t(`fleet.kinds.${k}`)}
               </button>
