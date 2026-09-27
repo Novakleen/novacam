@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ClipboardCheck, Droplets, History, LayoutGrid, Loader2, RefreshCw, Truck, Warehouse } from 'lucide-react';
+import { AlertTriangle, Boxes, Droplets, History, LayoutGrid, Loader2, RefreshCw, Truck, Warehouse } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -14,21 +14,26 @@ import FleetOverview from '@/components/fleet/FleetOverview';
 import LocationDetail from '@/components/fleet/LocationDetail';
 import ProductsPanel from '@/components/fleet/ProductsPanel';
 import MovesPanel from '@/components/fleet/MovesPanel';
-import EquipmentPanel from '@/components/fleet/EquipmentPanel';
+import TicketsPanel from '@/components/fleet/TicketsPanel';
+import KitsPanel from '@/components/fleet/KitsPanel';
+import FleetSearch from '@/components/fleet/FleetSearch';
 
 const UNKNOWN_VAN_WINDOW_DAYS = 30;
 
 /**
- * Flotte / Vloot / Fleet (v1.7.0)
+ * Flotte / Vloot / Fleet (v1.7.0 · inventory tree + damage tickets v1.8.0)
  * /fleet                → admin: overview · member: « Mon van »
+ * /fleet/todo           → « À traiter » damage tickets
  * /fleet/products       → catalog (admin)
- * /fleet/moves          → timeline
- * /fleet/equipment      → kit checklists + template (admin)
- * /fleet/van/:id        → van sheet
+ * /fleet/moves          → litre timeline
+ * /fleet/kits           → kit templates (admin)
+ * /fleet/van/:id        → van sheet (SVG van + drill-down)   ?node=<id> focuses an item
  * /fleet/depot          → depot sheet
  */
 const FleetPage = () => {
   const { section, id } = useParams();
+  const [searchParams] = useSearchParams();
+  const focusNodeId = searchParams.get('node');
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -106,11 +111,7 @@ const FleetPage = () => {
     return moves.filter((m) => m.unknown_van && new Date(m.created_at).getTime() >= since).length;
   }, [moves]);
 
-  const onLocalEquipment = useCallback((row) => {
-    setData((prev) =>
-      prev ? { ...prev, equipment: prev.equipment.map((e) => (e.id === row.id ? { ...e, ...row } : e)) } : prev
-    );
-  }, []);
+  const myRootId = useMemo(() => (myVan && index ? index.locationByVan.get(myVan.id)?.id || null : null), [myVan, index]);
 
   // Resolve current view
   const view = (() => {
@@ -118,21 +119,35 @@ const FleetPage = () => {
     if (section === 'depot') return 'depot';
     if (section === 'products') return isAdmin ? 'products' : 'mine';
     if (section === 'moves') return 'moves';
-    if (section === 'equipment') return 'equipment';
+    if (section === 'todo') return 'todo';
+    if (section === 'kits' || section === 'equipment') return isAdmin ? 'kits' : 'mine';
     return isAdmin ? 'overview' : 'mine';
   })();
 
   const go = (path) => navigate(path);
+  const openTicketCount = index ? index.tree.openTickets.length : 0;
+
+  // Search result → the page of its root (van / depot), focused on the node
+  const pickNode = (node) => {
+    if (!index) return;
+    const loc = index.locationById.get(node.root_id);
+    if (!loc) return;
+    if (loc.kind === 'depot') go(`/fleet/depot?node=${node.id}`);
+    else if (!isAdmin && myVan && loc.van_id === myVan.id) go(`/fleet?node=${node.id}`);
+    else go(`/fleet/van/${loc.van_id}?node=${node.id}`);
+  };
 
   const pills = isAdmin
     ? [
         ['overview', '/fleet', LayoutGrid, t('fleet.tabs.overview')],
+        ['todo', '/fleet/todo', AlertTriangle, t('fleet.tabs.todo'), openTicketCount],
         ['products', '/fleet/products', Droplets, t('fleet.tabs.products')],
         ['moves', '/fleet/moves', History, t('fleet.tabs.moves')],
-        ['equipment', '/fleet/equipment', ClipboardCheck, t('fleet.tabs.equipment')],
+        ['kits', '/fleet/kits', Boxes, t('fleet.tabs.kits')],
       ]
     : [
         ['mine', '/fleet', Truck, t('fleet.tabs.myVan')],
+        ['todo', '/fleet/todo', AlertTriangle, t('fleet.tabs.todo'), openTicketCount],
         ['depot', '/fleet/depot', Warehouse, t('fleet.depot')],
         ['moves', '/fleet/moves', History, t('fleet.tabs.moves')],
       ];
@@ -156,6 +171,7 @@ const FleetPage = () => {
             unknownVanCount={unknownVanCount}
             onOpenVan={(vanId) => go(`/fleet/van/${vanId}`)}
             onOpenDepot={() => go('/fleet/depot')}
+            onOpenTodo={() => go('/fleet/todo')}
             onReload={reload}
           />
         );
@@ -163,19 +179,14 @@ const FleetPage = () => {
         return <ProductsPanel data={data} index={index} onReload={reload} />;
       case 'moves':
         return <MovesPanel moves={moves} data={data} index={index} loading={movesLoading} />;
-      case 'equipment':
-        return (
-          <EquipmentPanel
-            data={data}
-            index={index}
-            isAdmin={isAdmin}
-            onOpenVan={(vanId) => go(`/fleet/van/${vanId}`)}
-            onReload={reload}
-          />
-        );
+      case 'todo':
+        return <TicketsPanel data={data} index={index} isAdmin={isAdmin} myRootId={myRootId} onReload={reload} />;
+      case 'kits':
+        return <KitsPanel data={data} index={index} onReload={reload} />;
       case 'depot':
         return (
           <LocationDetail
+            key={`depot-${focusNodeId || ''}`}
             location={index.depot}
             van={null}
             index={index}
@@ -184,7 +195,8 @@ const FleetPage = () => {
             canEdit={isAdmin}
             moves={moves}
             onReload={reload}
-            onLocalEquipment={onLocalEquipment}
+            focusNodeId={focusNodeId}
+            myRootId={myRootId}
           />
         );
       case 'van':
@@ -208,6 +220,7 @@ const FleetPage = () => {
         const canEdit = isAdmin || current?.user_id === user?.id;
         return (
           <LocationDetail
+            key={`${van.id}-${focusNodeId || ''}`}
             location={index.locationByVan.get(van.id)}
             van={van}
             index={index}
@@ -216,7 +229,8 @@ const FleetPage = () => {
             canEdit={canEdit}
             moves={moves}
             onReload={reload}
-            onLocalEquipment={onLocalEquipment}
+            focusNodeId={focusNodeId}
+            myRootId={myRootId}
           />
         );
       }
@@ -233,8 +247,8 @@ const FleetPage = () => {
       <div className="space-y-5">
         <div className="flex items-center gap-2">
           <div className="flex-1 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-            {pills.map(([key, path, Icon, label]) => (
-              <Pill key={key} active={activePill === key} icon={Icon} onClick={() => go(path)}>
+            {pills.map(([key, path, Icon, label, badge]) => (
+              <Pill key={key} active={activePill === key} icon={Icon} badge={badge || undefined} onClick={() => go(path)}>
                 {label}
               </Pill>
             ))}
@@ -243,6 +257,7 @@ const FleetPage = () => {
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
+        {data && index && <FleetSearch nodes={data.nodes} tree={index.tree} lang={lang} onPick={pickNode} />}
         {renderBody()}
       </div>
     </DashboardLayout>

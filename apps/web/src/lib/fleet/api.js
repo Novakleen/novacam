@@ -1,5 +1,5 @@
 /**
- * Fleet (Flotte / Vloot) data layer — v1.7.0.
+ * Fleet (Flotte / Vloot) data layer — v1.7.0, inventory tree added in v1.8.0 (see ./inventory.js).
  *
  * Catalog = public.margin_product_prices (slug is the stable product id used by margins + spray).
  * Stock = stock_locations (1 depot + 1 per van) × stock_balances (litres), changed only by
@@ -8,10 +8,10 @@
  */
 import { supabase } from '@/lib/customSupabaseClient';
 import { invalidateSprayProducts } from '@/lib/sprayProducts';
+import { buildTree, fetchInventory } from './inventory';
 
 export const MOVE_TYPES = ['purchase', 'transfer', 'spray_consume', 'adjust'];
 export const ADJUST_REASONS = ['breakage', 'measure', 'loss', 'correction'];
-export const EQUIPMENT_STATUSES = ['ok', 'missing', 'broken'];
 export const DEFAULT_PRODUCT_COLOR = '#1e3a8a';
 
 function throwIf(error) {
@@ -52,36 +52,26 @@ export function productName(product, lang) {
   return product.name || product.slug;
 }
 
-export function templateName(tpl, lang) {
-  if (!tpl) return '—';
-  if (lang === 'nl' && tpl.name_nl) return tpl.name_nl;
-  if (lang === 'en' && tpl.name_en) return tpl.name_en;
-  return tpl.name_fr;
-}
-
 /** Everything the Fleet tab needs in one round of parallel queries. */
 export async function fetchFleetData(isAdmin) {
-  const [products, vans, assignments, locations, balances, templates, equipment, profiles] =
-    await Promise.all([
-      fetchFleetProducts(isAdmin),
-      supabase.from('fleet_vans').select('*').order('sort').order('name'),
-      supabase.from('fleet_assignments').select('*').order('start_at', { ascending: false }),
-      supabase.from('stock_locations').select('*'),
-      supabase.from('stock_balances').select('*'),
-      supabase.from('equipment_templates').select('*').order('sort').order('name_fr'),
-      supabase.from('van_equipment').select('*'),
-      supabase.from('profiles').select('id, full_name, email, initials, role'),
-    ]);
-  for (const res of [vans, assignments, locations, balances, templates, equipment]) throwIf(res.error);
+  const [products, vans, assignments, locations, balances, profiles, inventory] = await Promise.all([
+    fetchFleetProducts(isAdmin),
+    supabase.from('fleet_vans').select('*').order('sort').order('name'),
+    supabase.from('fleet_assignments').select('*').order('start_at', { ascending: false }),
+    supabase.from('stock_locations').select('*'),
+    supabase.from('stock_balances').select('*'),
+    supabase.from('profiles').select('id, full_name, email, initials, role'),
+    fetchInventory(),
+  ]);
+  for (const res of [vans, assignments, locations, balances]) throwIf(res.error);
   return {
     products,
     vans: vans.data || [],
     assignments: assignments.data || [],
     locations: locations.data || [],
     balances: balances.data || [],
-    templates: templates.data || [],
-    equipment: equipment.data || [],
     profiles: profiles.error ? [] : profiles.data || [],
+    ...inventory,
   };
 }
 
@@ -145,23 +135,6 @@ export async function reassignVan(vanId, userId, startDate) {
     p_start: startDate || todayISO(),
   });
   throwIf(error);
-}
-
-export async function setEquipmentStatus(id, patch) {
-  const { data, error } = await supabase
-    .from('van_equipment')
-    .update(patch)
-    .eq('id', id)
-    .select()
-    .single();
-  throwIf(error);
-  return data;
-}
-
-export async function resyncVanEquipment(vanId) {
-  const { data, error } = await supabase.rpc('fleet_resync_van_equipment', { p_van_id: vanId });
-  throwIf(error);
-  return data || 0;
 }
 
 export async function saveVan(van) {
@@ -255,27 +228,9 @@ export async function createProduct(slug, fields) {
   return data;
 }
 
-// ─── Equipment template (admin) ─────────────────────────────────────────────
-export async function saveTemplate(tpl) {
-  const payload = {
-    name_fr: String(tpl.name_fr || '').trim(),
-    name_nl: String(tpl.name_nl || '').trim() || null,
-    name_en: String(tpl.name_en || '').trim() || null,
-    is_serialized: Boolean(tpl.is_serialized),
-    active: tpl.active !== false,
-    sort: Number(tpl.sort) || 0,
-  };
-  const q = tpl.id
-    ? supabase.from('equipment_templates').update(payload).eq('id', tpl.id)
-    : supabase.from('equipment_templates').insert(payload);
-  const { data, error } = await q.select().single();
-  throwIf(error);
-  return data;
-}
-
 // ─── Derived state helpers ───────────────────────────────────────────────────
 export function buildFleetIndex(data, lang) {
-  const { products, vans, assignments, locations, balances, templates, equipment, profiles } = data;
+  const { products, vans, assignments, locations, balances, profiles, nodes = [], tickets = [] } = data;
   const profileById = new Map(profiles.map((p) => [p.id, p]));
   const productBySlug = new Map(products.map((p) => [p.slug, p]));
   const depot = locations.find((l) => l.kind === 'depot') || null;
@@ -288,7 +243,7 @@ export function buildFleetIndex(data, lang) {
     assignments.filter((a) => !a.end_at).map((a) => [a.van_id, a])
   );
   const activeProducts = products.filter((p) => p.active !== false);
-  const templateById = new Map(templates.map((t) => [t.id, t]));
+  const tree = buildTree(nodes, tickets);
 
   const stockFor = (location, product) => {
     const b = location ? balanceMap.get(balanceKey(location.id, product.slug)) : null;
@@ -303,20 +258,8 @@ export function buildFleetIndex(data, lang) {
   const locationAlerts = (location) =>
     activeProducts.filter((p) => stockFor(location, p).state === 'out').length;
 
-  const vanEquipment = (vanId) =>
-    equipment
-      .filter((e) => e.van_id === vanId)
-      .map((e) => ({ ...e, template: templateById.get(e.template_id) }))
-      .filter((e) => e.template && e.template.active !== false)
-      .sort((a, b) => (a.template.sort ?? 0) - (b.template.sort ?? 0));
-
-  const equipmentIssues = (vanId) => {
-    const items = vanEquipment(vanId);
-    return {
-      broken: items.filter((e) => e.status === 'broken').length,
-      missing: items.filter((e) => e.status === 'missing').length,
-    };
-  };
+  /** Non-ok item counts for a van (by fleet_vans.id) or a location id. */
+  const conditionCountsForLocation = (locationId) => tree.conditionCounts(locationId);
 
   const locationLabel = (locId) => {
     const loc = locationById.get(locId);
@@ -335,11 +278,10 @@ export function buildFleetIndex(data, lang) {
     vanById,
     currentAssignment,
     activeProducts,
-    templateById,
+    tree,
     stockFor,
     locationAlerts,
-    vanEquipment,
-    equipmentIssues,
+    conditionCountsForLocation,
     locationLabel,
   };
 }

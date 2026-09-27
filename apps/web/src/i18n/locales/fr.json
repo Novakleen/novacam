@@ -553,9 +553,6 @@
     "history_other": "Historique ({{count}})",
     "threshold": "Seuil {{litres}} L",
     "override": "spécifique",
-    "kitOk": "Kit OK",
-    "kitIssues_one": "{{count}} item",
-    "kitIssues_other": "{{count}} items",
     "stockAlertChip_one": "{{count}} alerte stock",
     "stockAlertChip_other": "{{count}} alertes stock",
     "recentMoves": "Derniers mouvements",
@@ -571,16 +568,17 @@
       "overview": "Aperçu",
       "products": "Produits",
       "moves": "Mouvements",
-      "equipment": "Matériel",
-      "myVan": "Mon van"
+      "myVan": "Mon van",
+      "todo": "À traiter",
+      "kits": "Kits"
     },
     "banner": {
       "stockAlerts_one": "alerte stock",
       "stockAlerts_other": "alertes stock",
-      "kitIssues_one": "item cassé / manquant",
-      "kitIssues_other": "items cassés / manquants",
       "unknownVan_one": "spray van inconnu (30 j)",
-      "unknownVan_other": "sprays van inconnu (30 j)"
+      "unknownVan_other": "sprays van inconnu (30 j)",
+      "todo_one": "signalement à traiter",
+      "todo_other": "signalements à traiter"
     },
     "filter": {
       "all": "Tous",
@@ -646,20 +644,6 @@
       "insufficient": "Stock insuffisant : {{qty}} L encodés, {{applied}} L débités",
       "readOnlyHint": "Lecture seule. Les sorties Spray sont créées automatiquement : pour corriger, modifiez la pulvérisation du chantier."
     },
-    "equipment": {
-      "status": {
-        "ok": "OK",
-        "missing": "Manquant",
-        "broken": "Cassé"
-      },
-      "notePlaceholder": "Note (ex. lance pliée)",
-      "serialPlaceholder": "N° de série",
-      "resync": "Resync template",
-      "resynced_one": "{{count}} item ajouté",
-      "resynced_other": "{{count}} items ajoutés",
-      "saveFailed": "Mise à jour impossible",
-      "empty": "Aucun item. Resynchronisez le template."
-    },
     "reassign": {
       "button": "Réaffecter",
       "title": "Réaffecter {{van}}",
@@ -717,23 +701,175 @@
       "stockByLocation": "Stock par lieu",
       "purchaseToDepot": "Achat → dépôt"
     },
-    "template": {
-      "title": "Template matériel",
-      "hint": "Liste type copiée dans chaque nouveau van. « Resync template » ajoute les nouveaux items sans écraser les états cochés.",
-      "add": "Item",
-      "edit": "Modifier l'item",
-      "name": "Nom",
-      "serialized": "n° série",
-      "serializedLabel": "Avec n° de série (pompe / machine)",
-      "active": "Actif",
-      "resyncHint": "Les vans existants reçoivent les nouveaux items via « Resync template ».",
-      "saved": "Template enregistré",
-      "saveFailed": "Enregistrement impossible"
-    },
     "marginsLink": {
       "title": "Produits → Flotte",
       "desc": "Le catalogue produits (nom, prix HT / L, actif, seuils) se gère désormais dans Flotte › Produits. Les marges utilisent toujours ces prix × litres.",
       "button": "Gérer les produits → Flotte"
+    },
+    "allOk": "Tout OK",
+    "condCount": {
+      "broken_one": "{{count}} rouge",
+      "broken_other": "{{count}} rouges",
+      "damaged_usable_one": "{{count}} jaune",
+      "damaged_usable_other": "{{count}} jaunes",
+      "missing_one": "{{count}} manquant",
+      "missing_other": "{{count}} manquants"
+    },
+    "cond": {
+      "ok": "OK",
+      "damaged_usable": "Abîmé mais utilisable",
+      "broken": "Hors service",
+      "missing": "Manquant"
+    },
+    "kinds": {
+      "depot": "Dépôt",
+      "van": "Van",
+      "zone": "Zone",
+      "caisse": "Caisse",
+      "machine": "Machine",
+      "materiel": "Matériel"
+    },
+    "kindHints": {
+      "caisse": "Contenant : on peut y ranger d'autres articles.",
+      "machine": "Actif unique : numéro de série, photos, état.",
+      "materiel": "Compté en pièces (quantité)."
+    },
+    "zones": {
+      "cab": "Cabine",
+      "bulkhead": "Zone cloison",
+      "left_shelf": "Étagères gauche",
+      "right_shelf": "Étagères droite",
+      "floor": "Plancher"
+    },
+    "status": {
+      "signale": "Signalé",
+      "vu": "Vu",
+      "en_reparation": "En réparation",
+      "commande": "Commandé",
+      "resolu": "Résolu"
+    },
+    "resolutions": {
+      "repare": "Réparé",
+      "remplace": "Remplacé",
+      "retrouve": "Retrouvé"
+    },
+    "report": {
+      "title": "Signaler un problème",
+      "cta": "Signaler",
+      "sent": "Signalement envoyé",
+      "failed": "Signalement impossible",
+      "hint": {
+        "damaged_usable": "Fissuré, tordu… on peut encore l'utiliser",
+        "broken": "Hors service, ne plus utiliser",
+        "missing": "Introuvable dans le van"
+      },
+      "qty": "Combien sont touchés ? (sur {{total}})",
+      "photo": "Photo",
+      "notePlaceholder": "Note (facultatif)",
+      "send": "Envoyer"
+    },
+    "moveNode": {
+      "title": "Déplacer vers…",
+      "cta": "Déplacer",
+      "done": "Déplacé",
+      "failed": "Déplacement impossible",
+      "withContents_one": "avec {{count}} article dedans",
+      "withContents_other": "avec {{count}} articles dedans",
+      "qty": "Quantité à déplacer (sur {{total}})",
+      "here": "ici",
+      "confirm": "Déplacer ici"
+    },
+    "node": {
+      "saved": "Enregistré",
+      "saveFailed": "Enregistrement impossible",
+      "editTitle": "Modifier",
+      "addTitle": "Ajouter un article",
+      "addIn": "Dans {{name}}",
+      "name": "Nom",
+      "qty": "Quantité",
+      "serial": "N° de série",
+      "brand": "Marque",
+      "model": "Modèle",
+      "prefillKit": "Préremplir avec un kit",
+      "noKit": "Vide",
+      "icon": "Icône",
+      "notes": "Notes",
+      "confirmDelete": "Supprimer « {{name}} » ?",
+      "worstInside": "(pire état du contenu)",
+      "open_one": "Ouvrir ({{count}})",
+      "open_other": "Ouvrir ({{count}})",
+      "addPhoto": "Photo",
+      "openTickets": "Signalements ouverts",
+      "history": "Historique"
+    },
+    "ticket": {
+      "failed": "Action impossible",
+      "qty_one": "{{count}} pièce",
+      "qty_other": "{{count}} pièces",
+      "ev": {
+        "created": "Signalé : {{sev}}",
+        "severity": "Aggravé : {{from}} → {{to}}",
+        "status": "Statut : {{to}}",
+        "resolved": "Résolu : {{res}}",
+        "cost": "Coût : {{cost}} €",
+        "photo": "Photo ajoutée",
+        "comment": "Commentaire"
+      },
+      "notePlaceholder": "Commentaire…",
+      "comment": "Commenter",
+      "addPhoto": "Photo",
+      "escalate": "Passer en rouge",
+      "adminActions": "Suivi admin",
+      "cost": "Coût (€)",
+      "reopen": "Rouvrir"
+    },
+    "inv": {
+      "title": "Inventaire",
+      "itemsCount_one": "{{count}} article",
+      "itemsCount_other": "{{count}} articles",
+      "details": "Détails",
+      "issuesOnly": "Problèmes",
+      "add": "Ajouter",
+      "noIssues": "Aucun problème ici",
+      "empty": "Vide"
+    },
+    "kits": {
+      "intro": "Les kits préremplissent un nouveau van ou une nouvelle caisse. « Resync » ajoute seulement les articles manquants, sans rien écraser.",
+      "resynced_one": "{{count}} article ajouté",
+      "resynced_other": "{{count}} articles ajoutés",
+      "resyncedVan_one": "{{name}} : {{count}} article ajouté",
+      "resyncedVan_other": "{{name}} : {{count}} articles ajoutés",
+      "failed": "Action impossible",
+      "resyncWith": "Resync {{name}}",
+      "confirmDelete": "Supprimer « {{name}} » du kit ?",
+      "target": {
+        "van": "van",
+        "caisse": "caisse"
+      },
+      "new": "Nouveau kit",
+      "edit": "Modifier le kit",
+      "defaultHint": "Kit par défaut : appliqué automatiquement à chaque nouveau van.",
+      "empty": "Kit vide",
+      "applyToVans": "Resync sur un van",
+      "caisseHint": "S'applique depuis une caisse (Inventaire › caisse › Resync) ou à la création d'une caisse.",
+      "editItem": "Modifier l'article",
+      "addItem": "Ajouter au kit",
+      "parent": "Dans",
+      "topLevel": "Niveau principal",
+      "sort": "Ordre"
+    },
+    "todo": {
+      "today": "aujourd'hui",
+      "daysAgo_one": "il y a {{count}} jour",
+      "daysAgo_other": "il y a {{count}} jours",
+      "open": "Ouverts ({{count}})",
+      "resolved": "Résolus",
+      "nothing": "Rien à traiter 🎉",
+      "noResolved": "Aucun signalement résolu récemment"
+    },
+    "search": {
+      "placeholder": "Où est… ? (pompe, joints, n° de série)",
+      "none": "Aucun résultat"
     }
   }
 }

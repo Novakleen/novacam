@@ -553,9 +553,6 @@
     "history_other": "History ({{count}})",
     "threshold": "Threshold {{litres}} L",
     "override": "custom",
-    "kitOk": "Kit OK",
-    "kitIssues_one": "{{count}} item",
-    "kitIssues_other": "{{count}} items",
     "stockAlertChip_one": "{{count}} stock alert",
     "stockAlertChip_other": "{{count}} stock alerts",
     "recentMoves": "Recent moves",
@@ -571,16 +568,17 @@
       "overview": "Overview",
       "products": "Products",
       "moves": "Moves",
-      "equipment": "Equipment",
-      "myVan": "My van"
+      "myVan": "My van",
+      "todo": "To do",
+      "kits": "Kits"
     },
     "banner": {
       "stockAlerts_one": "stock alert",
       "stockAlerts_other": "stock alerts",
-      "kitIssues_one": "item broken / missing",
-      "kitIssues_other": "items broken / missing",
       "unknownVan_one": "unknown-van spray (30 d)",
-      "unknownVan_other": "unknown-van sprays (30 d)"
+      "unknownVan_other": "unknown-van sprays (30 d)",
+      "todo_one": "report to handle",
+      "todo_other": "reports to handle"
     },
     "filter": {
       "all": "All",
@@ -646,20 +644,6 @@
       "insufficient": "Insufficient stock: {{qty}} L logged, {{applied}} L debited",
       "readOnlyHint": "Read-only. Spray moves are created automatically: edit the job’s spray entry to correct them."
     },
-    "equipment": {
-      "status": {
-        "ok": "OK",
-        "missing": "Missing",
-        "broken": "Broken"
-      },
-      "notePlaceholder": "Note (e.g. bent lance)",
-      "serialPlaceholder": "Serial number",
-      "resync": "Resync template",
-      "resynced_one": "{{count}} item added",
-      "resynced_other": "{{count}} items added",
-      "saveFailed": "Update failed",
-      "empty": "No items. Resync the template."
-    },
     "reassign": {
       "button": "Reassign",
       "title": "Reassign {{van}}",
@@ -717,23 +701,175 @@
       "stockByLocation": "Stock per location",
       "purchaseToDepot": "Purchase → depot"
     },
-    "template": {
-      "title": "Equipment template",
-      "hint": "Standard list copied into every new van. “Resync template” adds new items without overwriting checked states.",
-      "add": "Item",
-      "edit": "Edit item",
-      "name": "Name",
-      "serialized": "serial",
-      "serializedLabel": "With serial number (pump / machine)",
-      "active": "Active",
-      "resyncHint": "Existing vans get new items via “Resync template”.",
-      "saved": "Template saved",
-      "saveFailed": "Could not save"
-    },
     "marginsLink": {
       "title": "Products → Fleet",
       "desc": "The product catalog (name, price excl. VAT / L, active, thresholds) is now managed in Fleet › Products. Margins still use these prices × litres.",
       "button": "Manage products → Fleet"
+    },
+    "allOk": "All OK",
+    "condCount": {
+      "broken_one": "{{count}} red",
+      "broken_other": "{{count}} red",
+      "damaged_usable_one": "{{count}} yellow",
+      "damaged_usable_other": "{{count}} yellow",
+      "missing_one": "{{count}} missing",
+      "missing_other": "{{count}} missing"
+    },
+    "cond": {
+      "ok": "OK",
+      "damaged_usable": "Damaged but usable",
+      "broken": "Out of service",
+      "missing": "Missing"
+    },
+    "kinds": {
+      "depot": "Depot",
+      "van": "Van",
+      "zone": "Zone",
+      "caisse": "Box",
+      "machine": "Machine",
+      "materiel": "Equipment"
+    },
+    "kindHints": {
+      "caisse": "Container: can hold other items.",
+      "machine": "Unique asset: serial number, photos, condition.",
+      "materiel": "Counted in pieces (quantity)."
+    },
+    "zones": {
+      "cab": "Cab",
+      "bulkhead": "Bulkhead zone",
+      "left_shelf": "Left shelves",
+      "right_shelf": "Right shelves",
+      "floor": "Floor"
+    },
+    "status": {
+      "signale": "Reported",
+      "vu": "Seen",
+      "en_reparation": "In repair",
+      "commande": "Ordered",
+      "resolu": "Resolved"
+    },
+    "resolutions": {
+      "repare": "Repaired",
+      "remplace": "Replaced",
+      "retrouve": "Found"
+    },
+    "report": {
+      "title": "Report a problem",
+      "cta": "Report",
+      "sent": "Report sent",
+      "failed": "Could not report",
+      "hint": {
+        "damaged_usable": "Cracked, bent… still usable",
+        "broken": "Out of service, stop using",
+        "missing": "Can't find it in the van"
+      },
+      "qty": "How many are affected? (of {{total}})",
+      "photo": "Photo",
+      "notePlaceholder": "Note (optional)",
+      "send": "Send"
+    },
+    "moveNode": {
+      "title": "Move to…",
+      "cta": "Move",
+      "done": "Moved",
+      "failed": "Could not move",
+      "withContents_one": "with {{count}} item inside",
+      "withContents_other": "with {{count}} items inside",
+      "qty": "Quantity to move (of {{total}})",
+      "here": "here",
+      "confirm": "Move here"
+    },
+    "node": {
+      "saved": "Saved",
+      "saveFailed": "Could not save",
+      "editTitle": "Edit",
+      "addTitle": "Add an item",
+      "addIn": "In {{name}}",
+      "name": "Name",
+      "qty": "Quantity",
+      "serial": "Serial number",
+      "brand": "Brand",
+      "model": "Model",
+      "prefillKit": "Prefill with a kit",
+      "noKit": "Empty",
+      "icon": "Icon",
+      "notes": "Notes",
+      "confirmDelete": "Delete “{{name}}”?",
+      "worstInside": "(worst condition inside)",
+      "open_one": "Open ({{count}})",
+      "open_other": "Open ({{count}})",
+      "addPhoto": "Photo",
+      "openTickets": "Open reports",
+      "history": "History"
+    },
+    "ticket": {
+      "failed": "Action failed",
+      "qty_one": "{{count}} piece",
+      "qty_other": "{{count}} pieces",
+      "ev": {
+        "created": "Reported: {{sev}}",
+        "severity": "Escalated: {{from}} → {{to}}",
+        "status": "Status: {{to}}",
+        "resolved": "Resolved: {{res}}",
+        "cost": "Cost: €{{cost}}",
+        "photo": "Photo added",
+        "comment": "Comment"
+      },
+      "notePlaceholder": "Comment…",
+      "comment": "Comment",
+      "addPhoto": "Photo",
+      "escalate": "Escalate to red",
+      "adminActions": "Admin follow-up",
+      "cost": "Cost (€)",
+      "reopen": "Reopen"
+    },
+    "inv": {
+      "title": "Inventory",
+      "itemsCount_one": "{{count}} item",
+      "itemsCount_other": "{{count}} items",
+      "details": "Details",
+      "issuesOnly": "Problems",
+      "add": "Add",
+      "noIssues": "No problems here",
+      "empty": "Empty"
+    },
+    "kits": {
+      "intro": "Kits prefill a new van or box. “Resync” only adds missing items and never overwrites anything.",
+      "resynced_one": "{{count}} item added",
+      "resynced_other": "{{count}} items added",
+      "resyncedVan_one": "{{name}}: {{count}} item added",
+      "resyncedVan_other": "{{name}}: {{count}} items added",
+      "failed": "Action failed",
+      "resyncWith": "Resync {{name}}",
+      "confirmDelete": "Remove “{{name}}” from the kit?",
+      "target": {
+        "van": "van",
+        "caisse": "box"
+      },
+      "new": "New kit",
+      "edit": "Edit kit",
+      "defaultHint": "Default kit: applied automatically to every new van.",
+      "empty": "Empty kit",
+      "applyToVans": "Resync a van",
+      "caisseHint": "Applied from a box (Inventory › box › Resync) or when creating a box.",
+      "editItem": "Edit item",
+      "addItem": "Add to kit",
+      "parent": "Inside",
+      "topLevel": "Top level",
+      "sort": "Order"
+    },
+    "todo": {
+      "today": "today",
+      "daysAgo_one": "{{count}} day ago",
+      "daysAgo_other": "{{count}} days ago",
+      "open": "Open ({{count}})",
+      "resolved": "Resolved",
+      "nothing": "Nothing to handle 🎉",
+      "noResolved": "No recently resolved reports"
+    },
+    "search": {
+      "placeholder": "Where is… ? (pump, seals, serial)",
+      "none": "No results"
     }
   }
 }
