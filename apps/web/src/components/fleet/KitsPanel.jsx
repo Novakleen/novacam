@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { applyKit, deleteKitItem, nodeName, saveKit, saveKitItem, ZONE_KEYS } from '@/lib/fleet/inventory';
 import { NAVY, SectionCard, YELLOW } from './FleetUI';
 import NodeIcon, { NODE_ICONS } from './NodeIcon';
+import useConfirm from './useConfirm';
 import { DEFAULT_ZONE_GEOM } from './VanSvg';
 
 const KIT_KINDS = ['zone', 'caisse', 'machine', 'materiel'];
@@ -29,6 +30,7 @@ const KitsPanel = ({ data, index, onReload }) => {
   const [itemDlg, setItemDlg] = useState(null);
   const [kitDlg, setKitDlg] = useState(null);
   const [busy, setBusy] = useState('');
+  const [confirm, confirmDialog] = useConfirm();
 
   const kit = data.kits.find((k) => k.id === kitId) || null;
   const items = useMemo(() => data.kitItems.filter((i) => i.kit_id === kitId), [data.kitItems, kitId]);
@@ -51,13 +53,28 @@ const KitsPanel = ({ data, index, onReload }) => {
     }
   };
 
+  const descendantsOf = (id) => {
+    const out = [];
+    const walk = (pid) => items.filter((i) => i.parent_item_id === pid).forEach((c) => { out.push(c); walk(c.id); });
+    walk(id);
+    return out;
+  };
+
   const removeItem = async (item) => {
-    if (!window.confirm(t('fleet.kits.confirmDelete', { name: nodeName(item, lang) }))) return;
+    const name = nodeName(item, lang);
+    const children = descendantsOf(item.id);
+    const lines = [];
+    if (children.length) lines.push(t('fleet.kits.deleteChildren', { count: children.length }));
+    lines.push(t('fleet.kits.deleteKeepsVans'));
+    const ok = await confirm({ title: t('fleet.kits.confirmDelete', { name }), description: lines.join('\n\n') });
+    if (!ok) return;
     try {
       await deleteKitItem(item.id);
+      toast({ title: t('fleet.kits.deleted', { name }) });
       onReload();
     } catch (err) {
-      toast({ variant: 'destructive', title: t('fleet.kits.failed'), description: err.message });
+      const description = err?.code === 'KIT_ITEM_NOT_DELETED' || err?.code === '42501' ? t('fleet.kits.deleteNotAllowed') : err?.message;
+      toast({ variant: 'destructive', title: t('fleet.kits.failed'), description });
     }
   };
 
@@ -146,6 +163,7 @@ const KitsPanel = ({ data, index, onReload }) => {
         </SectionCard>
       )}
 
+      {confirmDialog}
       <KitItemDialog value={itemDlg} items={items} lang={lang} onClose={() => setItemDlg(null)} onDone={onReload} />
       <KitDialog value={kitDlg} onClose={() => setKitDlg(null)} onDone={(k) => { if (k?.id) setKitId(k.id); onReload(); }} />
     </div>

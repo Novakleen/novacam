@@ -22,11 +22,13 @@ import {
 import { firstName } from '@/lib/fleet/api';
 import { CondPill, NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
+import useConfirm from './useConfirm';
 
 /** Item / container details: condition, path, photos, tickets, actions. */
 const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lang, profileById, onClose, onReport, onMove, onEdit, onOpen, onTicket, onChanged }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const [confirm, confirmDialog] = useConfirm();
   const [photos, setPhotos] = useState([]);
   const [urls, setUrls] = useState({});
   const fileRef = useRef(null);
@@ -66,7 +68,7 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
   };
 
   const onDelete = async () => {
-    if (!window.confirm(t('fleet.node.confirmDelete', { name: nodeName(node, lang) }))) return;
+    if (!(await confirm({ title: t('fleet.node.confirmDelete', { name: nodeName(node, lang) }) }))) return;
     try {
       await deleteNode(node.id);
       onClose();
@@ -217,6 +219,7 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
             {closed.map(ticketRow)}
           </div>
         )}
+        {confirmDialog}
       </DialogContent>
     </Dialog>
   );

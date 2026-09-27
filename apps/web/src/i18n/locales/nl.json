@@ -2,6 +2,7 @@
   "common": {
     "save": "Opslaan",
     "cancel": "Annuleren",
+    "confirm": "Bevestigen",
     "delete": "Verwijderen",
     "edit": "Bewerken",
     "add": "Toevoegen",
@@ -843,6 +844,11 @@
       "failed": "Actie mislukt",
       "resyncWith": "Resync {{name}}",
       "confirmDelete": "« {{name}} » uit de kit verwijderen?",
+      "deleteChildren_one": "Hierdoor wordt ook {{count}} onderdeel in dit kitartikel verwijderd.",
+      "deleteChildren_other": "Hierdoor worden ook de {{count}} onderdelen in dit kitartikel verwijderd.",
+      "deleteKeepsVans": "Artikelen die al in de bestelwagens zijn aangemaakt blijven behouden: ze worden enkel losgekoppeld van de kit.",
+      "deleted": "« {{name}} » uit de kit verwijderd",
+      "deleteNotAllowed": "Verwijderen geweigerd: alleen een beheerder kan kits wijzigen.",
       "target": {
         "van": "bestelwagen",
         "caisse": "kist"

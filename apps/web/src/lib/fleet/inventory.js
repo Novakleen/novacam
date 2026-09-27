@@ -265,9 +265,19 @@ export async function saveLayoutAsKitDefault(zones) {
   return n;
 }
 
+/**
+ * Admin: delete a kit item. Child kit items cascade (FK parent_item_id ON DELETE CASCADE);
+ * van items created from it are kept and only unlinked (fleet_nodes.kit_item_id ON DELETE SET NULL).
+ * Throws KIT_ITEM_NOT_DELETED when RLS silently matched 0 rows.
+ */
 export async function deleteKitItem(id) {
-  const { error } = await supabase.from('fleet_kit_items').delete().eq('id', id);
+  const { data, error } = await supabase.from('fleet_kit_items').delete().eq('id', id).select('id');
   throwIf(error);
+  if (!data || data.length === 0) {
+    const err = new Error('KIT_ITEM_NOT_DELETED');
+    err.code = 'KIT_ITEM_NOT_DELETED';
+    throw err;
+  }
 }
 
 // ─── Tree helpers ─────────────────────────────────────────────────────────────
