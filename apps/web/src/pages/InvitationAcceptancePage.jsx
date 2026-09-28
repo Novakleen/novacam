@@ -78,24 +78,18 @@ const InvitationAcceptancePage = () => {
       if (signUpError) throw signUpError;
 
       if (authData.user) {
-         // 2. Update Invitation Status
-         await supabase
-           .from('invitations')
-           .update({ 
-             status: 'accepted',
-             accepted_at: new Date().toISOString()
-           })
-           .eq('id', invitation.id);
-
-         // 3. Update Profile (if needed beyond trigger)
+         // 2. Update Profile (name only — v1.13.1: `role` is never sent on a self update)
          await supabase
            .from('profiles')
            .update({ 
              full_name: formData.fullName,
-             role: invitation.role,
              initials: formData.fullName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
            })
            .eq('id', authData.user.id);
+
+         // 3. Apply the invited role + mark the invitation accepted (server-checked RPC)
+         const { error: acceptError } = await supabase.rpc('accept_invitation', { p_token: token });
+         if (acceptError) console.error('accept_invitation failed:', acceptError);
 
          // 4. Sign in immediately (if not auto-signed in)
          const { error: signInError } = await supabase.auth.signInWithPassword({

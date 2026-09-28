@@ -121,19 +121,10 @@ export const AuthProvider = ({ children }) => {
 
       // 3. Mark invitation as accepted
       if (authData.user) {
-        await supabase
-          .from('invitations')
-          .update({ 
-            status: 'accepted',
-            accepted_at: new Date().toISOString()
-          })
-          .eq('token', token);
-          
-        // Also update profile immediately if needed
-        await supabase
-          .from('profiles')
-          .update({ role: invitation.role })
-          .eq('id', authData.user.id);
+        // v1.13.1: never send `role` on a self profile update (blocked server-side).
+        // The RPC applies the invited role (Admin-created invitations only) and marks it accepted.
+        const { error: acceptError } = await supabase.rpc('accept_invitation', { p_token: token });
+        if (acceptError) console.error('accept_invitation failed:', acceptError);
       }
 
       return { data: authData, error: null };
