@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, LayoutTemplate, Pencil, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { Check, LayoutTemplate, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { deleteNode, isContainer, nodeName, saveLayoutAsKitDefault, saveNode, setZoneGeometry } from '@/lib/fleet/inventory';
+import { deleteNode, isContainer, nodeName, saveNode, setZoneGeometry } from '@/lib/fleet/inventory';
 import { NAVY, YELLOW } from './FleetUI';
 import VanSvg, { DEFAULT_ZONE_GEOM, nodeRect } from './VanSvg';
 import ZoneEditOverlay from './ZoneEditOverlay';
@@ -37,6 +37,19 @@ export function buildPlanZones(root, tree, lang, t, { drafts = {}, draggable = f
             kind: c.kind,
             condition: tree.worst(c.id),
             draggable,
+            // v1.11.0: a crate is drawn as a container with its matériel inside
+            ...(c.kind === 'caisse'
+              ? {
+                  children: tree.childrenOf(c.id).map((k) => ({
+                    id: k.id,
+                    label: nodeName(k, lang),
+                    sub: k.kind === 'materiel' && Number(k.qty) > 1 ? `×${k.qty}` : '',
+                    kind: k.kind,
+                    condition: tree.worst(k.id),
+                    draggable,
+                  })),
+                }
+              : {}),
           }))
         : [],
     }));
@@ -143,20 +156,6 @@ const VanPlan = ({
         const def = DEFAULT_ZONE_GEOM[z.key];
         if (def) await setZoneGeometry(z.id, def);
       }
-      onReload?.();
-    } catch (err) {
-      toast({ variant: 'destructive', title: t('fleet.plan.saveFailed'), description: err.message });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveAsDefault = async () => {
-    if (!(await confirm({ title: t('fleet.plan.saveDefaultConfirm'), destructive: false }))) return;
-    setBusy(true);
-    try {
-      const n = await saveLayoutAsKitDefault(zones.map((z) => ({ rect: z.rect, kit_item_id: tree.byId.get(z.id)?.kit_item_id })));
-      toast({ title: t('fleet.plan.savedDefault', { count: n }) });
       onReload?.();
     } catch (err) {
       toast({ variant: 'destructive', title: t('fleet.plan.saveFailed'), description: err.message });
@@ -272,12 +271,6 @@ const VanPlan = ({
               <RotateCcw className="h-4 w-4 mr-1" />
               {t('fleet.plan.reset')}
             </Button>
-            {isAdmin && (
-              <Button size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={saveAsDefault}>
-                <Save className="h-4 w-4 mr-1" />
-                {t('fleet.plan.saveDefault')}
-              </Button>
-            )}
           </div>
         </div>
       )}

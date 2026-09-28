@@ -9,7 +9,9 @@ import React from 'react';
  * floor's top-left corner; the cab sits at negative y).
  *
  * props:
- *  zones: [{ id, key, label, worst, rect: {x,y,w,h}, blocks: [{ id, label, sub, kind, condition }] }]
+ *  zones: [{ id, key, label, worst, rect: {x,y,w,h}, blocks: [{ id, label, sub, kind, condition, children? }] }]
+ *  v1.11.0: a caisse block with `children` (its matériel) is drawn as a full-width container with
+ *  the items nested inside it.
  *  onZone(id), onBlock(id), selectedZoneId, mini, grid, dimBlocks
  *  ZoneWrap / BlockWrap: optional wrapper components ({ zone|block, children }) — used for drag & drop
  *  children: overlay rendered last, in cargo coordinates (plan editor handles)
@@ -30,7 +32,7 @@ export const CARGO_SIZE = { w: 164, h: 286 };
 /** Editable plan area in cargo cm (cab included, negative y). */
 export const PLAN_BOUNDS = { minX: 0, maxX: 164, minY: -91, maxY: 286 };
 
-/** Default Expert L3 layout (same values as the kit seed). */
+/** Default Expert L3 layout (same values as the new-van seed in fleet_van_after_write). */
 export const DEFAULT_ZONE_GEOM = {
   cab: { x: 8, y: -91, w: 148, h: 78 },
   bulkhead: { x: 2, y: 4, w: 160, h: 44 },
@@ -52,6 +54,67 @@ function truncate(s, n) {
 }
 
 const Pass = ({ children }) => children;
+const FONT = 'Arial, Helvetica, sans-serif';
+
+/**
+ * v1.11.0 zone layout: plain blocks fill a grid; crates take a full-width row sized to their
+ * contents (chips ~12 cm high). Returns { placed: [{ b, x, y, w, h, kids: [{ k, x, y, w, h }], kidsHidden }], hidden }.
+ */
+export function zoneLayout(r, blocks) {
+  const pad = 3;
+  const cols = Math.max(1, Math.min(4, Math.floor(r.w / 52)));
+  const bw = (r.w - pad * (cols + 1)) / cols;
+  const bh = Math.min(34, Math.max(16, r.h - 17));
+  const bottom = r.y + r.h - 2;
+  const placed = [];
+  let hidden = 0;
+  let y = r.y + 14;
+  let col = 0;
+  for (const b of blocks) {
+    if (b.kind === 'caisse' && Array.isArray(b.children)) {
+      if (col > 0) {
+        y += bh + pad;
+        col = 0;
+      }
+      const w = r.w - pad * 2;
+      const kcols = Math.max(1, Math.min(3, Math.floor((w - 6) / 42)));
+      const kw = (w - 6 - (kcols - 1) * 2) / kcols;
+      const kidRows = Math.ceil(b.children.length / kcols);
+      const room = bottom - y;
+      if (room < 16) {
+        hidden += 1;
+        continue;
+      }
+      const fitRows = Math.max(0, Math.floor((room - 14) / 13));
+      const rowsShown = Math.min(kidRows, fitRows);
+      const h = 14 + Math.max(1, rowsShown) * 13;
+      const x = r.x + pad;
+      const shownKids = b.children.slice(0, rowsShown * kcols);
+      placed.push({
+        b,
+        x,
+        y,
+        w,
+        h: Math.min(h, room),
+        kids: shownKids.map((k, i) => ({ k, x: x + 3 + (i % kcols) * (kw + 2), y: y + 13 + Math.floor(i / kcols) * 13, w: kw, h: 11.5 })),
+        kidsHidden: b.children.length - shownKids.length,
+      });
+      y += Math.min(h, room) + pad;
+      continue;
+    }
+    if (y + bh > bottom + 1) {
+      hidden += 1;
+      continue;
+    }
+    placed.push({ b, x: r.x + pad + col * (bw + pad), y, w: bw, h: bh, kids: [] });
+    col += 1;
+    if (col === cols) {
+      col = 0;
+      y += bh + pad;
+    }
+  }
+  return { placed, hidden };
+}
 
 /** Grid of blocks inside a zone rect (SVG coords). */
 export function blockLayout(r) {
@@ -185,9 +248,7 @@ const VanSvg = ({
         const selected = selectedZoneId === z.id;
         const tint = worst === 'ok' ? '#ffffff' : COND_FILL[worst];
         const blocks = z.blocks || [];
-        const layout = blockLayout(r);
-        const shown = blocks.slice(0, layout.max);
-        const hidden = blocks.length - shown.length;
+        const { placed, hidden } = zoneLayout(r, blocks);
         return (
           <ZoneWrap key={z.id} zone={z}>
             <g onClick={onZone ? () => onZone(z.id) : undefined} style={clickable(onZone)}>
@@ -216,45 +277,86 @@ const VanSvg = ({
                 </text>
               )}
               {!mini &&
-                shown.map((b, i) => {
-                  const p = layout.pos(i);
+                placed.map(({ b, x, y, w, h, kids, kidsHidden }) => {
+                  const p = { x, y, w, h };
+                  const crate = b.kind === 'caisse' && Array.isArray(b.children);
                   const chars = Math.max(4, Math.floor(p.w / 4.6));
-                  return (
-                    <BlockWrap key={b.id} block={b}>
-                      <g
-                        onClick={
-                          onBlock
-                            ? (e) => {
-                                e.stopPropagation();
-                                onBlock(b.id);
-                              }
-                            : undefined
+                  const click = (id) =>
+                    onBlock
+                      ? (e) => {
+                          e.stopPropagation();
+                          onBlock(id);
                         }
-                        style={clickable(onBlock)}
-                        opacity={dimBlocks ? 0.55 : 1}
-                      >
-                        <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="4" fill={b.kind === 'machine' ? VAN_NAVY : '#ffffff'} stroke={b.highlight ? VAN_YELLOW : VAN_NAVY} strokeWidth={b.highlight ? 2.5 : 1} />
-                        <rect x={p.x} y={p.y} width="4" height={p.h} rx="2" fill={COND_FILL[b.condition || 'ok']} />
-                        <text
-                          x={p.x + 7}
-                          y={p.y + p.h / 2 - (b.sub && p.h >= 26 ? 2 : -3)}
-                          fontSize="8"
-                          fontWeight="700"
-                          fill={b.kind === 'machine' ? VAN_YELLOW : VAN_NAVY}
-                          fontFamily="Arial, Helvetica, sans-serif"
-                        >
-                          {truncate(b.label, chars)}
-                        </text>
-                        {b.sub && p.h >= 26 && (
-                          <text x={p.x + 7} y={p.y + p.h / 2 + 9} fontSize="6.5" fill={b.kind === 'machine' ? '#e5e7eb' : '#6b7280'} fontFamily="Arial, Helvetica, sans-serif">
-                            {truncate(b.sub, chars + 2)}
-                          </text>
-                        )}
-                        {b.condition && b.condition !== 'ok' && (
-                          <circle cx={p.x + p.w - 6} cy={p.y + 6} r="4.5" fill={COND_FILL[b.condition]} stroke="#fff" strokeWidth="1.2" />
-                        )}
-                      </g>
-                    </BlockWrap>
+                      : undefined;
+                  return (
+                    <React.Fragment key={b.id}>
+                      <BlockWrap block={b}>
+                        <g onClick={click(b.id)} style={clickable(onBlock)} opacity={dimBlocks ? 0.55 : 1}>
+                          {crate ? (
+                            <>
+                              <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="4" fill="#fffbeb" stroke={b.highlight ? VAN_YELLOW : '#b45309'} strokeWidth={b.highlight ? 2.5 : 1.2} />
+                              <rect x={p.x} y={p.y} width={p.w} height="12" rx="4" fill="#b45309" />
+                              <rect x={p.x} y={p.y + 6} width={p.w} height="6" fill="#b45309" />
+                              <g transform={`translate(${p.x + 3} ${p.y + 2})`} fill="none" stroke={VAN_YELLOW} strokeWidth="1">
+                                <rect x="0" y="1" width="8" height="7" rx="1" />
+                                <line x1="0" y1="3.5" x2="8" y2="3.5" />
+                              </g>
+                              <text x={p.x + 14} y={p.y + 9} fontSize="7.5" fontWeight="800" fill="#ffffff" fontFamily={FONT}>
+                                {truncate(b.label, Math.max(4, Math.floor((p.w - 30) / 4.3)))}
+                              </text>
+                              {b.condition && b.condition !== 'ok' && (
+                                <circle cx={p.x + p.w - 6} cy={p.y + 6} r="4" fill={COND_FILL[b.condition]} stroke="#fff" strokeWidth="1.2" />
+                              )}
+                              {kids.length === 0 && b.sub && (
+                                <text x={p.x + 5} y={p.y + 22} fontSize="6.5" fill="#92400e" fontFamily={FONT}>
+                                  {truncate(b.sub, chars)}
+                                </text>
+                              )}
+                              {kidsHidden > 0 && (
+                                <text x={p.x + p.w - 3} y={p.y + p.h - 3} textAnchor="end" fontSize="7" fontWeight="700" fill="#92400e" fontFamily={FONT}>
+                                  +{kidsHidden}
+                                </text>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="4" fill={b.kind === 'machine' ? VAN_NAVY : '#ffffff'} stroke={b.highlight ? VAN_YELLOW : VAN_NAVY} strokeWidth={b.highlight ? 2.5 : 1} />
+                              <rect x={p.x} y={p.y} width="4" height={p.h} rx="2" fill={COND_FILL[b.condition || 'ok']} />
+                              <text
+                                x={p.x + 7}
+                                y={p.y + p.h / 2 - (b.sub && p.h >= 26 ? 2 : -3)}
+                                fontSize="8"
+                                fontWeight="700"
+                                fill={b.kind === 'machine' ? VAN_YELLOW : VAN_NAVY}
+                                fontFamily={FONT}
+                              >
+                                {truncate(b.label, chars)}
+                              </text>
+                              {b.sub && p.h >= 26 && (
+                                <text x={p.x + 7} y={p.y + p.h / 2 + 9} fontSize="6.5" fill={b.kind === 'machine' ? '#e5e7eb' : '#6b7280'} fontFamily={FONT}>
+                                  {truncate(b.sub, chars + 2)}
+                                </text>
+                              )}
+                              {b.condition && b.condition !== 'ok' && (
+                                <circle cx={p.x + p.w - 6} cy={p.y + 6} r="4.5" fill={COND_FILL[b.condition]} stroke="#fff" strokeWidth="1.2" />
+                              )}
+                            </>
+                          )}
+                        </g>
+                      </BlockWrap>
+                      {/* nested matériel: siblings (not children) of the crate so each chip drags on its own */}
+                      {kids.map(({ k, x: kx, y: ky, w: kw, h: kh }) => (
+                        <BlockWrap key={k.id} block={k}>
+                          <g onClick={click(k.id)} style={clickable(onBlock)} opacity={dimBlocks ? 0.55 : 1}>
+                            <rect x={kx} y={ky} width={kw} height={kh} rx="3" fill="#ffffff" stroke={k.highlight ? VAN_YELLOW : '#d97706'} strokeWidth={k.highlight ? 2 : 0.8} />
+                            <rect x={kx} y={ky} width="3" height={kh} rx="1.5" fill={COND_FILL[k.condition || 'ok']} />
+                            <text x={kx + 5} y={ky + 8.2} fontSize="6.5" fontWeight="700" fill={VAN_NAVY} fontFamily={FONT}>
+                              {truncate(k.sub ? `${k.label} ${k.sub}` : k.label, Math.max(4, Math.floor((kw - 6) / 3.6)))}
+                            </text>
+                          </g>
+                        </BlockWrap>
+                      ))}
+                    </React.Fragment>
                   );
                 })}
               {!mini && hidden > 0 && (

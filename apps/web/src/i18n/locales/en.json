@@ -571,7 +571,6 @@
       "moves": "Moves",
       "myVan": "My van",
       "todo": "To do",
-      "kits": "Kits",
       "articles": "Articles"
     },
     "banner": {
@@ -834,39 +833,6 @@
       "noIssues": "No problems here",
       "empty": "Empty"
     },
-    "kits": {
-      "intro": "Kits prefill a new van or box. “Resync” only adds missing items and never overwrites anything.",
-      "resynced_one": "{{count}} item added",
-      "resynced_other": "{{count}} items added",
-      "resyncedVan_one": "{{name}}: {{count}} item added",
-      "resyncedVan_other": "{{name}}: {{count}} items added",
-      "failed": "Action failed",
-      "resyncWith": "Resync {{name}}",
-      "confirmDelete": "Remove “{{name}}” from the kit?",
-      "addToVan": "Add to a van",
-      "chooseVanTarget": "Choose a van or zone…",
-      "addCrate": "Add the crate",
-      "deleteChildren_one": "This also deletes {{count}} item inside this kit item.",
-      "deleteChildren_other": "This also deletes the {{count}} items inside this kit item.",
-      "deleteKeepsVans": "Items already created in the vans are kept: they are only unlinked from the kit.",
-      "deleted": "“{{name}}” removed from the kit",
-      "deleteNotAllowed": "Delete refused: only an admin can change kits.",
-      "target": {
-        "van": "van",
-        "caisse": "box"
-      },
-      "new": "New kit",
-      "edit": "Edit kit",
-      "defaultHint": "Default kit: applied automatically to every new van.",
-      "empty": "Empty kit",
-      "applyToVans": "Resync a van",
-      "caisseHint": "Applied from a box (Inventory › box › Resync) or when creating a box.",
-      "editItem": "Edit item",
-      "addItem": "Add to kit",
-      "parent": "Inside",
-      "topLevel": "Top level",
-      "sort": "Order"
-    },
     "todo": {
       "today": "today",
       "daysAgo_one": "{{count}} day ago",
@@ -894,11 +860,7 @@
       "newZone": "New zone",
       "zoneNotEmpty": "Empty the zone before deleting it",
       "saveFailed": "Could not save the plan",
-      "dragHint": "Press and hold an item, then drag it to a zone or box",
-      "saveDefault": "Use as default layout",
-      "saveDefaultConfirm": "New vans will start with this layout. Continue?",
-      "savedDefault_one": "{{count}} zone saved to the kit",
-      "savedDefault_other": "{{count}} zones saved to the kit"
+      "dragHint": "Press and hold an item, then drag it to a zone or box"
     },
     "dnd": {
       "moved": "{{name}} → {{dest}}",
@@ -914,9 +876,6 @@
       "search": "Search an article…",
       "allKinds": "All",
       "none": "No articles",
-      "article": "Article",
-      "fromCatalog": "Catalog article",
-      "kitHint": "Articles are created in Fleet › Articles.",
       "managedInCatalog": "Name and icon are managed in the catalog (Fleet › Articles).",
       "placeTitle": "Add from catalog",
       "place": "Add",
@@ -924,8 +883,6 @@
       "placed_other": "{{count}} × “{{name}}” added to {{dest}}",
       "placeFailed": "Could not add the article",
       "placeNotAllowed": "You can only add articles to your own van.",
-      "noCrateArticleForKit": "No crate article uses this kit. Create one in Fleet › Articles (type Crate, default kit = this kit).",
-      "kitBadge": "kit “{{name}}”",
       "inFleet": "in fleet",
       "unused": "Not used in the fleet yet",
       "inactive": "inactive",
@@ -933,9 +890,6 @@
       "usageLine_other": "{{count}} in the fleet ({{instances}} location(s))",
       "kindLockedHint": "The type can no longer change: the article is in use.",
       "renameHint": "The new name applies to every instance in the fleet.",
-      "defaultKit": "Default kit",
-      "noKit": "None (empty crate)",
-      "defaultKitHint": "When this crate is added to a van, it is filled with this kit.",
       "notes": "Notes",
       "activeLabel": "Active",
       "activeHint": "An inactive article is no longer offered, existing instances stay.",
@@ -944,7 +898,18 @@
       "deleteConfirm": "Delete article “{{name}}”?",
       "cannotDelete": "Article used in the fleet or a kit: deactivate it instead.",
       "duplicate": "An article of this type already has this name (case and accents ignored).",
-      "kindLocked": "The type of an article in use cannot be changed."
+      "kindLocked": "The type of an article in use cannot be changed.",
+      "failed": "Operation failed"
+    },
+    "crate": {
+      "inCrate": "in {{crate}}",
+      "inCrateZone": "in {{crate}} · {{zone}}",
+      "empty": "Empty crate",
+      "contents": "Contents of {{name}}",
+      "takeOut": "Take out of crate → {{zone}}",
+      "putIn": "Put in {{crate}}",
+      "onlyMateriel": "A crate can only hold equipment.",
+      "catalogHint": "A crate is added empty to the van; equipment is then stored in it."
     }
   }
 }

@@ -57,9 +57,9 @@ export const DropZoneWrap = ({ zone, children }) => {
   );
 };
 
-/** SVG block: draggable when allowed; caisses / machines are also drop targets. */
+/** SVG block: draggable when allowed; caisses are also drop targets (v1.11.0: machines no longer hold items). */
 export const DragBlockWrap = ({ block, children }) => {
-  const container = block.kind === 'caisse' || block.kind === 'machine';
+  const container = block.kind === 'caisse';
   const drag = useDraggable({ id: `node:svg:${block.id}`, data: { nodeId: block.id }, disabled: !block.draggable });
   const drop = useDroppable({ id: `drop:${block.id}`, data: { nodeId: block.id, priority: 3 }, disabled: !container });
   const ref = (el) => {

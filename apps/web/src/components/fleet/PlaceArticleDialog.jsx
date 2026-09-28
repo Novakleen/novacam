@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Boxes, Loader2, Minus, Plus, Search } from 'lucide-react';
+import { Loader2, Minus, Plus, Search } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,17 +13,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { ARTICLE_KINDS, nodeName, placeArticle } from '@/lib/fleet/inventory';
+import { ARTICLE_KINDS, canContain, nodeName, placeArticle } from '@/lib/fleet/inventory';
 import { fleet_norm } from '@/lib/fleet/catalog';
 import { NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
 
 /**
  * v1.10.0 "Ajouter": pick an article from the central catalog and put it into `parent`
- * (zone, caisse, machine, depot). No free-text names: articles are created in Flotte › Articles.
+ * (zone, caisse, depot). No free-text names: articles are created in Flotte › Articles.
  * Technicians may place into their own van (checked server-side by fleet_place_article).
+ * v1.11.0: only kinds the parent accepts are offered (a caisse only takes matériel); crates start empty.
  */
-const PlaceArticleDialog = ({ open, onOpenChange, parent, articles = [], kits = [], lang, onDone }) => {
+const PlaceArticleDialog = ({ open, onOpenChange, parent, articles = [], lang, onDone }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [query, setQuery] = useState('');
@@ -40,19 +41,15 @@ const PlaceArticleDialog = ({ open, onOpenChange, parent, articles = [], kits = 
     setQty(1);
   }, [open, parent?.id]);
 
+  const kinds = useMemo(() => ARTICLE_KINDS.filter((k) => canContain(parent, k)), [parent]);
   const list = useMemo(() => {
     const q = fleet_norm(query);
     return articles
-      .filter((a) => a.active !== false)
+      .filter((a) => a.active !== false && kinds.includes(a.kind))
       .filter((a) => !kind || a.kind === kind)
       .filter((a) => !q || [a.name, a.name_nl, a.name_en].some((n) => fleet_norm(n).includes(q)))
       .sort((a, b) => ARTICLE_KINDS.indexOf(a.kind) - ARTICLE_KINDS.indexOf(b.kind) || nodeName(a, lang).localeCompare(nodeName(b, lang)));
-  }, [articles, query, kind, lang]);
-
-  const kitName = (id) => {
-    const k = kits.find((x) => x.id === id);
-    return k ? nodeName(k, lang) : null;
-  };
+  }, [articles, kinds, query, kind, lang]);
 
   const submit = async () => {
     if (!picked || !parent) return;
@@ -89,8 +86,10 @@ const PlaceArticleDialog = ({ open, onOpenChange, parent, articles = [], kits = 
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {parent?.kind === 'caisse' && <p className="text-xs text-gray-500">{t('fleet.crate.onlyMateriel')}</p>}
+        {kinds.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
-          {['', ...ARTICLE_KINDS].map((k) => (
+          {['', ...kinds].map((k) => (
             <button
               key={k || 'all'}
               type="button"
@@ -102,6 +101,7 @@ const PlaceArticleDialog = ({ open, onOpenChange, parent, articles = [], kits = 
             </button>
           ))}
         </div>
+        )}
         <ul className="flex-1 min-h-[180px] overflow-y-auto space-y-1.5 -mx-1 px-1">
           {list.length === 0 && <li className="text-sm text-gray-500 py-6 text-center">{t('fleet.articles.none')}</li>}
           {list.map((a) => (
@@ -122,12 +122,6 @@ const PlaceArticleDialog = ({ open, onOpenChange, parent, articles = [], kits = 
                   <span className="block font-semibold truncate">{nodeName(a, lang)}</span>
                   <span className="block text-xs text-gray-500 truncate">
                     {t(`fleet.kinds.${a.kind}`)}
-                    {a.default_kit_id && kitName(a.default_kit_id) && (
-                      <>
-                        {' · '}
-                        <Boxes className="inline h-3 w-3 -mt-0.5" /> {kitName(a.default_kit_id)}
-                      </>
-                    )}
                   </span>
                 </span>
               </button>

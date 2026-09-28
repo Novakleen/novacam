@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
-import { AlertTriangle, ChevronRight, GripVertical, Home, Plus, RefreshCcw } from 'lucide-react';
+import { AlertTriangle, ChevronRight, GripVertical, Home, Package, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { applyKit, isContainer, moveNode, nodeName } from '@/lib/fleet/inventory';
+import { canContain, isContainer, moveNode, nodeName } from '@/lib/fleet/inventory';
 import { CondPill } from './FleetUI';
 import NodeIcon from './NodeIcon';
 import VanPlan, { blockSub } from './VanPlan';
@@ -17,13 +17,13 @@ const subLabel = blockSub;
  * Folder-like drill-down of one root (van or depot). For vans, the SVG van is the top level:
  * tap a zone to open it, tap a block (caisse / machine / item) to open it or its sheet.
  * v1.9.0: drag & drop (SVG blocks and list rows → zones, caisses, breadcrumb) + editable plan.
+ * v1.11.0: crates are shown as containers with their matériel nested inside; drops follow the nesting rules.
  */
-const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = false, lang, focus, openDialog, onReload }) => {
+const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, lang, focus, openDialog, onReload }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [cwd, setCwd] = useState(root.id);
   const [issuesOnly, setIssuesOnly] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [dragId, setDragId] = useState(null);
   const [moving, setMoving] = useState(false);
@@ -76,7 +76,7 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = fal
     const node = tree.byId.get(nodeId);
     const dest = tree.byId.get(target);
     if (!node || !dest || target === node.id || target === node.parent_id) return;
-    if (!isContainer(dest) || tree.descendants(node.id).some((d) => d.id === target)) {
+    if (!canContain(dest, node.kind) || tree.descendants(node.id).some((d) => d.id === target)) {
       toast({ variant: 'destructive', title: t('fleet.dnd.invalid') });
       return;
     }
@@ -93,19 +93,60 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = fal
   };
   const dragNode = dragId ? tree.byId.get(dragId) : null;
 
-  const kitTarget = current.kind === 'van' ? 'van' : current.kind === 'caisse' ? 'caisse' : null;
-  const applicableKits = kitTarget ? (kits || []).filter((k) => k.target_kind === kitTarget && k.active !== false) : [];
-  const resync = async (kit) => {
-    setSyncing(true);
-    try {
-      const n = await applyKit(current.id, kit.id);
-      toast({ title: t('fleet.kits.resynced', { count: n }) });
-      onReload?.();
-    } catch (err) {
-      toast({ variant: 'destructive', title: t('fleet.kits.failed'), description: err.message });
-    } finally {
-      setSyncing(false);
-    }
+  const renderRow = (c, { nested = false } = {}) => {
+    const worst = tree.worst(c.id);
+    const reportable = c.kind !== 'zone';
+    const dragNodeKind = dragId ? tree.byId.get(dragId)?.kind : null;
+    return (
+      <div className="flex items-center gap-1.5">
+        {canDrag && c.kind !== 'zone' && (
+          <DragHandle
+            nodeId={c.id}
+            label={t('fleet.dnd.handle')}
+            className={cn('shrink-0 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-grab active:cursor-grabbing', nested ? 'h-10 w-6' : 'h-12 w-7')}
+          >
+            <GripVertical className="h-5 w-5" />
+          </DragHandle>
+        )}
+        <DropTarget
+          nodeId={c.id}
+          scope="row"
+          disabled={!dragId || dragId === c.id || !canContain(c, dragNodeKind)}
+          className="flex-1 min-w-0 rounded-2xl"
+          overClassName="ring-4 ring-yellow-300"
+        >
+          <button
+            type="button"
+            onClick={() => openNode(c)}
+            className={cn(
+              'w-full min-w-0 flex items-center gap-3 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 text-left active:scale-[0.99] transition',
+              nested ? 'p-2' : 'p-2.5'
+            )}
+          >
+            <NodeIcon node={c} className={nested ? 'h-9 w-9' : undefined} />
+            <span className="flex-1 min-w-0">
+              <span className="block font-semibold truncate">{nodeName(c, lang)}</span>
+              <span className="block text-xs text-gray-500 truncate">
+                {c.kind === 'caisse' ? `${t('fleet.kinds.caisse')} · ${subLabel(c, tree, t)}` : subLabel(c, tree, t)}
+              </span>
+            </span>
+            {worst !== 'ok' && <CondPill condition={worst} label={t(`fleet.cond.${worst}`)} className="shrink-0" />}
+            {isContainer(c) && <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />}
+          </button>
+        </DropTarget>
+        {canAct && reportable && (
+          <button
+            type="button"
+            onClick={() => openDialog('report', c)}
+            className={cn('shrink-0 rounded-2xl bg-yellow-400 text-[#0b1f4d] flex items-center justify-center active:scale-95', nested ? 'h-10 w-10' : 'h-12 w-12')}
+            aria-label={t('fleet.report.cta')}
+            title={t('fleet.report.cta')}
+          >
+            <AlertTriangle className="h-5 w-5" />
+          </button>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -209,19 +250,12 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = fal
           {t('fleet.inv.issuesOnly')} {issueCount > 0 && `(${issueCount})`}
         </button>
         <div className="flex-1" />
-        {canAct && current.kind !== 'van' && (
+        {canAct && current.kind !== 'van' && isContainer(current) && (
           <Button size="sm" variant="outline" className="rounded-full" onClick={() => openDialog('edit', { parent: current })}>
             <Plus className="h-4 w-4 mr-1" />
             {t('fleet.inv.add')}
           </Button>
         )}
-        {isAdmin &&
-          applicableKits.map((k) => (
-            <Button key={k.id} size="sm" variant="outline" className="rounded-full" disabled={syncing} onClick={() => resync(k)}>
-              <RefreshCcw className={cn('h-4 w-4 mr-1', syncing && 'animate-spin')} />
-              {t('fleet.kits.resyncWith', { name: nodeName(k, lang) })}
-            </Button>
-          ))}
       </div>
 
       {/* Contents */}
@@ -229,55 +263,30 @@ const InventoryBrowser = ({ root, tree, kits, isAdmin, canAct, canEditPlan = fal
         <p className="text-sm text-gray-500 py-6 text-center">{issuesOnly ? t('fleet.inv.noIssues') : t('fleet.inv.empty')}</p>
       ) : (
         <ul className="space-y-2">
-          {children.map((c) => {
-            const worst = tree.worst(c.id);
-            const reportable = !['zone'].includes(c.kind);
-            return (
-              <li key={c.id} className="flex items-center gap-1.5">
-                {canDrag && c.kind !== 'zone' && (
-                  <DragHandle
-                    nodeId={c.id}
-                    label={t('fleet.dnd.handle')}
-                    className="h-12 w-7 shrink-0 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-grab active:cursor-grabbing"
-                  >
-                    <GripVertical className="h-5 w-5" />
-                  </DragHandle>
-                )}
-                <DropTarget
-                  nodeId={c.id}
-                  scope="row"
-                  disabled={!dragId || !isContainer(c) || dragId === c.id}
-                  className="flex-1 min-w-0 rounded-2xl"
-                  overClassName="ring-4 ring-yellow-300"
-                >
-                <button
-                  type="button"
-                  onClick={() => openNode(c)}
-                  className="w-full min-w-0 flex items-center gap-3 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 text-left active:scale-[0.99] transition"
-                >
-                  <NodeIcon node={c} />
-                  <span className="flex-1 min-w-0">
-                    <span className="block font-semibold truncate">{nodeName(c, lang)}</span>
-                    <span className="block text-xs text-gray-500 truncate">{subLabel(c, tree, t)}</span>
-                  </span>
-                  {worst !== 'ok' && <CondPill condition={worst} label={t(`fleet.cond.${worst}`)} className="shrink-0" />}
-                  {isContainer(c) && <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />}
-                </button>
-                </DropTarget>
-                {canAct && reportable && (
-                  <button
-                    type="button"
-                    onClick={() => openDialog('report', c)}
-                    className="h-12 w-12 shrink-0 rounded-2xl bg-yellow-400 text-[#0b1f4d] flex items-center justify-center active:scale-95"
-                    aria-label={t('fleet.report.cta')}
-                    title={t('fleet.report.cta')}
-                  >
-                    <AlertTriangle className="h-5 w-5" />
-                  </button>
-                )}
+          {children.map((c) =>
+            c.kind === 'caisse' && current.kind !== 'caisse' ? (
+              <li key={c.id} className="rounded-2xl border-2 border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 p-1.5 space-y-1.5">
+                {renderRow(c)}
+                {(() => {
+                  const inner = tree.childrenOf(c.id).filter((x) => !issuesOnly || tree.worst(x.id) !== 'ok');
+                  return inner.length === 0 ? (
+                    <p className="ml-9 pl-3 text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" />
+                      {t('fleet.crate.empty')}
+                    </p>
+                  ) : (
+                    <ul className="ml-5 pl-3 border-l-2 border-amber-300 dark:border-amber-700 space-y-1.5" aria-label={t('fleet.crate.contents', { name: nodeName(c, lang) })}>
+                      {inner.map((x) => (
+                        <li key={x.id}>{renderRow(x, { nested: true })}</li>
+                      ))}
+                    </ul>
+                  );
+                })()}
               </li>
-            );
-          })}
+            ) : (
+              <li key={c.id}>{renderRow(c)}</li>
+            )
+          )}
         </ul>
       )}
     </div>

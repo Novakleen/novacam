@@ -1,5 +1,5 @@
 /**
- * Fleet inventory (v1.8.0): tree of containers / items + damage tickets + photos + kits.
+ * Fleet inventory (v1.8.0): tree of containers / items + damage tickets + photos.
  *
  * fleet_nodes: depot / van (roots, id = stock_locations.id) → zone → caisse / machine → materiel.
  * Litres are NOT in the tree: they stay in stock_balances per depot / van location.
@@ -7,7 +7,7 @@
  * Members only write through RPCs (fleet_report_damage / fleet_ticket_action / fleet_move_node /
  * fleet_place_article).
  *
- * v1.10.0: caisse / machine / materiel nodes and kit items reference a catalog article
+ * v1.10.0: caisse / machine / materiel nodes reference a catalog article
  * (fleet_articles). Name, translations, icon and kind come from the article (DB trigger);
  * only zones keep free names. Per-instance fields: qty, serial, brand, model, notes.
  */
@@ -18,7 +18,17 @@ export const SEVERITIES = ['damaged_usable', 'broken', 'missing'];
 export const TICKET_STATUSES = ['signale', 'vu', 'en_reparation', 'commande', 'resolu'];
 export const RESOLUTIONS = ['repare', 'remplace', 'retrouve'];
 export const ZONE_KEYS = ['cab', 'bulkhead', 'left_shelf', 'right_shelf', 'floor'];
-export const CONTAINER_KINDS = ['depot', 'van', 'zone', 'caisse', 'machine'];
+export const CONTAINER_KINDS = ['depot', 'van', 'zone', 'caisse'];
+/** v1.11.0 nesting rules (mirrors fleet_nodes_before_write): which parent kinds accept which child kind. */
+export const ALLOWED_PARENTS = {
+  zone: ['van', 'depot'],
+  caisse: ['zone', 'van', 'depot'],
+  machine: ['zone', 'van', 'depot'],
+  materiel: ['zone', 'caisse', 'van', 'depot'],
+};
+export function canContain(parent, childKind) {
+  return Boolean(parent) && (ALLOWED_PARENTS[childKind] || []).includes(parent.kind);
+}
 export const ITEM_KINDS = ['caisse', 'machine', 'materiel'];
 export const ARTICLE_KINDS = ITEM_KINDS;
 export const PHOTO_BUCKET = 'fleet-photos';
@@ -41,23 +51,19 @@ function throwIf(error) {
 
 export async function fetchInventory() {
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
-  const [nodes, tickets, kits, kitItems, articles] = await Promise.all([
+  const [nodes, tickets, articles] = await Promise.all([
     supabase.from('fleet_nodes').select('*').order('sort').order('name'),
     supabase
       .from('fleet_tickets')
       .select('*')
       .or(`status.neq.resolu,resolved_at.gte.${since}`)
       .order('reported_at', { ascending: false }),
-    supabase.from('fleet_kits').select('*').order('sort'),
-    supabase.from('fleet_kit_items').select('*').order('sort'),
     supabase.from('fleet_articles').select('*').order('sort').order('name'),
   ]);
   throwIf(nodes.error);
   return {
     nodes: nodes.data || [],
     tickets: tickets.error ? [] : tickets.data || [],
-    kits: kits.error ? [] : kits.data || [],
-    kitItems: kitItems.error ? [] : kitItems.data || [],
     articles: articles.error ? [] : articles.data || [],
   };
 }
@@ -215,13 +221,7 @@ export async function deleteNode(nodeId) {
   throwIf(error);
 }
 
-export async function applyKit(nodeId, kitId) {
-  const { data, error } = await supabase.rpc('fleet_apply_kit', { p_node: nodeId, p_kit: kitId });
-  throwIf(error);
-  return data || 0;
-}
-
-/** v1.10.0: put a catalog article into a container (crate articles are filled with their default kit). */
+/** Put a catalog article into a container (v1.11.0: crates are created empty). */
 export async function placeArticle(parentId, articleId, qty = 1) {
   const { data, error } = await supabase.rpc('fleet_place_article', {
     p_parent: parentId,
@@ -240,7 +240,6 @@ export async function saveArticle(a) {
     name_nl: String(a.name_nl || '').trim() || null,
     name_en: String(a.name_en || '').trim() || null,
     icon: a.icon || null,
-    default_kit_id: a.kind === 'caisse' ? a.default_kit_id || null : null,
     notes: String(a.notes || '').trim() || null,
     active: a.active !== false,
     sort: Number(a.sort) || 0,
@@ -264,104 +263,45 @@ export async function deleteArticle(id) {
   }
 }
 
-/** Fleet-wide usage of each article: instances, quantity, per root, condition counts. */
+/** Where a node sits: its root (van/depot), zone and crate (v1.11.0), resolved through `byId`. */
+export function locateNode(node, byId) {
+  const out = { root: null, zone: null, crate: null };
+  let cur = node?.parent_id ? byId?.get(node.parent_id) : null;
+  let guard = 0;
+  while (cur && guard++ < 50) {
+    if (cur.kind === 'caisse' && !out.crate) out.crate = cur;
+    else if (cur.kind === 'zone' && !out.zone) out.zone = cur;
+    else if (cur.kind === 'van' || cur.kind === 'depot') out.root = cur;
+    cur = cur.parent_id ? byId.get(cur.parent_id) : null;
+  }
+  if (!out.root && node?.root_id) out.root = byId?.get(node.root_id) || null;
+  return out;
+}
+
+/**
+ * Fleet-wide usage of each article: instances, quantity, condition counts and a breakdown per
+ * place (van/depot › zone › crate). byPlace: Map(key → { root, zone, crate, qty }).
+ */
 export function articleUsage(nodes, byId) {
   const out = new Map();
   for (const n of nodes || []) {
     if (!n.article_id) continue;
     let u = out.get(n.article_id);
     if (!u) {
-      u = { instances: 0, qty: 0, byRoot: new Map(), damaged_usable: 0, broken: 0, missing: 0 };
+      u = { instances: 0, qty: 0, byPlace: new Map(), damaged_usable: 0, broken: 0, missing: 0 };
       out.set(n.article_id, u);
     }
     const q = n.kind === 'materiel' ? Number(n.qty) || 0 : 1;
     u.instances += 1;
     u.qty += q;
-    const root = byId?.get(n.root_id);
-    const key = root?.id || n.root_id;
-    const r = u.byRoot.get(key) || { root, qty: 0 };
+    const loc = locateNode(n, byId);
+    const key = [loc.root?.id || n.root_id, loc.zone?.id || '', loc.crate?.id || ''].join('|');
+    const r = u.byPlace.get(key) || { ...loc, qty: 0 };
     r.qty += q;
-    u.byRoot.set(key, r);
+    u.byPlace.set(key, r);
     if (n.condition && n.condition !== 'ok') u[n.condition] = (u[n.condition] || 0) + q;
   }
   return out;
-}
-
-export async function saveKit(kit) {
-  const payload = {
-    name: String(kit.name || '').trim(),
-    name_nl: String(kit.name_nl || '').trim() || null,
-    name_en: String(kit.name_en || '').trim() || null,
-    target_kind: kit.target_kind || 'caisse',
-    active: kit.active !== false,
-    sort: Number(kit.sort) || 0,
-  };
-  const q = kit.id
-    ? supabase.from('fleet_kits').update(payload).eq('id', kit.id)
-    : supabase.from('fleet_kits').insert(payload);
-  const { data, error } = await q.select().single();
-  throwIf(error);
-  return data;
-}
-
-export async function saveKitItem(item) {
-  const payload = {
-    kit_id: item.kit_id,
-    parent_item_id: item.parent_item_id || null,
-    kind: item.kind,
-    // v1.10.0: non-zone kit items are catalog articles (label synced by trigger).
-    article_id: item.kind === 'zone' ? null : item.article_id || null,
-    name: String(item.name || '').trim() || '-',
-    name_nl: String(item.name_nl || '').trim() || null,
-    name_en: String(item.name_en || '').trim() || null,
-    zone_key: item.kind === 'zone' ? item.zone_key : null,
-    qty: item.kind === 'materiel' ? Math.max(1, Number(item.qty) || 1) : 1,
-    icon: item.icon || null,
-    sort: Number(item.sort) || 0,
-    active: item.active !== false,
-  };
-  if (item.kind === 'zone' && item.plan_w > 0) {
-    Object.assign(payload, { plan_x: item.plan_x, plan_y: item.plan_y, plan_w: item.plan_w, plan_h: item.plan_h });
-  } else if (item.kind !== 'zone') {
-    Object.assign(payload, { plan_x: null, plan_y: null, plan_w: null, plan_h: null });
-  }
-  const q = item.id
-    ? supabase.from('fleet_kit_items').update(payload).eq('id', item.id)
-    : supabase.from('fleet_kit_items').insert(payload);
-  const { data, error } = await q.select().single();
-  throwIf(error);
-  return data;
-}
-
-/** Admin: copy a van's zone layout into its kit items (new vans start with it). */
-export async function saveLayoutAsKitDefault(zones) {
-  let n = 0;
-  for (const z of zones) {
-    if (!z.kit_item_id || !z.rect) continue;
-    const { error } = await supabase
-      .from('fleet_kit_items')
-      .update({ plan_x: z.rect.x, plan_y: z.rect.y, plan_w: z.rect.w, plan_h: z.rect.h })
-      .eq('id', z.kit_item_id)
-      .eq('kind', 'zone');
-    throwIf(error);
-    n += 1;
-  }
-  return n;
-}
-
-/**
- * Admin: delete a kit item. Child kit items cascade (FK parent_item_id ON DELETE CASCADE);
- * van items created from it are kept and only unlinked (fleet_nodes.kit_item_id ON DELETE SET NULL).
- * Throws KIT_ITEM_NOT_DELETED when RLS silently matched 0 rows.
- */
-export async function deleteKitItem(id) {
-  const { data, error } = await supabase.from('fleet_kit_items').delete().eq('id', id).select('id');
-  throwIf(error);
-  if (!data || data.length === 0) {
-    const err = new Error('KIT_ITEM_NOT_DELETED');
-    err.code = 'KIT_ITEM_NOT_DELETED';
-    throw err;
-  }
 }
 
 // ─── Tree helpers ─────────────────────────────────────────────────────────────
@@ -435,6 +375,7 @@ export function buildTree(nodes, tickets) {
 
   return {
     byId,
+    locate: (id) => locateNode(byId.get(id), byId),
     childrenOf: (id) => children.get(id) || [],
     worst,
     path,

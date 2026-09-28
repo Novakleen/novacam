@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { nodeName } from '@/lib/fleet/inventory';
 import { CondPill } from './FleetUI';
 import NodeIcon from './NodeIcon';
+import CrateBadge from './LocationBadge';
 
 function norm(s) {
   return String(s || '')
@@ -71,6 +72,7 @@ const FleetSearch = ({ nodes, tree, lang, onPick }) => {
                         .map((p) => nodeName(p, lang))
                         .join(' › ')}
                     </span>
+                    <CrateBadge node={n} byId={tree.byId} lang={lang} t={t} className="mt-0.5" />
                   </span>
                   {worst !== 'ok' && <CondPill condition={worst} label={t(`fleet.cond.${worst}`)} />}
                 </button>

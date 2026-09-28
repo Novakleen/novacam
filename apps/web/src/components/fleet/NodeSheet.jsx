@@ -22,6 +22,7 @@ import {
 import { firstName } from '@/lib/fleet/api';
 import { CondPill, NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
+import CrateBadge from './LocationBadge';
 import useConfirm from './useConfirm';
 
 /** Item / container details: condition, path, photos, tickets, actions. */
@@ -116,6 +117,7 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
           <CondPill condition={worst} label={t(`fleet.cond.${worst}`)} />
           <span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-0.5 text-xs font-bold">{t(`fleet.kinds.${node.kind}`)}</span>
           {node.kind === 'materiel' && <span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-0.5 text-xs font-bold">× {node.qty}</span>}
+          <CrateBadge node={node} byId={tree.byId} lang={lang} t={t} />
           {worst !== node.condition && isContainer(node) && <span className="text-xs text-gray-500">{t('fleet.node.worstInside')}</span>}
         </div>
 
