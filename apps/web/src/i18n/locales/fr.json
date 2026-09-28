@@ -860,7 +860,7 @@
       "newZone": "Nouvelle zone",
       "zoneNotEmpty": "Videz la zone avant de la supprimer",
       "saveFailed": "Enregistrement du plan impossible",
-      "dragHint": "Maintenez un élément puis glissez-le vers une zone ou une caisse"
+      "dragHint": "Maintenez un élément puis glissez-le vers une zone (le contenu des caisses est verrouillé)"
     },
     "dnd": {
       "moved": "{{name}} → {{dest}}",
@@ -906,10 +906,31 @@
       "inCrateZone": "dans {{crate}} · {{zone}}",
       "empty": "Caisse vide",
       "contents": "Contenu de {{name}}",
-      "takeOut": "Sortir de la caisse → {{zone}}",
-      "putIn": "Mettre dans {{crate}}",
       "onlyMateriel": "Une caisse ne peut contenir que du matériel.",
-      "catalogHint": "Une caisse est ajoutée vide dans le van ; on y range ensuite du matériel."
+      "locked": "Contenu de caisse verrouillé : il est défini dans le catalogue (Flotte › Articles).",
+      "lockedHint": "Contenu verrouillé (catalogue) — on peut seulement signaler un article manquant ou abîmé.",
+      "missingShort": "manq.",
+      "markMissing": "Marquer manquant",
+      "markFound": "Retrouvé",
+      "missingDone": "{{name}} marqué manquant",
+      "foundDone": "{{name}} retrouvé",
+      "missingFailed": "Impossible de mettre à jour",
+      "missingCount_one": "{{count}} manquant",
+      "missingCount_other": "{{count}} manquants",
+      "missingOf": "{{count}}/{{total}} manquant(s)",
+      "contentsTitle": "Contenu standard",
+      "contentsHint": "Matériel que contient chaque caisse de ce type. Toutes les caisses placées dans les vans et au dépôt sont remplies et mises à jour automatiquement.",
+      "noContents": "Aucun contenu standard",
+      "noMateriel": "Créez d'abord des articles de type matériel.",
+      "addLine": "Ajouter un article",
+      "item": "Article",
+      "pickItem": "Choisir un matériel…",
+      "syncHint_one": "{{count}} caisse placée sera synchronisée à l'enregistrement.",
+      "syncHint_other": "{{count}} caisses placées seront synchronisées à l'enregistrement.",
+      "contentsSaved_one": "Enregistré — {{count}} caisse synchronisée",
+      "contentsSaved_other": "Enregistré — {{count}} caisses synchronisées",
+      "confirmDelete_one": "Supprimer {{name}} et son contenu ({{count}} article) ?",
+      "confirmDelete_other": "Supprimer {{name}} et son contenu ({{count}} articles) ?"
     }
   }
 }

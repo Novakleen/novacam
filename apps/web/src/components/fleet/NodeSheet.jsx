@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Camera, ChevronRight, FolderOpen, MoveRight, Pencil, Trash2 } from 'lucide-react';
+import { AlertTriangle, Camera, ChevronRight, FolderOpen, Lock, MoveRight, PackageCheck, PackageX, Pencil, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,10 +12,13 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import {
   addNodePhoto,
+  crateError,
   deleteNode,
   fetchNodePhotos,
   isContainer,
+  isCrateItem,
   nodeName,
+  setMissing,
   signedPhotoUrls,
   uploadNodePhoto,
 } from '@/lib/fleet/inventory';
@@ -25,7 +28,8 @@ import NodeIcon from './NodeIcon';
 import CrateBadge from './LocationBadge';
 import useConfirm from './useConfirm';
 
-/** Item / container details: condition, path, photos, tickets, actions. */
+/** Item / container details: condition, path, photos, tickets, actions.
+ *  v1.12.0: items inside a crate are locked (catalog standard) — no move / delete, only Manquant / Retrouvé. */
 const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lang, profileById, onClose, onReport, onMove, onEdit, onOpen, onTicket, onChanged }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -56,7 +60,20 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
   const closed = nodeTickets.filter((tk) => tk.status === 'resolu');
   const children = tree.childrenOf(node.id);
   const reportable = !['depot', 'van', 'zone'].includes(node.kind);
-  const movable = reportable;
+  const locked = isCrateItem(node, tree.byId);
+  const movable = reportable && !locked;
+  const missingQ = locked ? tree.missingQty(node.id) : 0;
+  const crateMissing = node.kind === 'caisse' ? tree.crateMissing(node.id) : 0;
+
+  const onToggleMissing = async () => {
+    try {
+      await setMissing(node.id, !(missingQ > 0));
+      toast({ title: missingQ > 0 ? t('fleet.crate.foundDone', { name: nodeName(node, lang) }) : t('fleet.crate.missingDone', { name: nodeName(node, lang) }) });
+      onChanged?.();
+    } catch (err) {
+      toast({ variant: 'destructive', title: t('fleet.crate.missingFailed'), description: err.message });
+    }
+  };
 
   const onAddPhoto = async (file) => {
     try {
@@ -69,13 +86,17 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
   };
 
   const onDelete = async () => {
-    if (!(await confirm({ title: t('fleet.node.confirmDelete', { name: nodeName(node, lang) }) }))) return;
+    const title =
+      node.kind === 'caisse' && children.length > 0
+        ? t('fleet.crate.confirmDelete', { name: nodeName(node, lang), count: children.length })
+        : t('fleet.node.confirmDelete', { name: nodeName(node, lang) });
+    if (!(await confirm({ title }))) return;
     try {
       await deleteNode(node.id);
       onClose();
       onChanged?.();
     } catch (err) {
-      toast({ variant: 'destructive', title: t('fleet.node.saveFailed'), description: err.message });
+      toast({ variant: 'destructive', title: t('fleet.node.saveFailed'), description: crateError(err, t) });
     }
   };
 
@@ -118,8 +139,22 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
           <span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-0.5 text-xs font-bold">{t(`fleet.kinds.${node.kind}`)}</span>
           {node.kind === 'materiel' && <span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-0.5 text-xs font-bold">× {node.qty}</span>}
           <CrateBadge node={node} byId={tree.byId} lang={lang} t={t} />
+          {missingQ > 0 && (
+            <span className="rounded-full bg-red-600 text-white px-2.5 py-0.5 text-xs font-bold">
+              {node.qty > 1 ? t('fleet.crate.missingOf', { count: missingQ, total: node.qty }) : t('fleet.cond.missing')}
+            </span>
+          )}
+          {crateMissing > 0 && (
+            <span className="rounded-full bg-red-600 text-white px-2.5 py-0.5 text-xs font-bold">{t('fleet.crate.missingCount', { count: crateMissing })}</span>
+          )}
           {worst !== node.condition && isContainer(node) && <span className="text-xs text-gray-500">{t('fleet.node.worstInside')}</span>}
         </div>
+        {(locked || node.kind === 'caisse') && (
+          <p className="flex items-center gap-1.5 rounded-2xl bg-amber-50 text-amber-900 text-xs px-3 py-2 dark:bg-amber-900/30 dark:text-amber-200">
+            <Lock className="h-3.5 w-3.5 shrink-0" />
+            {t('fleet.crate.lockedHint')}
+          </p>
+        )}
 
         {(node.serial || node.brand || node.model || node.notes) && (
           <dl className="grid grid-cols-2 gap-2 text-sm">
@@ -151,6 +186,16 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
             <Button className="h-14 rounded-2xl font-black col-span-2" style={{ backgroundColor: YELLOW, color: NAVY }} onClick={() => onReport(node)}>
               <AlertTriangle className="h-5 w-5 mr-2" />
               {t('fleet.report.cta')}
+            </Button>
+          )}
+          {locked && canAct && (
+            <Button
+              variant="outline"
+              className={missingQ > 0 ? 'h-12 rounded-2xl col-span-2 border-emerald-300 text-emerald-700' : 'h-12 rounded-2xl col-span-2 border-red-300 text-red-700'}
+              onClick={onToggleMissing}
+            >
+              {missingQ > 0 ? <PackageCheck className="h-4 w-4 mr-2" /> : <PackageX className="h-4 w-4 mr-2" />}
+              {missingQ > 0 ? t('fleet.crate.markFound') : t('fleet.crate.markMissing')}
             </Button>
           )}
           {isContainer(node) && (
@@ -187,7 +232,7 @@ const NodeSheet = ({ node, tree, tickets, isAdmin, canAct, canMove = canAct, lan
                 <Camera className="h-4 w-4 mr-2" />
                 {t('fleet.node.addPhoto')}
               </Button>
-              {reportable && children.length === 0 && (
+              {reportable && !locked && (children.length === 0 || node.kind === 'caisse') && (
                 <Button variant="outline" className="h-12 rounded-2xl text-red-600" onClick={onDelete}>
                   <Trash2 className="h-4 w-4 mr-2" />
                   {t('common.delete')}

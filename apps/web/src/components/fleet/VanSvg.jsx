@@ -148,6 +148,7 @@ const VanSvg = ({
   className,
   style,
   svgRef,
+  missingShort = '✕',
   children,
 }) => {
   const clickable = (fn) => (fn ? { cursor: 'pointer' } : undefined);
@@ -304,8 +305,16 @@ const VanSvg = ({
                               <text x={p.x + 14} y={p.y + 9} fontSize="7.5" fontWeight="800" fill="#ffffff" fontFamily={FONT}>
                                 {truncate(b.label, Math.max(4, Math.floor((p.w - 30) / 4.3)))}
                               </text>
-                              {b.condition && b.condition !== 'ok' && (
-                                <circle cx={p.x + p.w - 6} cy={p.y + 6} r="4" fill={COND_FILL[b.condition]} stroke="#fff" strokeWidth="1.2" />
+                              {b.missingCount > 0 ? (
+                                <g>
+                                  <rect x={p.x + p.w - 30} y={p.y + 1.5} width="28" height="9" rx="4.5" fill="#dc2626" stroke="#fff" strokeWidth="0.8" />
+                                  <text x={p.x + p.w - 16} y={p.y + 8.3} textAnchor="middle" fontSize="6" fontWeight="800" fill="#ffffff" fontFamily={FONT}>
+                                    {`${b.missingCount} ${missingShort}`}
+                                  </text>
+                                </g>
+                              ) : (
+                                b.condition &&
+                                b.condition !== 'ok' && <circle cx={p.x + p.w - 6} cy={p.y + 6} r="4" fill={COND_FILL[b.condition]} stroke="#fff" strokeWidth="1.2" />
                               )}
                               {kids.length === 0 && b.sub && (
                                 <text x={p.x + 5} y={p.y + 22} fontSize="6.5" fill="#92400e" fontFamily={FONT}>
@@ -348,11 +357,27 @@ const VanSvg = ({
                       {kids.map(({ k, x: kx, y: ky, w: kw, h: kh }) => (
                         <BlockWrap key={k.id} block={k}>
                           <g onClick={click(k.id)} style={clickable(onBlock)} opacity={dimBlocks ? 0.55 : 1}>
-                            <rect x={kx} y={ky} width={kw} height={kh} rx="3" fill="#ffffff" stroke={k.highlight ? VAN_YELLOW : '#d97706'} strokeWidth={k.highlight ? 2 : 0.8} />
+                            <rect
+                              x={kx}
+                              y={ky}
+                              width={kw}
+                              height={kh}
+                              rx="3"
+                              fill={k.missing ? '#f3f4f6' : '#ffffff'}
+                              stroke={k.highlight ? VAN_YELLOW : k.missing ? '#dc2626' : '#d97706'}
+                              strokeWidth={k.highlight ? 2 : 0.8}
+                              strokeDasharray={k.missing ? '2 1.5' : undefined}
+                            />
                             <rect x={kx} y={ky} width="3" height={kh} rx="1.5" fill={COND_FILL[k.condition || 'ok']} />
-                            <text x={kx + 5} y={ky + 8.2} fontSize="6.5" fontWeight="700" fill={VAN_NAVY} fontFamily={FONT}>
-                              {truncate(k.sub ? `${k.label} ${k.sub}` : k.label, Math.max(4, Math.floor((kw - 6) / 3.6)))}
+                            <text x={kx + 5} y={ky + 8.2} fontSize="6.5" fontWeight="700" fill={k.missing ? '#9ca3af' : VAN_NAVY} fontFamily={FONT}>
+                              {truncate(k.sub ? `${k.label} ${k.sub}` : k.label, Math.max(4, Math.floor((kw - (k.missing ? 12 : 6)) / 3.6)))}
                             </text>
+                            {k.missing && (
+                              <>
+                                <line x1={kx + 5} y1={ky + kh / 2} x2={kx + kw - 9} y2={ky + kh / 2} stroke="#9ca3af" strokeWidth="0.8" />
+                                <circle cx={kx + kw - 4.5} cy={ky + kh / 2} r="2.6" fill="#dc2626" />
+                              </>
+                            )}
                           </g>
                         </BlockWrap>
                       ))}

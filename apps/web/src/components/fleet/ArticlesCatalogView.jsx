@@ -1,5 +1,5 @@
 import React from 'react';
-import { Boxes, Package, Pencil, Plus, Search } from 'lucide-react';
+import { Boxes, Lock, Package, Pencil, Plus, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
@@ -11,6 +11,7 @@ const KINDS = ['caisse', 'machine', 'materiel'];
  * tools/render-catalog-preview. rows = [{ article, usage }].
  * usage = { instances, qty, byPlace: [{ id, label, qty, depot, inCrate }], damaged_usable, broken, missing } | null
  * (v1.11.0: label = "Van › Zone › Caisse")
+ * v1.12.0: row.contentsLabel = standard contents summary of a caisse; byPlace[].missing = missing units there.
  */
 const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onNew, onEdit, totals }) => (
   <div className="space-y-4">
@@ -61,7 +62,7 @@ const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onN
     </div>
     {rows.length === 0 && <p className="text-sm text-gray-500 text-center py-10">{t('fleet.articles.none')}</p>}
     <ul className="grid gap-2 md:grid-cols-2">
-      {rows.map(({ article: a, usage: u }) => (
+      {rows.map(({ article: a, usage: u, contentsLabel }) => (
         <li
           key={a.id}
           className={cn('rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 space-y-2', a.active === false && 'opacity-60')}
@@ -85,6 +86,15 @@ const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onN
               </button>
             )}
           </div>
+          {contentsLabel && (
+            <p className="flex items-start gap-1.5 rounded-lg bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+              <Lock className="h-3 w-3 mt-0.5 shrink-0" />
+              <span className="min-w-0">
+                <span className="font-bold">{t('fleet.crate.contentsTitle')} : </span>
+                {contentsLabel}
+              </span>
+            </p>
+          )}
           {u && u.byPlace.length > 0 && (
             <ul className="space-y-0.5">
               {u.byPlace.map((r) => (
@@ -101,6 +111,9 @@ const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onN
                 >
                   {r.inCrate && <Package className="h-3 w-3 shrink-0" />}
                   <span className="flex-1 min-w-0 truncate">{r.label}</span>
+                  {r.missing > 0 && (
+                    <span className="shrink-0 rounded-full bg-red-600 text-white px-1.5 text-[10px] font-bold">{t('fleet.crate.missingCount', { count: r.missing })}</span>
+                  )}
                   <span className="shrink-0 font-black">× {r.qty}</span>
                 </li>
               ))}
@@ -110,7 +123,7 @@ const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onN
             <div className="flex flex-wrap gap-1 text-[11px] font-bold">
               {u.damaged_usable > 0 && <span className="rounded-full px-2 py-0.5 bg-yellow-100 text-yellow-800">{t('fleet.cond.damaged_usable')} · {u.damaged_usable}</span>}
               {u.broken > 0 && <span className="rounded-full px-2 py-0.5 bg-red-100 text-red-700">{t('fleet.cond.broken')} · {u.broken}</span>}
-              {u.missing > 0 && <span className="rounded-full px-2 py-0.5 bg-gray-200 text-gray-700">{t('fleet.cond.missing')} · {u.missing}</span>}
+              {u.missing > 0 && <span className="rounded-full px-2 py-0.5 bg-red-600 text-white">{t('fleet.cond.missing')} · {u.missing}</span>}
             </div>
           )}
           {!u && <p className="text-[11px] text-gray-400">{t('fleet.articles.unused')}</p>}

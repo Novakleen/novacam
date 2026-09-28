@@ -24,7 +24,9 @@ export const ALLOWED_PARENTS = {
   zone: ['van', 'depot'],
   caisse: ['zone', 'van', 'depot'],
   machine: ['zone', 'van', 'depot'],
-  materiel: ['zone', 'caisse', 'van', 'depot'],
+  // v1.12.0: crate contents come from the catalog (locked), so in the app matériel only goes loose
+  // into a zone / van / depot. The DB still lets the catalog sync put matériel into crates.
+  materiel: ['zone', 'van', 'depot'],
 };
 export function canContain(parent, childKind) {
   return Boolean(parent) && (ALLOWED_PARENTS[childKind] || []).includes(parent.kind);
@@ -51,7 +53,7 @@ function throwIf(error) {
 
 export async function fetchInventory() {
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
-  const [nodes, tickets, articles] = await Promise.all([
+  const [nodes, tickets, articles, contents] = await Promise.all([
     supabase.from('fleet_nodes').select('*').order('sort').order('name'),
     supabase
       .from('fleet_tickets')
@@ -59,12 +61,14 @@ export async function fetchInventory() {
       .or(`status.neq.resolu,resolved_at.gte.${since}`)
       .order('reported_at', { ascending: false }),
     supabase.from('fleet_articles').select('*').order('sort').order('name'),
+    supabase.from('fleet_article_contents').select('*').order('sort'),
   ]);
   throwIf(nodes.error);
   return {
     nodes: nodes.data || [],
     tickets: tickets.error ? [] : tickets.data || [],
     articles: articles.error ? [] : articles.data || [],
+    contents: contents.error ? [] : contents.data || [],
   };
 }
 
@@ -221,7 +225,7 @@ export async function deleteNode(nodeId) {
   throwIf(error);
 }
 
-/** Put a catalog article into a container (v1.11.0: crates are created empty). */
+/** Put a catalog article into a container (v1.12.0: crates are filled with their standard contents). */
 export async function placeArticle(parentId, articleId, qty = 1) {
   const { data, error } = await supabase.rpc('fleet_place_article', {
     p_parent: parentId,
@@ -252,6 +256,41 @@ export async function saveArticle(a) {
   return data;
 }
 
+/**
+ * v1.12.0: replace the standard contents of a caisse article with `lines` ([{ item_article_id, quantity }]).
+ * Each change re-syncs every placed crate of that article (server trigger).
+ */
+export async function saveArticleContents(crateArticleId, lines, existing = []) {
+  const wanted = new Map();
+  lines.forEach((l, i) => {
+    if (l.item_article_id) wanted.set(l.item_article_id, { quantity: Math.max(1, Math.min(999, Number(l.quantity) || 1)), sort: (i + 1) * 10 });
+  });
+  const current = existing.filter((c) => c.crate_article_id === crateArticleId);
+  const removed = current.filter((c) => !wanted.has(c.item_article_id));
+  if (removed.length) {
+    const { error } = await supabase.from('fleet_article_contents').delete().in('id', removed.map((c) => c.id));
+    throwIf(error);
+  }
+  for (const [itemId, w] of wanted) {
+    const cur = current.find((c) => c.item_article_id === itemId);
+    if (cur) {
+      if (cur.quantity !== w.quantity || cur.sort !== w.sort) {
+        const { error } = await supabase.from('fleet_article_contents').update(w).eq('id', cur.id);
+        throwIf(error);
+      }
+    } else {
+      const { error } = await supabase.from('fleet_article_contents').insert({ crate_article_id: crateArticleId, item_article_id: itemId, ...w });
+      throwIf(error);
+    }
+  }
+}
+
+/** v1.12.0: mark a (crate) item missing / found again (open or resolve a « missing » ticket). */
+export async function setMissing(nodeId, missing, qty = null) {
+  const { error } = await supabase.rpc('fleet_set_missing', { p_node: nodeId, p_missing: missing, p_qty: qty });
+  throwIf(error);
+}
+
 /** Hard delete only works for unused articles (FK restrict); otherwise deactivate. */
 export async function deleteArticle(id) {
   const { data, error } = await supabase.from('fleet_articles').delete().eq('id', id).select('id');
@@ -261,6 +300,24 @@ export async function deleteArticle(id) {
     e.code = 'FLEET_ARTICLE_NOT_DELETED';
     throw e;
   }
+}
+
+/** Units of `node` affected by open tickets of a severity (capped at the node quantity). */
+export function affectedQty(node, openTickets, severity) {
+  const q = node?.kind === 'materiel' ? Number(node.qty) || 0 : 1;
+  const n = (openTickets || []).filter((t) => t.severity === severity).reduce((s, t) => s + (Number(t.qty_affected) || 1), 0);
+  return Math.min(q, n);
+}
+
+/** v1.12.0: an item that belongs to a crate's standard contents (locked in the van). */
+/** Friendly message for DB errors raised by the crate lock (v1.12.0). */
+export function crateError(err, t) {
+  const msg = err?.message || String(err || '');
+  return msg.includes('FLEET_CRATE_LOCKED') ? t('fleet.crate.locked') : msg;
+}
+
+export function isCrateItem(node, byId) {
+  return Boolean(node?.parent_id) && byId?.get(node.parent_id)?.kind === 'caisse';
 }
 
 /** Where a node sits: its root (van/depot), zone and crate (v1.11.0), resolved through `byId`. */
@@ -282,7 +339,7 @@ export function locateNode(node, byId) {
  * Fleet-wide usage of each article: instances, quantity, condition counts and a breakdown per
  * place (van/depot › zone › crate). byPlace: Map(key → { root, zone, crate, qty }).
  */
-export function articleUsage(nodes, byId) {
+export function articleUsage(nodes, byId, openTicketsFor = null) {
   const out = new Map();
   for (const n of nodes || []) {
     if (!n.article_id) continue;
@@ -296,10 +353,20 @@ export function articleUsage(nodes, byId) {
     u.qty += q;
     const loc = locateNode(n, byId);
     const key = [loc.root?.id || n.root_id, loc.zone?.id || '', loc.crate?.id || ''].join('|');
-    const r = u.byPlace.get(key) || { ...loc, qty: 0 };
+    const r = u.byPlace.get(key) || { ...loc, qty: 0, missing: 0 };
     r.qty += q;
     u.byPlace.set(key, r);
-    if (n.condition && n.condition !== 'ok') u[n.condition] = (u[n.condition] || 0) + q;
+    if (openTicketsFor) {
+      // v1.12.0: count affected units from open tickets (a crate item can be partly missing)
+      for (const sev of ['damaged_usable', 'broken', 'missing']) {
+        const k = affectedQty(n, openTicketsFor(n.id), sev);
+        u[sev] += k;
+        if (sev === 'missing') r.missing += k;
+      }
+    } else if (n.condition && n.condition !== 'ok') {
+      u[n.condition] = (u[n.condition] || 0) + q;
+      if (n.condition === 'missing') r.missing += q;
+    }
   }
   return out;
 }
@@ -376,6 +443,9 @@ export function buildTree(nodes, tickets) {
   return {
     byId,
     locate: (id) => locateNode(byId.get(id), byId),
+    /** v1.12.0: missing units of an item / missing units inside a crate */
+    missingQty: (id) => affectedQty(byId.get(id), openByNode.get(id), 'missing'),
+    crateMissing: (id) => (children.get(id) || []).reduce((s, c) => s + affectedQty(c, openByNode.get(c.id), 'missing'), 0),
     childrenOf: (id) => children.get(id) || [],
     worst,
     path,

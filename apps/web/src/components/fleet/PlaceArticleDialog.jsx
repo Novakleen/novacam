@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { ARTICLE_KINDS, canContain, nodeName, placeArticle } from '@/lib/fleet/inventory';
+import { ARTICLE_KINDS, canContain, crateError, nodeName, placeArticle } from '@/lib/fleet/inventory';
 import { fleet_norm } from '@/lib/fleet/catalog';
 import { NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
@@ -60,7 +60,7 @@ const PlaceArticleDialog = ({ open, onOpenChange, parent, articles = [], lang, o
       onOpenChange(false);
       onDone?.();
     } catch (err) {
-      const description = err?.code === '42501' ? t('fleet.articles.placeNotAllowed') : err.message;
+      const description = err?.code === '42501' ? t('fleet.articles.placeNotAllowed') : crateError(err, t);
       toast({ variant: 'destructive', title: t('fleet.articles.placeFailed'), description });
     } finally {
       setSaving(false);

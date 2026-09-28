@@ -16,11 +16,12 @@ const blocks = {
       label: 'Caisse EPI',
       sub: '3 articles',
       kind: 'caisse',
-      condition: 'damaged_usable',
+      condition: 'missing',
+      missingCount: 2,
       children: [
         { id: 'epi1', label: 'Gants', sub: '×4', kind: 'materiel', condition: 'ok' },
         { id: 'epi2', label: 'Lunettes', sub: '×2', kind: 'materiel', condition: 'damaged_usable' },
-        { id: 'epi3', label: 'Casques', sub: '×2', kind: 'materiel', condition: 'ok' },
+        { id: 'epi3', label: 'Casques', sub: '×2', kind: 'materiel', condition: 'missing', missing: true },
       ],
     },
   ],
@@ -80,11 +81,11 @@ if (mode === 'edit') {
 const big =
   mode === 'edit'
     ? renderToStaticMarkup(
-        <VanSvg zones={zones} title="Van Martin" grid dimBlocks style={{ width: 480, height: 1040 }}>
+        <VanSvg zones={zones} title="Van Martin" missingShort="manq." grid dimBlocks style={{ width: 480, height: 1040 }}>
           <ZoneEditOverlay zones={zones} selectedId="custom" svgRef={null} onQuickAdd={() => {}} />
         </VanSvg>
       )
-    : renderToStaticMarkup(<VanSvg zones={zones} title="Van Martin" style={{ width: 480, height: 1040 }} />);
+    : renderToStaticMarkup(<VanSvg zones={zones} title="Van Martin" missingShort="manq." style={{ width: 480, height: 1040 }} />);
 const mini = renderToStaticMarkup(<VanSvg zones={zones.map((z) => ({ ...z, blocks: [] }))} mini style={{ width: 120, height: 260 }} />);
 
 const side =
@@ -98,7 +99,7 @@ La géométrie (x, y, l, h en cm du plancher de chargement) est enregistrée par
 <p style="margin-top:24px">Carte aperçu (mini van) :</p><div class="card" style="display:inline-block">${mini}</div>`
     : `<h1>Flotte · vue van (Peugeot Expert L3, dessin original)</h1>
 <p>Vue de dessus du compartiment de chargement (≈ 2,86 m × 1,63 m) — cabine en haut, portes arrière en bas, porte latérale coulissante à droite.
-Maintenez un élément puis glissez-le vers une zone ou une caisse pour le déplacer.</p>
+Maintenez un élément puis glissez-le vers une zone pour le déplacer. Le contenu des caisses est verrouillé (catalogue).</p>
 <div class="legend"><span><i style="background:#10b981"></i>OK</span><span><i style="background:#eab308"></i>Abîmé mais utilisable</span><span><i style="background:#ef4444"></i>Hors service</span><span><i style="background:#9ca3af"></i>Manquant</span></div>
 <p style="margin-top:24px">Carte aperçu (mini van) :</p><div class="card" style="display:inline-block">${mini}</div>`;
 
