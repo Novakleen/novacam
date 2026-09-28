@@ -177,7 +177,7 @@ const InviteUserDialog = ({ onUserInvited }) => {
               </Select>
               <p className="text-xs text-gray-500">
                 {formData.role === 'Admin' && 'Full access to all projects and user management.'}
-                {formData.role === 'Manager' && 'Can manage projects and team members.'}
+                {formData.role === 'Manager' && 'Margins module (settings, simulator, project margins) and tools. No user management.'}
                 {formData.role === 'Member' && 'Standard access to assigned projects.'}
                 {formData.role === 'Viewer' && 'Read-only access to projects.'}
               </p>

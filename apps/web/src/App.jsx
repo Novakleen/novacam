@@ -219,7 +219,7 @@ function AppRoutes() {
           <Route path="/fleet" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/fleet/:section" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/fleet/:section/:id" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
-          <Route path="/margins" element={<RoleRoute allowedRoles={['Admin']}><MarginsPage /></RoleRoute>} />
+          <Route path="/margins" element={<RoleRoute allowedRoles={['Admin', 'Manager']}><MarginsPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
           

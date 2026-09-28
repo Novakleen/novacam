@@ -385,7 +385,7 @@ const ProjectMarginTab = ({
             Générer
           </Button>
         ) : (
-          <p className="text-xs text-muted-foreground">Seul un Admin peut générer la marge.</p>
+          <p className="text-xs text-muted-foreground">Seul un Admin ou un Manager peut générer la marge.</p>
         )}
       </div>
     );

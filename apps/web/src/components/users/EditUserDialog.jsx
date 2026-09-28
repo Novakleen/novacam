@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import AddressSearchInput from '@/components/ui/AddressSearchInput';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useTranslation } from 'react-i18next';
 
 const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -159,6 +160,7 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
                 </SelectContent>
               </Select>
             </div>
+            <RoleHint role={formData.role} />
           </div>
 
           <DialogFooter className="mt-4">
@@ -171,6 +173,13 @@ const EditUserDialog = ({ user, onUserUpdated, trigger }) => {
       </DialogContent>
     </Dialog>
   );
+};
+
+/** v1.13.0: what each role can do (Manager = Marges module, no user management). */
+const RoleHint = ({ role }) => {
+  const { t } = useTranslation();
+  if (!role) return null;
+  return <p className="text-xs text-gray-500">{t(`roles.hint.${role}`, { defaultValue: '' })}</p>;
 };
 
 export default EditUserDialog;

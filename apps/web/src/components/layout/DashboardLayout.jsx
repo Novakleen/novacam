@@ -209,7 +209,7 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           isNew
           badgeNew={t('common.new')} badgeSoon={t('common.soon')}
         />
-        {isAdmin && (
+        {isAdminOrManager && (
           <SidebarItem 
             icon={PieChart} label={t('nav.margins')} path="/margins"
             isActive={location.pathname === '/margins'} onClick={() => navigate('/margins')}
