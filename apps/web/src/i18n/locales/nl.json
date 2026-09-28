@@ -571,7 +571,6 @@
       "moves": "Bewegingen",
       "myVan": "Mijn bestelwagen",
       "todo": "Te behandelen",
-      "kits": "Kits",
       "articles": "Artikelen"
     },
     "banner": {
@@ -834,39 +833,6 @@
       "noIssues": "Geen problemen hier",
       "empty": "Leeg"
     },
-    "kits": {
-      "intro": "Kits vullen een nieuwe bestelwagen of kist vooraf in. « Resync » voegt enkel ontbrekende items toe, zonder iets te overschrijven.",
-      "resynced_one": "{{count}} item toegevoegd",
-      "resynced_other": "{{count}} items toegevoegd",
-      "resyncedVan_one": "{{name}}: {{count}} item toegevoegd",
-      "resyncedVan_other": "{{name}}: {{count}} items toegevoegd",
-      "failed": "Actie mislukt",
-      "resyncWith": "Resync {{name}}",
-      "confirmDelete": "« {{name}} » uit de kit verwijderen?",
-      "addToVan": "Toevoegen aan een bestelwagen",
-      "chooseVanTarget": "Kies een bestelwagen of zone…",
-      "addCrate": "Kist toevoegen",
-      "deleteChildren_one": "Hierdoor wordt ook {{count}} onderdeel in dit kitartikel verwijderd.",
-      "deleteChildren_other": "Hierdoor worden ook de {{count}} onderdelen in dit kitartikel verwijderd.",
-      "deleteKeepsVans": "Artikelen die al in de bestelwagens zijn aangemaakt blijven behouden: ze worden enkel losgekoppeld van de kit.",
-      "deleted": "« {{name}} » uit de kit verwijderd",
-      "deleteNotAllowed": "Verwijderen geweigerd: alleen een beheerder kan kits wijzigen.",
-      "target": {
-        "van": "bestelwagen",
-        "caisse": "kist"
-      },
-      "new": "Nieuwe kit",
-      "edit": "Kit bewerken",
-      "defaultHint": "Standaardkit: automatisch toegepast op elke nieuwe bestelwagen.",
-      "empty": "Lege kit",
-      "applyToVans": "Resync op een bestelwagen",
-      "caisseHint": "Toepassen vanuit een kist (Inventaris › kist › Resync) of bij het aanmaken van een kist.",
-      "editItem": "Item bewerken",
-      "addItem": "Aan kit toevoegen",
-      "parent": "In",
-      "topLevel": "Hoofdniveau",
-      "sort": "Volgorde"
-    },
     "todo": {
       "today": "vandaag",
       "daysAgo_one": "{{count}} dag geleden",
@@ -894,11 +860,7 @@
       "newZone": "Nieuwe zone",
       "zoneNotEmpty": "Maak de zone leeg voor je ze verwijdert",
       "saveFailed": "Plan opslaan mislukt",
-      "dragHint": "Houd een item ingedrukt en sleep het naar een zone of kist",
-      "saveDefault": "Als standaardindeling gebruiken",
-      "saveDefaultConfirm": "Nieuwe bestelwagens krijgen deze indeling. Doorgaan?",
-      "savedDefault_one": "{{count}} zone opgeslagen in de kit",
-      "savedDefault_other": "{{count}} zones opgeslagen in de kit"
+      "dragHint": "Houd een item ingedrukt en sleep het naar een zone of kist"
     },
     "dnd": {
       "moved": "{{name}} → {{dest}}",
@@ -914,9 +876,6 @@
       "search": "Artikel zoeken…",
       "allKinds": "Alle",
       "none": "Geen artikelen",
-      "article": "Artikel",
-      "fromCatalog": "Artikel uit catalogus",
-      "kitHint": "Artikelen maak je aan in Vloot › Artikelen.",
       "managedInCatalog": "Naam en icoon worden beheerd in de catalogus (Vloot › Artikelen).",
       "placeTitle": "Toevoegen uit catalogus",
       "place": "Toevoegen",
@@ -924,8 +883,6 @@
       "placed_other": "{{count}} × « {{name}} » toegevoegd in {{dest}}",
       "placeFailed": "Artikel kon niet worden toegevoegd",
       "placeNotAllowed": "Je kunt enkel artikelen toevoegen in je eigen bestelwagen.",
-      "noCrateArticleForKit": "Geen kist-artikel gebruikt deze kit. Maak er een aan in Vloot › Artikelen (type Kist, standaardkit = deze kit).",
-      "kitBadge": "kit « {{name}} »",
       "inFleet": "in de vloot",
       "unused": "Nog niet gebruikt in de vloot",
       "inactive": "inactief",
@@ -933,9 +890,6 @@
       "usageLine_other": "{{count}} in de vloot ({{instances}} plaats(en))",
       "kindLockedHint": "Het type kan niet meer wijzigen: het artikel is in gebruik.",
       "renameHint": "De nieuwe naam geldt voor alle exemplaren in de vloot.",
-      "defaultKit": "Standaardkit",
-      "noKit": "Geen (lege kist)",
-      "defaultKitHint": "Wanneer deze kist aan een bestelwagen wordt toegevoegd, wordt ze met deze kit gevuld.",
       "notes": "Notities",
       "activeLabel": "Actief",
       "activeHint": "Een inactief artikel wordt niet meer voorgesteld, bestaande exemplaren blijven.",
@@ -944,7 +898,18 @@
       "deleteConfirm": "Artikel « {{name}} » verwijderen?",
       "cannotDelete": "Artikel in gebruik in de vloot of een kit: deactiveer het liever.",
       "duplicate": "Er bestaat al een artikel van dit type met deze naam (hoofdletters en accenten genegeerd).",
-      "kindLocked": "Het type van een gebruikt artikel kan niet worden gewijzigd."
+      "kindLocked": "Het type van een gebruikt artikel kan niet worden gewijzigd.",
+      "failed": "Bewerking mislukt"
+    },
+    "crate": {
+      "inCrate": "in {{crate}}",
+      "inCrateZone": "in {{crate}} · {{zone}}",
+      "empty": "Lege kist",
+      "contents": "Inhoud van {{name}}",
+      "takeOut": "Uit de kist halen → {{zone}}",
+      "putIn": "In {{crate}} steken",
+      "onlyMateriel": "Een kist kan enkel materiaal bevatten.",
+      "catalogHint": "Een kist wordt leeg in de bestelwagen geplaatst; daarna berg je er materiaal in op."
     }
   }
 }

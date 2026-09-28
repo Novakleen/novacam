@@ -6,6 +6,7 @@ import { nodeName } from '@/lib/fleet/inventory';
 import { firstName } from '@/lib/fleet/api';
 import { CondPill, NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
+import CrateBadge from './LocationBadge';
 import InventoryDialogs from './InventoryDialogs';
 
 const SEV_RANK = { broken: 3, missing: 2, damaged_usable: 1 };
@@ -115,6 +116,7 @@ const TicketsPanel = ({ data, index, isAdmin, myRootId, onReload }) => {
                         .map((p) => nodeName(p, lang))
                         .join(' › ')}
                     </span>
+                    <CrateBadge node={node} byId={tree.byId} lang={lang} t={t} />
                     <span className="block text-xs mt-0.5">
                       <span className="inline-block rounded-full px-2 py-0.5 font-bold mr-1.5" style={{ backgroundColor: NAVY, color: YELLOW }}>
                         {tk.status === 'resolu' ? t(`fleet.resolutions.${tk.resolution}`) : t(`fleet.status.${tk.status}`)}
@@ -136,7 +138,7 @@ const TicketsPanel = ({ data, index, isAdmin, myRootId, onReload }) => {
         ctx={{
           tree,
           tickets: data.tickets,
-          kits: data.kits,
+          articles: data.articles,
           isAdmin,
           canActNode: (n) => isAdmin || n.root_id === myRootId,
           canMoveNode: (n) => isAdmin || n.root_id === myRootId,

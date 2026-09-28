@@ -10,7 +10,20 @@ const mode = process.argv[2] || 'view';
 
 const blocks = {
   cab: [],
-  bulkhead: [{ id: 'epi', label: 'Caisse EPI', sub: '1 article', kind: 'caisse', condition: 'ok' }],
+  bulkhead: [
+    {
+      id: 'epi',
+      label: 'Caisse EPI',
+      sub: '3 articles',
+      kind: 'caisse',
+      condition: 'damaged_usable',
+      children: [
+        { id: 'epi1', label: 'Gants', sub: '×4', kind: 'materiel', condition: 'ok' },
+        { id: 'epi2', label: 'Lunettes', sub: '×2', kind: 'materiel', condition: 'damaged_usable' },
+        { id: 'epi3', label: 'Casques', sub: '×2', kind: 'materiel', condition: 'ok' },
+      ],
+    },
+  ],
   left_shelf: [
     { id: 'l', label: 'Lances', sub: '×2', kind: 'materiel', condition: 'damaged_usable' },
     { id: 'r', label: 'Rallonges', sub: '×2', kind: 'materiel', condition: 'ok' },
@@ -22,7 +35,22 @@ const blocks = {
     { id: 'b', label: 'Bidons vides', sub: '×1', kind: 'materiel', condition: 'ok' },
     { id: 'c', label: 'Cônes / signalisation', sub: '×1', kind: 'materiel', condition: 'missing' },
   ],
-  right_shelf: [{ id: 'rac', label: 'Caisse raccords', sub: '4 articles', kind: 'caisse', condition: 'ok' }],
+  right_shelf: [
+    {
+      id: 'rac',
+      label: 'Caisse raccords',
+      sub: '4 articles',
+      kind: 'caisse',
+      condition: 'ok',
+      children: [
+        { id: 'r1', label: 'Joints', sub: '×6', kind: 'materiel', condition: 'ok' },
+        { id: 'r2', label: 'Manchon Ø100', sub: '×2', kind: 'materiel', condition: 'ok' },
+        { id: 'r3', label: 'Manchon 3D Ø80', sub: '', kind: 'materiel', condition: 'ok' },
+        { id: 'r4', label: 'Dragonne', sub: '', kind: 'materiel', condition: 'ok' },
+      ],
+    },
+    { id: 'vide', label: 'Caisse vide', sub: 'Caisse vide', kind: 'caisse', condition: 'ok', children: [] },
+  ],
 };
 const labels = { cab: 'Cabine', bulkhead: 'Zone cloison', left_shelf: 'Étagères gauche', floor: 'Plancher', right_shelf: 'Étagères droite' };
 const worst = { left_shelf: 'damaged_usable', floor: 'broken' };

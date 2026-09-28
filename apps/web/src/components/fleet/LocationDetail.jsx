@@ -118,7 +118,6 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
           <InventoryBrowser
             root={rootNode}
             tree={tree}
-            kits={data.kits}
             isAdmin={isAdmin}
             canAct={canEdit}
             canEditPlan={Boolean(van) && (isAdmin || canEdit)}
@@ -282,7 +281,6 @@ const LocationDetail = ({ location, van, index, data, isAdmin, canEdit, moves, o
         ctx={{
           tree,
           tickets: data.tickets,
-          kits: data.kits,
           articles: data.articles,
           isAdmin,
           canActNode: (n) => isAdmin || (canEdit && n.root_id === location.id),

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Boxes, Pencil, Plus, Search } from 'lucide-react';
+import { Boxes, Package, Pencil, Plus, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
@@ -8,8 +8,9 @@ const KINDS = ['caisse', 'machine', 'materiel'];
 
 /**
  * v1.10.0 presentational catalog list (no data access): used by ArticlesPanel and by
- * tools/render-catalog-preview. rows = [{ article, usage, kitName }].
- * usage = { instances, qty, byRoot: [{ id, label, qty, depot }], damaged_usable, broken, missing } | null
+ * tools/render-catalog-preview. rows = [{ article, usage }].
+ * usage = { instances, qty, byPlace: [{ id, label, qty, depot, inCrate }], damaged_usable, broken, missing } | null
+ * (v1.11.0: label = "Van › Zone › Caisse")
  */
 const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onNew, onEdit, totals }) => (
   <div className="space-y-4">
@@ -60,7 +61,7 @@ const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onN
     </div>
     {rows.length === 0 && <p className="text-sm text-gray-500 text-center py-10">{t('fleet.articles.none')}</p>}
     <ul className="grid gap-2 md:grid-cols-2">
-      {rows.map(({ article: a, usage: u, kitName }) => (
+      {rows.map(({ article: a, usage: u }) => (
         <li
           key={a.id}
           className={cn('rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 space-y-2', a.active === false && 'opacity-60')}
@@ -71,7 +72,6 @@ const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onN
               <p className="font-bold truncate">{label(a)}</p>
               <p className="text-xs text-gray-500 truncate">
                 {t(`fleet.kinds.${a.kind}`)}
-                {kitName ? ` · ${t('fleet.articles.kitBadge', { name: kitName })}` : ''}
                 {a.active === false ? ` · ${t('fleet.articles.inactive')}` : ''}
               </p>
             </div>
@@ -85,14 +85,26 @@ const ArticlesCatalogView = ({ t, rows, label, query, onQuery, kind, onKind, onN
               </button>
             )}
           </div>
-          {u && u.byRoot.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {u.byRoot.map((r) => (
-                <span key={r.id} className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', r.depot ? 'bg-gray-200 dark:bg-gray-800' : 'bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:text-blue-200')}>
-                  {r.label} · {r.qty}
-                </span>
+          {u && u.byPlace.length > 0 && (
+            <ul className="space-y-0.5">
+              {u.byPlace.map((r) => (
+                <li
+                  key={r.id}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[11px] font-semibold',
+                    r.inCrate
+                      ? 'bg-amber-50 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200'
+                      : r.depot
+                        ? 'bg-gray-100 dark:bg-gray-800'
+                        : 'bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:text-blue-200'
+                  )}
+                >
+                  {r.inCrate && <Package className="h-3 w-3 shrink-0" />}
+                  <span className="flex-1 min-w-0 truncate">{r.label}</span>
+                  <span className="shrink-0 font-black">× {r.qty}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
           {u && (u.damaged_usable > 0 || u.broken > 0 || u.missing > 0) && (
             <div className="flex flex-wrap gap-1 text-[11px] font-bold">

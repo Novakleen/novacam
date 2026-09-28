@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { LogOut, Loader2, Package } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,13 +13,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { isContainer, moveNode, nodeName } from '@/lib/fleet/inventory';
+import { canContain, isContainer, moveNode, nodeName } from '@/lib/fleet/inventory';
 import { NAVY, YELLOW } from './FleetUI';
 import NodeIcon from './NodeIcon';
 
 /**
  * Pick a destination container. Members: only their van (server re-checks);
  * admins: every root. The node's own subtree is excluded (no cycles).
+ * v1.11.0: only containers that accept the node's kind are selectable (matériel → zone or caisse,
+ * caisse / machine → zone); quick actions to put a matériel into a crate of its zone or take it out.
  */
 const MoveNodeDialog = ({ open, onOpenChange, node, tree, roots, lang, onDone }) => {
   const { t } = useTranslation();
@@ -41,7 +43,7 @@ const MoveNodeDialog = ({ open, onOpenChange, node, tree, roots, lang, onDone })
     const out = [];
     const walk = (n, depth) => {
       if (!isContainer(n) || banned.has(n.id)) return;
-      out.push({ node: n, depth });
+      out.push({ node: n, depth, allowed: canContain(n, node.kind) });
       for (const c of tree.childrenOf(n.id)) walk(c, depth + 1);
     };
     for (const r of roots) walk(r, 0);
@@ -49,6 +51,13 @@ const MoveNodeDialog = ({ open, onOpenChange, node, tree, roots, lang, onDone })
   }, [node, tree, roots]);
 
   if (!node) return null;
+  const parent = tree.byId.get(node.parent_id);
+  const inCrate = node.kind === 'materiel' && parent?.kind === 'caisse';
+  const zoneId = inCrate ? parent.parent_id : node.parent_id;
+  const zoneNode = tree.byId.get(zoneId);
+  const allowedIds = new Set(options.filter((o) => o.allowed).map((o) => o.node.id));
+  const sameZoneCrates =
+    node.kind === 'materiel' ? tree.childrenOf(zoneId).filter((c) => c.kind === 'caisse' && c.id !== node.parent_id && allowedIds.has(c.id)) : [];
   const splittable = node.kind === 'materiel' && Number(node.qty) > 1;
 
   const submit = async () => {
@@ -92,14 +101,41 @@ const MoveNodeDialog = ({ open, onOpenChange, node, tree, roots, lang, onDone })
             />
           </div>
         )}
+        {(inCrate || sameZoneCrates.length > 0) && (
+          <div className="flex flex-wrap gap-1.5">
+            {inCrate && zoneNode && allowedIds.has(zoneNode.id) && (
+              <button
+                type="button"
+                onClick={() => setDest(zoneNode.id)}
+                className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 h-9 text-xs font-bold', dest === zoneNode.id ? 'border-transparent text-white' : 'border-gray-200 dark:border-gray-700')}
+                style={dest === zoneNode.id ? { backgroundColor: NAVY } : undefined}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                {t('fleet.crate.takeOut', { zone: nodeName(zoneNode, lang) })}
+              </button>
+            )}
+            {sameZoneCrates.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setDest(c.id)}
+                className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 h-9 text-xs font-bold', dest === c.id ? 'border-transparent text-white' : 'border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800')}
+                style={dest === c.id ? { backgroundColor: NAVY } : undefined}
+              >
+                <Package className="h-3.5 w-3.5" />
+                {t('fleet.crate.putIn', { crate: nodeName(c, lang) })}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="space-y-1">
-          {options.map(({ node: n, depth }) => {
+          {options.map(({ node: n, depth, allowed }) => {
             const current = n.id === node.parent_id;
             return (
               <button
                 key={n.id}
                 type="button"
-                disabled={current}
+                disabled={current || !allowed}
                 onClick={() => setDest(n.id)}
                 className={cn(
                   'w-full flex items-center gap-2 rounded-2xl border px-2 h-12 text-left disabled:opacity-40',

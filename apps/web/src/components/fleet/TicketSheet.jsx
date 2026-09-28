@@ -21,6 +21,7 @@ import {
 } from '@/lib/fleet/inventory';
 import { firstName } from '@/lib/fleet/api';
 import { CondPill, NAVY, YELLOW } from './FleetUI';
+import CrateBadge from './LocationBadge';
 
 function when(iso, lang) {
   return new Date(iso).toLocaleString(lang === 'nl' ? 'nl-BE' : lang === 'en' ? 'en-GB' : 'fr-BE', {
@@ -31,7 +32,7 @@ function when(iso, lang) {
   });
 }
 
-const TicketSheet = ({ ticket, node, pathLabel, isAdmin, canAct, profileById, lang, onClose, onChanged }) => {
+const TicketSheet = ({ ticket, node, byId, pathLabel, isAdmin, canAct, profileById, lang, onClose, onChanged }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [events, setEvents] = useState([]);
@@ -122,6 +123,7 @@ const TicketSheet = ({ ticket, node, pathLabel, isAdmin, canAct, profileById, la
             {pathLabel}
             {ticket.qty_affected > 1 && ` · ${t('fleet.ticket.qty', { count: ticket.qty_affected })}`}
           </DialogDescription>
+          <CrateBadge node={node} byId={byId} lang={lang} t={t} className="self-start" />
         </DialogHeader>
 
         {/* Status track */}
