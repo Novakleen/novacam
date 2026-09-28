@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { ITEM_KINDS, nodeName, saveNode } from '@/lib/fleet/inventory';
+import { ITEM_KINDS, crateError, nodeName, saveNode } from '@/lib/fleet/inventory';
 import { NAVY, YELLOW } from './FleetUI';
 import NodeIcon, { NODE_ICONS } from './NodeIcon';
 
@@ -25,7 +25,7 @@ import NodeIcon, { NODE_ICONS } from './NodeIcon';
  * only their per-instance fields (quantity, serial, brand, model, notes) are editable here.
  * Creating items goes through PlaceArticleDialog (pick from the catalog).
  */
-const NodeEditDialog = ({ open, onOpenChange, node, lang, onDone }) => {
+const NodeEditDialog = ({ open, onOpenChange, node, locked = false, lang, onDone }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [form, setForm] = useState({});
@@ -49,7 +49,7 @@ const NodeEditDialog = ({ open, onOpenChange, node, lang, onDone }) => {
       onOpenChange(false);
       onDone?.(saved);
     } catch (err) {
-      toast({ variant: 'destructive', title: t('fleet.node.saveFailed'), description: err.message });
+      toast({ variant: 'destructive', title: t('fleet.node.saveFailed'), description: crateError(err, t) });
     } finally {
       setSaving(false);
     }
@@ -106,7 +106,8 @@ const NodeEditDialog = ({ open, onOpenChange, node, lang, onDone }) => {
               </div>
             </>
           )}
-          {node.kind === 'materiel' && (
+          {/* v1.12.0: the quantity of a crate item comes from the catalog standard contents */}
+          {node.kind === 'materiel' && !locked && (
             <div className="space-y-1.5">
               <Label>{t('fleet.node.qty')}</Label>
               <Input type="number" min={0} className="h-11 rounded-xl" value={form.qty ?? 1} onChange={(e) => set('qty', e.target.value)} />

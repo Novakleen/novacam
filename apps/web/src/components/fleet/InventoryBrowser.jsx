@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
-import { AlertTriangle, ChevronRight, GripVertical, Home, Package, Plus } from 'lucide-react';
+import { AlertTriangle, ChevronRight, GripVertical, Home, Lock, Package, PackageCheck, PackageX, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { canContain, isContainer, moveNode, nodeName } from '@/lib/fleet/inventory';
+import { canContain, crateError, isContainer, isCrateItem, moveNode, nodeName, setMissing } from '@/lib/fleet/inventory';
 import { CondPill } from './FleetUI';
 import NodeIcon from './NodeIcon';
 import VanPlan, { blockSub } from './VanPlan';
@@ -18,6 +18,7 @@ const subLabel = blockSub;
  * tap a zone to open it, tap a block (caisse / machine / item) to open it or its sheet.
  * v1.9.0: drag & drop (SVG blocks and list rows → zones, caisses, breadcrumb) + editable plan.
  * v1.11.0: crates are shown as containers with their matériel nested inside; drops follow the nesting rules.
+ * v1.12.0: crate contents are locked (catalog standard); items can only be marked missing / found.
  */
 const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, lang, focus, openDialog, onReload }) => {
   const { t } = useTranslation();
@@ -60,6 +61,21 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
   const children = tree.childrenOf(current.id).filter((c) => !issuesOnly || tree.worst(c.id) !== 'ok');
   const issueCount = tree.descendants(current.id).filter((n) => n.condition !== 'ok').length;
 
+  const [missingBusy, setMissingBusy] = useState(null);
+  const toggleMissing = async (n) => {
+    const missing = tree.missingQty(n.id) > 0;
+    setMissingBusy(n.id);
+    try {
+      await setMissing(n.id, !missing);
+      toast({ title: missing ? t('fleet.crate.foundDone', { name: nodeName(n, lang) }) : t('fleet.crate.missingDone', { name: nodeName(n, lang) }) });
+      onReload?.();
+    } catch (err) {
+      toast({ variant: 'destructive', title: t('fleet.crate.missingFailed'), description: err.message });
+    } finally {
+      setMissingBusy(null);
+    }
+  };
+
   const openNode = (n) => {
     if (recentlyDragged()) return;
     if (isContainer(n)) setCwd(n.id);
@@ -76,6 +92,10 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
     const node = tree.byId.get(nodeId);
     const dest = tree.byId.get(target);
     if (!node || !dest || target === node.id || target === node.parent_id) return;
+    if (isCrateItem(node, tree.byId)) {
+      toast({ variant: 'destructive', title: t('fleet.crate.locked') });
+      return;
+    }
     if (!canContain(dest, node.kind) || tree.descendants(node.id).some((d) => d.id === target)) {
       toast({ variant: 'destructive', title: t('fleet.dnd.invalid') });
       return;
@@ -86,7 +106,7 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
       toast({ title: t('fleet.dnd.moved', { name: nodeName(node, lang), dest: nodeName(dest, lang) }) });
       onReload?.();
     } catch (err) {
-      toast({ variant: 'destructive', title: t('fleet.moveNode.failed'), description: err.message });
+      toast({ variant: 'destructive', title: t('fleet.moveNode.failed'), description: crateError(err, t) });
     } finally {
       setMoving(false);
     }
@@ -97,9 +117,12 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
     const worst = tree.worst(c.id);
     const reportable = c.kind !== 'zone';
     const dragNodeKind = dragId ? tree.byId.get(dragId)?.kind : null;
+    const locked = isCrateItem(c, tree.byId);
+    const missingQ = locked ? tree.missingQty(c.id) : 0;
+    const crateMissing = c.kind === 'caisse' ? tree.crateMissing(c.id) : 0;
     return (
       <div className="flex items-center gap-1.5">
-        {canDrag && c.kind !== 'zone' && (
+        {canDrag && c.kind !== 'zone' && !locked && (
           <DragHandle
             nodeId={c.id}
             label={t('fleet.dnd.handle')}
@@ -123,17 +146,41 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
               nested ? 'p-2' : 'p-2.5'
             )}
           >
-            <NodeIcon node={c} className={nested ? 'h-9 w-9' : undefined} />
+            <NodeIcon node={c} className={cn(nested ? 'h-9 w-9' : undefined, missingQ > 0 && 'opacity-40 grayscale')} />
             <span className="flex-1 min-w-0">
-              <span className="block font-semibold truncate">{nodeName(c, lang)}</span>
+              <span className={cn('block font-semibold truncate', missingQ > 0 && 'line-through text-gray-400')}>{nodeName(c, lang)}</span>
               <span className="block text-xs text-gray-500 truncate">
                 {c.kind === 'caisse' ? `${t('fleet.kinds.caisse')} · ${subLabel(c, tree, t)}` : subLabel(c, tree, t)}
+                {missingQ > 0 && c.qty > 1 && ` · ${t('fleet.crate.missingOf', { count: missingQ, total: c.qty })}`}
               </span>
             </span>
-            {worst !== 'ok' && <CondPill condition={worst} label={t(`fleet.cond.${worst}`)} className="shrink-0" />}
+            {crateMissing > 0 && (
+              <span className="shrink-0 rounded-full bg-red-600 text-white px-2 py-0.5 text-[11px] font-bold">{t('fleet.crate.missingCount', { count: crateMissing })}</span>
+            )}
+            {missingQ > 0 ? (
+              <span className="shrink-0 rounded-full bg-red-600 text-white px-2 py-0.5 text-[11px] font-bold">{t('fleet.cond.missing')}</span>
+            ) : (
+              worst !== 'ok' && !(c.kind === 'caisse' && crateMissing > 0 && worst === 'missing') && <CondPill condition={worst} label={t(`fleet.cond.${worst}`)} className="shrink-0" />
+            )}
             {isContainer(c) && <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />}
           </button>
         </DropTarget>
+        {canAct && locked && (
+          <button
+            type="button"
+            disabled={missingBusy === c.id}
+            onClick={() => toggleMissing(c)}
+            className={cn(
+              'shrink-0 rounded-2xl flex items-center justify-center active:scale-95 disabled:opacity-50 border',
+              nested ? 'h-10 w-10' : 'h-12 w-12',
+              missingQ > 0 ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 dark:bg-gray-900 dark:border-gray-700'
+            )}
+            aria-label={missingQ > 0 ? t('fleet.crate.markFound') : t('fleet.crate.markMissing')}
+            title={missingQ > 0 ? t('fleet.crate.markFound') : t('fleet.crate.markMissing')}
+          >
+            {missingQ > 0 ? <PackageCheck className="h-5 w-5" /> : <PackageX className="h-5 w-5" />}
+          </button>
+        )}
         {canAct && reportable && (
           <button
             type="button"
@@ -233,7 +280,18 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
           <NodeIcon node={current} />
           <div className="flex-1 min-w-0">
             <p className="font-bold truncate">{nodeName(current, lang)}</p>
-            <CondPill condition={tree.worst(current.id)} label={t(`fleet.cond.${tree.worst(current.id)}`)} />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <CondPill condition={tree.worst(current.id)} label={t(`fleet.cond.${tree.worst(current.id)}`)} />
+              {current.kind === 'caisse' && tree.crateMissing(current.id) > 0 && (
+                <span className="rounded-full bg-red-600 text-white px-2 py-0.5 text-[11px] font-bold">{t('fleet.crate.missingCount', { count: tree.crateMissing(current.id) })}</span>
+              )}
+            </div>
+            {current.kind === 'caisse' && (
+              <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                {t('fleet.crate.lockedHint')}
+              </p>
+            )}
           </div>
           <Button size="sm" variant="outline" className="rounded-full" onClick={() => openDialog('sheet', current)}>
             {t('fleet.inv.details')}
@@ -250,7 +308,7 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
           {t('fleet.inv.issuesOnly')} {issueCount > 0 && `(${issueCount})`}
         </button>
         <div className="flex-1" />
-        {canAct && current.kind !== 'van' && isContainer(current) && (
+        {canAct && current.kind !== 'van' && current.kind !== 'caisse' && isContainer(current) && (
           <Button size="sm" variant="outline" className="rounded-full" onClick={() => openDialog('edit', { parent: current })}>
             <Plus className="h-4 w-4 mr-1" />
             {t('fleet.inv.add')}
@@ -267,6 +325,10 @@ const InventoryBrowser = ({ root, tree, isAdmin, canAct, canEditPlan = false, la
             c.kind === 'caisse' && current.kind !== 'caisse' ? (
               <li key={c.id} className="rounded-2xl border-2 border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 p-1.5 space-y-1.5">
                 {renderRow(c)}
+                <p className="ml-9 pl-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                  <Lock className="h-3 w-3" />
+                  {t('fleet.crate.lockedHint')}
+                </p>
                 {(() => {
                   const inner = tree.childrenOf(c.id).filter((x) => !issuesOnly || tree.worst(x.id) !== 'ok');
                   return inner.length === 0 ? (

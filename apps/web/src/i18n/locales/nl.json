@@ -860,7 +860,7 @@
       "newZone": "Nieuwe zone",
       "zoneNotEmpty": "Maak de zone leeg voor je ze verwijdert",
       "saveFailed": "Plan opslaan mislukt",
-      "dragHint": "Houd een item ingedrukt en sleep het naar een zone of kist"
+      "dragHint": "Houd een element ingedrukt en sleep het naar een zone (de inhoud van kisten is vergrendeld)"
     },
     "dnd": {
       "moved": "{{name}} → {{dest}}",
@@ -906,10 +906,31 @@
       "inCrateZone": "in {{crate}} · {{zone}}",
       "empty": "Lege kist",
       "contents": "Inhoud van {{name}}",
-      "takeOut": "Uit de kist halen → {{zone}}",
-      "putIn": "In {{crate}} steken",
       "onlyMateriel": "Een kist kan enkel materiaal bevatten.",
-      "catalogHint": "Een kist wordt leeg in de bestelwagen geplaatst; daarna berg je er materiaal in op."
+      "locked": "Inhoud van de kist is vergrendeld: die wordt bepaald in de catalogus (Vloot › Artikelen).",
+      "lockedHint": "Inhoud vergrendeld (catalogus) — je kunt enkel een artikel als ontbrekend of beschadigd melden.",
+      "missingShort": "ontbr.",
+      "markMissing": "Als ontbrekend melden",
+      "markFound": "Teruggevonden",
+      "missingDone": "{{name}} als ontbrekend gemeld",
+      "foundDone": "{{name}} teruggevonden",
+      "missingFailed": "Bijwerken mislukt",
+      "missingCount_one": "{{count}} ontbrekend",
+      "missingCount_other": "{{count}} ontbrekend",
+      "missingOf": "{{count}}/{{total}} ontbrekend",
+      "contentsTitle": "Standaardinhoud",
+      "contentsHint": "Materiaal dat elke kist van dit type bevat. Alle geplaatste kisten in de bestelwagens en het depot worden automatisch gevuld en bijgewerkt.",
+      "noContents": "Geen standaardinhoud",
+      "noMateriel": "Maak eerst artikelen van het type materiaal aan.",
+      "addLine": "Artikel toevoegen",
+      "item": "Artikel",
+      "pickItem": "Kies materiaal…",
+      "syncHint_one": "{{count}} geplaatste kist wordt bij het opslaan gesynchroniseerd.",
+      "syncHint_other": "{{count}} geplaatste kisten worden bij het opslaan gesynchroniseerd.",
+      "contentsSaved_one": "Opgeslagen — {{count}} kist gesynchroniseerd",
+      "contentsSaved_other": "Opgeslagen — {{count}} kisten gesynchroniseerd",
+      "confirmDelete_one": "{{name}} en de inhoud ({{count}} artikel) verwijderen?",
+      "confirmDelete_other": "{{name}} en de inhoud ({{count}} artikelen) verwijderen?"
     }
   }
 }

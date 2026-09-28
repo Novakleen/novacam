@@ -860,7 +860,7 @@
       "newZone": "New zone",
       "zoneNotEmpty": "Empty the zone before deleting it",
       "saveFailed": "Could not save the plan",
-      "dragHint": "Press and hold an item, then drag it to a zone or box"
+      "dragHint": "Press and hold an item, then drag it onto a zone (crate contents are locked)"
     },
     "dnd": {
       "moved": "{{name}} → {{dest}}",
@@ -906,10 +906,31 @@
       "inCrateZone": "in {{crate}} · {{zone}}",
       "empty": "Empty crate",
       "contents": "Contents of {{name}}",
-      "takeOut": "Take out of crate → {{zone}}",
-      "putIn": "Put in {{crate}}",
       "onlyMateriel": "A crate can only hold equipment.",
-      "catalogHint": "A crate is added empty to the van; equipment is then stored in it."
+      "locked": "Crate contents are locked: they are defined in the catalog (Fleet › Articles).",
+      "lockedHint": "Contents locked (catalog) — you can only report an item as missing or damaged.",
+      "missingShort": "miss.",
+      "markMissing": "Mark missing",
+      "markFound": "Found again",
+      "missingDone": "{{name}} marked missing",
+      "foundDone": "{{name}} found again",
+      "missingFailed": "Could not update",
+      "missingCount_one": "{{count}} missing",
+      "missingCount_other": "{{count}} missing",
+      "missingOf": "{{count}}/{{total}} missing",
+      "contentsTitle": "Standard contents",
+      "contentsHint": "Equipment contained in every crate of this type. All crates placed in vans and at the depot are filled and updated automatically.",
+      "noContents": "No standard contents",
+      "noMateriel": "Create equipment articles first.",
+      "addLine": "Add an item",
+      "item": "Item",
+      "pickItem": "Pick equipment…",
+      "syncHint_one": "{{count}} placed crate will be synced on save.",
+      "syncHint_other": "{{count}} placed crates will be synced on save.",
+      "contentsSaved_one": "Saved — {{count}} crate synced",
+      "contentsSaved_other": "Saved — {{count}} crates synced",
+      "confirmDelete_one": "Delete {{name}} and its contents ({{count}} item)?",
+      "confirmDelete_other": "Delete {{name}} and its contents ({{count}} items)?"
     }
   }
 }

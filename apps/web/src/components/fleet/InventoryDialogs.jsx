@@ -1,5 +1,5 @@
 import React from 'react';
-import { nodeName } from '@/lib/fleet/inventory';
+import { isCrateItem, nodeName } from '@/lib/fleet/inventory';
 import NodeSheet from './NodeSheet';
 import ReportDialog from './ReportDialog';
 import MoveNodeDialog from './MoveNodeDialog';
@@ -70,6 +70,7 @@ const InventoryDialogs = ({ state, setState, ctx }) => {
         open={Boolean(state.edit?.node)}
         onOpenChange={(o) => !o && close('edit')}
         node={state.edit?.node ? fresh(state.edit.node) : null}
+        locked={Boolean(state.edit?.node && isCrateItem(fresh(state.edit.node), tree.byId))}
         lang={lang}
         onDone={refresh}
       />

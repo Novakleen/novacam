@@ -38,15 +38,18 @@ export function buildPlanZones(root, tree, lang, t, { drafts = {}, draggable = f
             condition: tree.worst(c.id),
             draggable,
             // v1.11.0: a crate is drawn as a container with its matériel inside
+            // v1.12.0: its contents are locked (not draggable); missing items are flagged
             ...(c.kind === 'caisse'
               ? {
+                  missingCount: tree.crateMissing ? tree.crateMissing(c.id) : 0,
                   children: tree.childrenOf(c.id).map((k) => ({
                     id: k.id,
                     label: nodeName(k, lang),
                     sub: k.kind === 'materiel' && Number(k.qty) > 1 ? `×${k.qty}` : '',
                     kind: k.kind,
                     condition: tree.worst(k.id),
-                    draggable,
+                    missing: tree.missingQty ? tree.missingQty(k.id) > 0 : false,
+                    draggable: false,
                   })),
                 }
               : {}),
@@ -193,6 +196,7 @@ const VanPlan = ({
         <VanSvg
           svgRef={svgRef}
           zones={zones}
+          missingShort={t('fleet.crate.missingShort')}
           title={nodeName(root, lang)}
           selectedZoneId={editing ? null : selectedZoneId}
           grid={editing}
