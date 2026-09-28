@@ -22,6 +22,7 @@ import ProjectSpraySection from '@/components/spray/ProjectSpraySection';
 import ProjectExpenseSection from '@/components/expenses/ProjectExpenseSection';
 import SuiviSidebarLinks from '@/components/suivi/SuiviSidebarLinks';
 import ProjectMarginTab from '@/components/margins/ProjectMarginTab';
+import { canManageMargins } from '@/lib/roles';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -118,12 +119,17 @@ const CompanyCamProjectDetailPage = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
+  // v1.13.0: Admin + Manager can generate / regenerate the project margin
+  const [canMargins, setCanMargins] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const loadRole = async () => {
       if (!user?.id) {
-        if (!cancelled) setIsAdmin(false);
+        if (!cancelled) {
+          setIsAdmin(false);
+          setCanMargins(false);
+        }
         return;
       }
       const { data } = await supabase
@@ -131,7 +137,10 @@ const CompanyCamProjectDetailPage = () => {
         .select('role')
         .eq('id', user.id)
         .maybeSingle();
-      if (!cancelled) setIsAdmin(data?.role === 'Admin');
+      if (!cancelled) {
+        setIsAdmin(data?.role === 'Admin');
+        setCanMargins(canManageMargins(data?.role));
+      }
     };
     loadRole();
     return () => { cancelled = true; };
@@ -542,7 +551,7 @@ const CompanyCamProjectDetailPage = () => {
                     companycamProjectId={String(ccId)}
                     projectName={projectName}
                     projectAddress={address}
-                    isAdmin={isAdmin}
+                    isAdmin={canMargins}
                   />
                 </div>
                 )}

@@ -67,8 +67,9 @@ Deno.serve(async (req) => {
     if (roleError) {
       return jsonResponse({ error: 'Failed to verify caller role', details: roleError.message }, 400)
     }
-    if (!callerProfile || callerProfile.role !== 'Admin') {
-      return jsonResponse({ error: 'Admin privileges required' }, 403)
+    // v1.13.0: Managers have full access to the Marges module (same as Admin there)
+    if (!callerProfile || !['Admin', 'Manager'].includes(callerProfile.role)) {
+      return jsonResponse({ error: 'Admin or Manager privileges required' }, 403)
     }
 
     const res = await fetch(STATBEL_URL, {
