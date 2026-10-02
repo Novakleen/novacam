@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fetchMarginParams, fetchProductPrices } from '@/lib/margin/api';
 
 /**
- * /margins (Admin + Manager since v1.13.0) — Paramètres + Simulateur (what-if, rien n'est enregistré).
+ * /margins (Admin + Manager) — Paramètres + Simulateur (brouillon local + historique Supabase).
  * Le calcul de marge réel se fait sur la fiche chantier (onglet Marge).
  * DossierList / DossierForm restent dans le code pour réutilisation.
  */

@@ -118,18 +118,14 @@ const CompanyCamProjectDetailPage = () => {
   const { toast } = useToast();
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
-  // v1.13.0: Admin + Manager can generate / regenerate the project margin
+  // Admin + Manager: project margin and HubSpot / calendar linking
   const [canMargins, setCanMargins] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const loadRole = async () => {
       if (!user?.id) {
-        if (!cancelled) {
-          setIsAdmin(false);
-          setCanMargins(false);
-        }
+        if (!cancelled) setCanMargins(false);
         return;
       }
       const { data } = await supabase
@@ -137,10 +133,7 @@ const CompanyCamProjectDetailPage = () => {
         .select('role')
         .eq('id', user.id)
         .maybeSingle();
-      if (!cancelled) {
-        setIsAdmin(data?.role === 'Admin');
-        setCanMargins(canManageMargins(data?.role));
-      }
+      if (!cancelled) setCanMargins(canManageMargins(data?.role));
     };
     loadRole();
     return () => { cancelled = true; };
@@ -578,9 +571,9 @@ const CompanyCamProjectDetailPage = () => {
                   {t('project.openInCompanyCam')}
                 </Button>
               )}
-              {isAdmin && (
+              {canMargins && (
                 <ProjectHubSpotAdminPanel
-                  isAdmin={isAdmin}
+                  isAdmin={canMargins}
                   companycamProjectId={String(ccId)}
                   projectName={projectName}
                   projectAddress={address}

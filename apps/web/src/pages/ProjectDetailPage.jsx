@@ -119,18 +119,14 @@ const ProjectDetailPage = () => {
   const { toast } = useToast();
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
-  // v1.13.0: Admin + Manager can generate / regenerate the project margin
+  // Admin + Manager: project margin and HubSpot / calendar linking
   const [canMargins, setCanMargins] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const loadRole = async () => {
       if (!user?.id) {
-        if (!cancelled) {
-          setIsAdmin(false);
-          setCanMargins(false);
-        }
+        if (!cancelled) setCanMargins(false);
         return;
       }
       const { data } = await supabase
@@ -138,10 +134,7 @@ const ProjectDetailPage = () => {
         .select('role')
         .eq('id', user.id)
         .maybeSingle();
-      if (!cancelled) {
-        setIsAdmin(data?.role === 'Admin');
-        setCanMargins(canManageMargins(data?.role));
-      }
+      if (!cancelled) setCanMargins(canManageMargins(data?.role));
     };
     loadRole();
     return () => { cancelled = true; };
@@ -902,12 +895,12 @@ const ProjectDetailPage = () => {
               ) : (
                 <p className="text-sm text-gray-400">{t('hubspotAdmin.contactUnassigned')}</p>
               )}
-              {isAdmin && (
+              {canMargins && (
                 <ProjectHubSpotAdminPanel
                   key={`hs-inv-${project?.hubspot_contact_id || 'none'}-${project?.hubspot_invoice_id || 'none'}`}
                   compact
                   showContact={false}
-                  isAdmin={isAdmin}
+                  isAdmin={canMargins}
                   projectId={project?.id}
                   companycamProjectId={project?.companycam_project_id || null}
                   projectName={project?.name}

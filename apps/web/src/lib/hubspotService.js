@@ -1683,6 +1683,141 @@ export async function fetchHubSpotQuoteLineItems(quoteId) {
   }
 }
 
+/** Street + zip + city from HubSpot contact or deal properties (missing keys ignored). */
+export function formatHubSpotPostalAddress(props = {}) {
+  if (!props || typeof props !== 'object') return '';
+  const text = (v) => (v == null ? '' : String(v).trim());
+  const street = [
+    props.address,
+    props.street,
+    props.job_site_address,
+    props.chantier_address,
+    props.job_address,
+  ].map(text).find(Boolean) || '';
+  const zipCity = [text(props.zip), text(props.city)].filter(Boolean).join(' ');
+  const tail = [text(props.state), text(props.country)].filter(Boolean);
+  return [street, zipCity, ...tail].filter(Boolean).join(', ');
+}
+
+/** HubSpot createdate (ISO or epoch ms) → YYYY-MM for the simulator lead-entry month. */
+export function monthKeyFromHubspotDate(value) {
+  if (value == null || value === '') return '';
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}/.test(s)) return s.slice(0, 7);
+  const n = Number(s);
+  const d = Number.isFinite(n) && n > 1e11 ? new Date(n) : new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+const DEAL_ADDRESS_PROPERTIES = [
+  'address',
+  'city',
+  'zip',
+  'state',
+  'country',
+  'job_address',
+  'job_site_address',
+  'chantier_address',
+];
+
+/**
+ * Contact + latest deals + quotes + best available job address for the simulator.
+ * Address prefers a deal site address when HubSpot has one, otherwise the contact address.
+ * @returns {Promise<{ name: string, address: string, closer: string|null, createdate: string|null, deals: object[], quotes: object[] }>}
+ */
+export async function fetchHubSpotContactContext(contactId) {
+  const id = contactId != null ? String(contactId).trim() : '';
+  const empty = { name: '', address: '', closer: null, createdate: null, deals: [], quotes: [] };
+  if (!id) return empty;
+
+  const contactProps = [
+    'firstname',
+    'lastname',
+    'email',
+    'address',
+    'city',
+    'zip',
+    'state',
+    'country',
+    'createdate',
+    'hubspot_owner_id',
+  ].join(',');
+
+  let contact = null;
+  try {
+    contact = await invokeHubSpotProxy(
+      `/crm/v3/objects/contacts/${encodeURIComponent(id)}?properties=${contactProps}`
+    );
+  } catch (err) {
+    console.warn('[HubSpot] contact context failed:', err?.message || err);
+  }
+
+  const cprops = contact?.properties || {};
+  const name = `${cprops.firstname || ''} ${cprops.lastname || ''}`.trim();
+  const contactAddress = formatHubSpotPostalAddress(cprops);
+
+  const { deals } = await fetchHubSpotContactDeals(id).catch((err) => {
+    console.warn('[HubSpot] contact deals failed:', err?.message || err);
+    return { deals: [] };
+  });
+  const latest = deals[0] || null;
+
+  let dealAddress = '';
+  if (latest?.id) {
+    try {
+      const qs = new URLSearchParams({ properties: DEAL_ADDRESS_PROPERTIES.join(',') });
+      const raw = await invokeHubSpotProxy(
+        `/crm/v3/objects/deals/${encodeURIComponent(latest.id)}?${qs.toString()}`
+      );
+      dealAddress = formatHubSpotPostalAddress(raw?.properties || {});
+    } catch (err) {
+      console.warn('[HubSpot] deal address failed:', err?.message || err);
+    }
+  }
+
+  const { quotes } = await fetchHubSpotQuotesForContactOrDeal(id, { dealId: latest?.id || null }).catch(
+    (err) => {
+      console.warn('[HubSpot] contact quotes failed:', err?.message || err);
+      return { quotes: [] };
+    }
+  );
+
+  const closer = await resolveCloserFromContactOwner(id).catch(() => null);
+
+  return {
+    name,
+    address: dealAddress || contactAddress,
+    closer,
+    createdate: cprops.createdate || null,
+    deals: deals || [],
+    quotes: quotes || [],
+  };
+}
+
+/**
+ * Quote amount HT for the simulator. Prefer the sum of line-item amounts
+ * (HubSpot line `amount` is the pre-tax line total in this portal); else the quote total.
+ * @returns {Promise<{ amountHt: number|null, source: 'line_items'|'quote_amount'|null }>}
+ */
+export async function resolveQuoteAmountHt(quoteId, quoteAmount = null) {
+  const id = quoteId != null ? String(quoteId).trim() : '';
+  if (!id) return { amountHt: null, source: null };
+  try {
+    const { lineItems } = await fetchHubSpotQuoteLineItems(id);
+    const sum = (lineItems || []).reduce((s, li) => {
+      const n = Number(li?.amount);
+      return Number.isFinite(n) ? s + n : s;
+    }, 0);
+    if (sum > 0) return { amountHt: Math.round(sum * 100) / 100, source: 'line_items' };
+  } catch (err) {
+    console.warn('[HubSpot] quote line items for HT failed:', err?.message || err);
+  }
+  const fallback = Number(quoteAmount);
+  if (Number.isFinite(fallback)) return { amountHt: fallback, source: 'quote_amount' };
+  return { amountHt: null, source: null };
+}
+
 /**
  * Closed-won (incl. planning + invoiced) clients by HubSpot ENTRY month.
  * Entry date = contact.createdate (portal has no hs_lifecyclestage_lead_date).

@@ -288,8 +288,9 @@ const formatInvoiceDate = (value, locale) => {
 };
 
 /**
- * Admin-only HubSpot contact + invoice linking for a project (Supabase and/or CompanyCam).
- * Renders null when isAdmin is false — members must not see contact/invoice data.
+ * HubSpot contact, deal, quote, invoice and calendar linking for a project.
+ * `isAdmin` is the link permission: callers pass canManageMargins (Admin or Manager).
+ * Renders null when that flag is false — members must not see contact/invoice data.
  */
 const ProjectHubSpotAdminPanel = ({
   companycamProjectId,

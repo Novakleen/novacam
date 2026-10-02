@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +22,33 @@ const emptyLine = () => ({
   people: [emptyPerson()],
 });
 
-const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
+function serviceChoices(services) {
+  if (Array.isArray(services) && services.length) {
+    return services.map((s) => ({
+      value: s.value || s.code,
+      code: s.code || s.value,
+      label: s.label || s.code || s.value,
+    }));
+  }
+  return SERVICE_CODES.map((s) => ({ value: s.code, code: s.code, label: s.label }));
+}
+
+function lineSelectValue(line, options) {
+  const values = new Set(options.map((s) => s.value));
+  if (line?.serviceValue && values.has(line.serviceValue)) return line.serviceValue;
+  if (line?.serviceLabel) {
+    const byLabel = options.find((s) => s.label === line.serviceLabel);
+    if (byLabel) return byLabel.value;
+  }
+  const byCode = options.find((s) => s.value === line?.service || s.code === line?.service);
+  if (byCode) return byCode.value;
+  return line?.service || options[0]?.value || 'autre';
+}
+
+const HourLinesEditor = ({ lines = [], onChange, profiles = [], services = null }) => {
+  const { t } = useTranslation();
+  const options = serviceChoices(services);
+
   const updateLine = (index, patch) => {
     onChange(lines.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   };
@@ -62,14 +89,14 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-semibold">Lignes d&apos;heures</Label>
+        <Label className="text-sm font-semibold">{t('margins.hourLines.title')}</Label>
         <Button type="button" variant="outline" size="sm" onClick={addLine}>
-          <Plus className="h-4 w-4 mr-1" /> Jour / service
+          <Plus className="h-4 w-4 mr-1" /> {t('margins.hourLines.addDay')}
         </Button>
       </div>
 
       {lines.length === 0 && (
-        <p className="text-sm text-muted-foreground">Aucune heure. Ajoutez un jour de chantier.</p>
+        <p className="text-sm text-muted-foreground">{t('margins.hourLines.empty')}</p>
       )}
 
       <div className="space-y-4">
@@ -80,7 +107,7 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
           >
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
               <div className="md:col-span-4">
-                <Label className="text-xs">Date</Label>
+                <Label className="text-xs">{t('margins.hourLines.date')}</Label>
                 <Input
                   type="date"
                   value={line.work_date || ''}
@@ -88,17 +115,24 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
                 />
               </div>
               <div className="md:col-span-6">
-                <Label className="text-xs">Service (atome mix)</Label>
+                <Label className="text-xs">{t('margins.hourLines.service')}</Label>
                 <Select
-                  value={line.service || 'autre'}
-                  onValueChange={(v) => updateLine(idx, { service: v })}
+                  value={lineSelectValue(line, options)}
+                  onValueChange={(v) => {
+                    const opt = options.find((s) => s.value === v);
+                    updateLine(idx, {
+                      service: opt?.code || v,
+                      serviceLabel: opt?.label || v,
+                      serviceValue: v,
+                    });
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {SERVICE_CODES.map((s) => (
-                      <SelectItem key={s.code} value={s.code}>
+                    {options.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
                         {s.label}
                       </SelectItem>
                     ))}
@@ -119,7 +153,7 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
                   className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end rounded-lg bg-white dark:bg-gray-950 p-2 border border-gray-100 dark:border-gray-800"
                 >
                   <div className="md:col-span-3">
-                    <Label className="text-xs">Équipier</Label>
+                    <Label className="text-xs">{t('margins.hourLines.person')}</Label>
                     <Select
                       value={person.profileId || '__manual__'}
                       onValueChange={(v) => {
@@ -131,10 +165,10 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Choisir…" />
+                        <SelectValue placeholder={t('margins.hourLines.choose')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__manual__">Saisie manuelle</SelectItem>
+                        <SelectItem value="__manual__">{t('margins.hourLines.manual')}</SelectItem>
                         {profiles.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
                             {p.full_name || p.email}
@@ -144,14 +178,14 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
                     </Select>
                   </div>
                   <div className="md:col-span-3">
-                    <Label className="text-xs">Nom</Label>
+                    <Label className="text-xs">{t('margins.hourLines.name')}</Label>
                     <Input
                       value={person.name || ''}
                       onChange={(e) => updatePerson(idx, pIdx, { name: e.target.value })}
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <Label className="text-xs">Heures</Label>
+                    <Label className="text-xs">{t('margins.hourLines.hours')}</Label>
                     <Input
                       type="number"
                       step="0.25"
@@ -165,10 +199,10 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
                     />
                   </div>
                   <div className="md:col-span-3">
-                    <Label className="text-xs">Adresse domicile</Label>
+                    <Label className="text-xs">{t('margins.hourLines.home')}</Label>
                     <AddressSearchInput
                       defaultValue={person.homeAddress || ''}
-                      placeholder="Adresse…"
+                      placeholder={t('margins.hourLines.homePh')}
                       onInputChange={(v) => updatePerson(idx, pIdx, { homeAddress: v })}
                       onSelect={(item) =>
                         updatePerson(idx, pIdx, {
@@ -190,7 +224,7 @@ const HourLinesEditor = ({ lines = [], onChange, profiles = [] }) => {
                 </div>
               ))}
               <Button type="button" variant="ghost" size="sm" onClick={() => addPerson(idx)}>
-                <UserPlus className="h-4 w-4 mr-1" /> Ajouter une personne
+                <UserPlus className="h-4 w-4 mr-1" /> {t('margins.hourLines.addPerson')}
               </Button>
             </div>
           </div>
