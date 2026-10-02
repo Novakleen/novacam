@@ -8,7 +8,14 @@
  * Fixed one-way km so diesel is deterministic (no live geocode).
  */
 import { calculateProjectMargin } from '../src/lib/margin/calculateProjectMargin.js';
-import { simulateMargin, minPriceForMa } from '../src/lib/margin/simulator.js';
+import {
+  minPriceForMa,
+  normalizeSimForm,
+  resolveSimulationServiceCode,
+  seedHourLinesFromSimple,
+  simulateMargin,
+  simulationSnapshot,
+} from '../src/lib/margin/simulator.js';
 import { resolveCacAdsAmount } from '../src/lib/margin/cacAds.js';
 
 const params = {
@@ -141,3 +148,66 @@ console.log('=== Real dossier lines → calculateProjectMargin vs simulator ==='
 console.log(JSON.stringify({ match: realDiffs.length === 0, realDiffs, real: Object.fromEntries(keys.map((k) => [k, real[k]])) }, null, 2));
 
 if (diffs.length || realDiffs.length) process.exit(1);
+
+const lineInputs = {
+  amountHt: 1620,
+  hoursMode: 'lines',
+  days: 9,
+  hoursPerDay: 1,
+  service: 'sc',
+  techs: [],
+  hourLines: [
+    {
+      work_date: '2026-09-07',
+      service: 'sc',
+      serviceLabel: 'SC (surface cleaner)',
+      people: [
+        { name: 'Tech A', hours: 7.25, profileId: 'tech-a', homeAddress: 'Domicile A, Belgique' },
+        { name: 'Tech B', hours: 4, profileId: 'tech-b', homeAddress: 'Domicile B, Belgique' },
+      ],
+    },
+  ],
+  productLines: [{ product: 'biomix', liters: 20 }],
+  clientAddress: inputs.clientAddress,
+  kmOverride: {},
+  closer: 'Rémy',
+  extras: [{ label: 'Hôtel', amount: 90 }],
+  fuelByDate: {
+    '2026-09-07': {
+      trips: techs.map((x) => ({
+        personKey: `id:${x.id}`,
+        name: x.name,
+        homeAddress: x.address,
+        profileId: x.id,
+        km: km[x.id],
+      })),
+    },
+  },
+};
+const { calc: lineCalc } = simulateMargin({
+  inputs: lineInputs,
+  params,
+  prices,
+  dieselEurL,
+  cacAdsAmount: cac.amount,
+  cacAdsStatus: cac.status,
+});
+const snap = simulationSnapshot(lineCalc, { minPrice, cac });
+const seeded = seedHourLinesFromSimple({ days: 2, hoursPerDay: 3, service: 'sc', techIds: ['tech-a'], serviceValue: 'sc' }, [
+  { id: 'tech-a', full_name: 'Tech A', address: 'Rue 1' },
+]);
+const linesOk =
+  lineCalc.personHours === 11.25 &&
+  lineCalc.otherExpenses === 90 &&
+  lineCalc.essenceHours === 11.25 &&
+  resolveSimulationServiceCode('SC (surface cleaner)') === 'sc' &&
+  resolveSimulationServiceCode('hs:Nettoyage toiture') === 'nettoyage' &&
+  snap.ma === lineCalc.ma &&
+  snap.caHt === 1620 &&
+  snap.mbPct != null &&
+  normalizeSimForm({ amountHt: '10' }).hoursMode === 'simple' &&
+  seeded.length === 2 &&
+  seeded[0].people[0].hours === 3;
+console.log('=== v1.14 lines mode + service catalog + snapshot ===');
+console.log({ linesOk, personHours: lineCalc.personHours, essenceHours: lineCalc.essenceHours, extras: lineCalc.otherExpenses, ma: snap.ma, mbPct: snap.mbPct });
+if (!linesOk) process.exit(1);

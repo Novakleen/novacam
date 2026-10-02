@@ -1,15 +1,17 @@
 import React from 'react';
-import { Calculator, Fuel, Plus, RotateCcw, Target, Trash2, Users } from 'lucide-react';
+import { Calculator, Fuel, Plus, RotateCcw, Save, Target, Trash2, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatEntryMonth, formatHours, formatKm, formatMoney, formatPct } from '@/lib/margin/format';
+import HourLinesEditor from './HourLinesEditor';
 import MaPercentBadge from './MaPercentBadge';
 
 /**
  * v1.13.0 presentational « Simulateur » (no data access) — used by SimulatorTab and by
  * tools/render-simulator-preview. All numbers come from `calc` (= calculateProjectMargin output).
  *
- * form = { amountHt, techIds[], days, hoursPerDay, service, productLines[{product, liters}], clientAddress,
- *          kmOverride{id: km}, closer, monthKey, extras[{label, amount}], targetPct }
+ * form = { amountHt, techIds[], days, hoursPerDay, service, serviceValue, hoursMode, hourLines[],
+ *          productLines[{product, liters}], clientAddress, kmOverride{id: km}, closer, monthKey,
+ *          extras[{label, amount}], targetPct, name, hubspot* }
  * routing = { [profileId]: { status: 'loading'|'ok'|'failed'|'noaddress'|'idle', km } }
  */
 const inputCls =
@@ -42,14 +44,49 @@ const Row = ({ label, value, strong, muted, className }) => (
   </div>
 );
 
-const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, calc, minPrice, dieselEurL, params = {}, onReset }) => {
+const SimulatorView = ({
+  t,
+  lang = 'fr',
+  form,
+  set,
+  patch,
+  options,
+  routing = {},
+  cac,
+  calc,
+  minPrice,
+  dieselEurL,
+  params = {},
+  onReset,
+  onHoursMode,
+  sourceSlot = null,
+  saving = false,
+  editingId = null,
+  onSave,
+  onSaveNew,
+  onDelete,
+}) => {
   const { profiles = [], services = [], products = [], closers = [] } = options || {};
-  const selected = profiles.filter((p) => form.techIds.includes(p.id));
-  const toggleTech = (id) => set('techIds', form.techIds.includes(id) ? form.techIds.filter((x) => x !== id) : [...form.techIds, id]);
-  const setLine = (key, i, patch) => set(key, form[key].map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const linesMode = form.hoursMode === 'lines';
+  const selected = linesMode
+    ? profiles.filter((p) => (form.hourLines || []).some((line) => (line.people || []).some((person) => person.profileId === p.id)))
+    : profiles.filter((p) => (form.techIds || []).includes(p.id));
+  const techIds = form.techIds || [];
+  const toggleTech = (id) => set('techIds', techIds.includes(id) ? techIds.filter((x) => x !== id) : [...techIds, id]);
+  const setLine = (key, i, patchLine) => set(key, form[key].map((l, j) => (j === i ? { ...l, ...patchLine } : l)));
   const removeLine = (key, i) => set(key, form[key].filter((_, j) => j !== i));
-  const essenceOn = (params.essence_services || []).map((s) => String(s).toLowerCase()).includes(String(form.service).toLowerCase());
-  const personHours = selected.length * (Number(form.days) || 0) * (Number(form.hoursPerDay) || 0);
+  const apply = patch || ((partial) => {
+    Object.entries(partial).forEach(([key, value]) => set(key, value));
+  });
+  const essenceSet = new Set((params.essence_services || []).map((s) => String(s).toLowerCase()));
+  const essenceOn = linesMode
+    ? (form.hourLines || []).some((line) => essenceSet.has(String(line.service || '').toLowerCase()))
+    : essenceSet.has(String(form.service || '').toLowerCase());
+  const personHours = linesMode
+    ? calc?.personHours
+    : selected.length * (Number(form.days) || 0) * (Number(form.hoursPerDay) || 0);
+  const serviceValue = form.serviceValue || form.service;
+  const mbPct = calc?.caHt != null && Number(calc.caHt) !== 0 && calc?.mb != null ? calc.mb / calc.caHt : null;
 
   const cacValue =
     cac?.status === 'ok'
@@ -67,6 +104,7 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
       {/* ── Inputs ── */}
       <div className="space-y-4">
         <Section title={t('margins.sim.sectionJob')} icon={Calculator}>
+          {sourceSlot}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={t('margins.sim.amountHt')}>
               <input
@@ -81,9 +119,20 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
               />
             </Field>
             <Field label={t('margins.sim.service')} hint={essenceOn ? t('margins.sim.essenceOn') : t('margins.sim.essenceOff')}>
-              <select className={inputCls} value={form.service} onChange={(e) => set('service', e.target.value)}>
+              <select
+                className={inputCls}
+                value={serviceValue}
+                onChange={(e) => {
+                  const opt = services.find((s) => (s.value || s.code) === e.target.value);
+                  apply({
+                    service: opt?.code || e.target.value,
+                    serviceLabel: opt?.label || '',
+                    serviceValue: e.target.value,
+                  });
+                }}
+              >
                 {services.map((s) => (
-                  <option key={s.code} value={s.code}>
+                  <option key={s.value || s.code} value={s.value || s.code}>
                     {s.label}
                   </option>
                 ))}
@@ -101,9 +150,42 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
         </Section>
 
         <Section title={t('margins.sim.sectionTeam')} icon={Users}>
+          <div className="inline-flex rounded-full border border-gray-200 dark:border-gray-700 p-0.5">
+            <button
+              type="button"
+              onClick={() => onHoursMode?.('simple')}
+              className={cn(
+                'rounded-full px-3 h-8 text-xs font-semibold',
+                !linesMode ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300'
+              )}
+              aria-pressed={!linesMode}
+            >
+              {t('margins.sim.hoursSimple')}
+            </button>
+            <button
+              type="button"
+              onClick={() => onHoursMode?.('lines')}
+              className={cn(
+                'rounded-full px-3 h-8 text-xs font-semibold',
+                linesMode ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300'
+              )}
+              aria-pressed={linesMode}
+            >
+              {t('margins.sim.hoursLines')}
+            </button>
+          </div>
+          {linesMode ? (
+            <HourLinesEditor
+              lines={form.hourLines || []}
+              onChange={(lines) => set('hourLines', lines)}
+              profiles={profiles}
+              services={services}
+            />
+          ) : (
+          <>
           <div className="flex flex-wrap gap-1.5">
             {profiles.map((p) => {
-              const on = form.techIds.includes(p.id);
+              const on = techIds.includes(p.id);
               return (
                 <button
                   key={p.id}
@@ -173,6 +255,50 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
               <p className="text-[11px] text-muted-foreground">{t('margins.sim.kmHint')}</p>
             </div>
           )}
+          </>
+          )}
+          {linesMode && selected.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              <p className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+                <Fuel className="h-3.5 w-3.5" /> {t('margins.sim.trips')}
+              </p>
+              {selected.map((p) => {
+                const r = routing[p.id] || { status: 'idle' };
+                const status =
+                  r.status === 'loading'
+                    ? t('margins.sim.routing')
+                    : r.status === 'ok'
+                      ? `${formatKm(r.km)} ${t('margins.sim.oneWay')}`
+                      : r.status === 'noaddress'
+                        ? t('margins.sim.noHomeAddress')
+                        : r.status === 'failed'
+                          ? t('margins.sim.routeFailed')
+                          : t('margins.sim.routeIdle');
+                return (
+                  <div key={p.id} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium">{(p.full_name || '—').trim()}</span>
+                      <span className={cn('block text-[11px] truncate', r.status === 'failed' || r.status === 'noaddress' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+                        {status}
+                      </span>
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className={cn(inputCls, 'w-28 h-9')}
+                      placeholder={t('margins.sim.kmManual')}
+                      value={form.kmOverride[p.id] ?? ''}
+                      onChange={(e) => set('kmOverride', { ...form.kmOverride, [p.id]: e.target.value })}
+                      aria-label={t('margins.sim.kmManual')}
+                    />
+                  </div>
+                );
+              })}
+              <p className="text-[11px] text-muted-foreground">{t('margins.sim.kmHint')}</p>
+            </div>
+          )}
+          {linesMode && <p className="text-[11px] text-muted-foreground">{t('margins.sim.hoursModeHint')}</p>}
         </Section>
 
         <Section title={t('margins.sim.sectionProducts')}>
@@ -227,9 +353,17 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
               </button>
             </div>
           ))}
-          <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-primary" onClick={() => set('extras', [...form.extras, { label: '', amount: '' }])}>
-            <Plus className="h-4 w-4" /> {t('margins.sim.addExtra')}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-primary" onClick={() => set('extras', [...form.extras, { label: '', amount: '' }])}>
+              <Plus className="h-4 w-4" /> {t('margins.sim.addExtra')}
+            </button>
+            <button type="button" className="text-xs font-semibold rounded-full border border-gray-200 dark:border-gray-700 px-2.5 h-7" onClick={() => set('extras', [...form.extras, { label: t('margins.sim.hotelPreset'), amount: '' }])}>
+              {t('margins.sim.hotelPreset')}
+            </button>
+            <button type="button" className="text-xs font-semibold rounded-full border border-gray-200 dark:border-gray-700 px-2.5 h-7" onClick={() => set('extras', [...form.extras, { label: t('margins.sim.liftPreset'), amount: '' }])}>
+              {t('margins.sim.liftPreset')}
+            </button>
+          </div>
         </Section>
 
         <Section title={t('margins.sim.sectionAcquisition')}>
@@ -263,6 +397,50 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
               <RotateCcw className="h-3.5 w-3.5" /> {t('margins.sim.reset')}
             </button>
           </div>
+          {onSave && (
+            <div className="space-y-2 pb-2">
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-gray-500">{t('margins.sim.name')}</span>
+                <input
+                  className={inputCls}
+                  placeholder={t('margins.sim.namePh')}
+                  value={form.name || ''}
+                  onChange={(e) => set('name', e.target.value)}
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={onSave}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary text-white px-3 h-8 text-xs font-semibold disabled:opacity-60"
+                >
+                  <Save className="h-3.5 w-3.5" /> {t('margins.sim.save')}
+                </button>
+                {editingId && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={onSaveNew}
+                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 dark:border-gray-700 px-3 h-8 text-xs font-semibold disabled:opacity-60"
+                  >
+                    {t('margins.sim.saveNew')}
+                  </button>
+                )}
+                {editingId && onDelete && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={onDelete}
+                    className="inline-flex items-center gap-1 rounded-full border border-red-200 text-red-600 px-3 h-8 text-xs font-semibold disabled:opacity-60"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> {t('margins.sim.delete')}
+                  </button>
+                )}
+              </div>
+              {editingId && <p className="text-[11px] text-muted-foreground">{t('margins.sim.editing')}</p>}
+            </div>
+          )}
           <div className="flex items-center gap-3 pb-2">
             <MaPercentBadge maPct={calc?.maPct} className="text-base px-3 py-1" />
             <span className="text-lg font-black tabular-nums">{formatMoney(calc?.ma)}</span>
@@ -292,6 +470,7 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
           <div className="border-t border-dashed my-1" />
           <Row label={t('margins.sim.direct')} value={formatMoney(calc?.direct)} strong />
           <Row label={t('margins.sim.mb')} value={formatMoney(calc?.mb)} strong />
+          <Row label={t('margins.sim.mbPct')} value={formatPct(mbPct)} strong />
           <Row label={calc?.commercial ? t('margins.sim.com') : t('margins.sim.comNone')} value={formatMoney(calc?.com)} muted />
           <Row
             label={cac?.monthKey ? t('margins.cacLineMonthOnly', { month: formatEntryMonth(cac.monthKey, lang) }) : t('margins.cacLinePlain')}
@@ -325,6 +504,7 @@ const SimulatorView = ({ t, lang = 'fr', form, set, options, routing = {}, cac, 
           <p className="text-2xl font-black tabular-nums">{minPrice != null ? formatMoney(minPrice) : '—'}</p>
           <p className="text-[11px] text-muted-foreground">{minPrice != null ? t('margins.sim.minPriceHint') : t('margins.sim.minPriceImpossible')}</p>
         </div>
+        <p className="text-[11px] text-muted-foreground">{t('margins.sim.draftHint')}</p>
         <p className="text-[11px] text-muted-foreground">{t('margins.sim.notSaved')}</p>
       </div>
     </div>
