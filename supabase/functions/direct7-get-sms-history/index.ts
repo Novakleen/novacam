@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from "./cors.ts";
+import { OFFICE_ROLES, requireCaller } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -7,10 +8,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, OFFICE_ROLES)
+    if (caller instanceof Response) return caller
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: `Bearer ${caller.token}` } } }
     )
 
     const { limit = 50, offset = 0 } = await req.json().catch(() => ({}));

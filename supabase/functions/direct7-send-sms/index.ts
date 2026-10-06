@@ -1,5 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from "./cors.ts";
+import { OFFICE_ROLES, requireCaller } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   // Handle CORS preflight request
@@ -8,11 +8,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 1. Initialize Supabase Admin Client
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const caller = await requireCaller(req, corsHeaders, OFFICE_ROLES)
+    if (caller instanceof Response) return caller
+    const supabaseAdmin = caller.admin
 
     // 2. Parse Request Body
     const { phone, message, contactId, templateId } = await req.json()

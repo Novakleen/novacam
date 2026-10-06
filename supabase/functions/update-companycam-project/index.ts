@@ -1,4 +1,5 @@
 import { corsHeaders } from "./cors.ts";
+import { OFFICE_ROLES, requireCaller, safeExternalId } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   // 1. Handle CORS preflight requests
@@ -7,6 +8,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, OFFICE_ROLES)
+    if (caller instanceof Response) return caller
+
     // 2. Check and fix authentication
     const token = Deno.env.get('COMPANYCAM_API_TOKEN');
 
@@ -39,7 +43,8 @@ Deno.serve(async (req) => {
     const { projectId, projectName, contactInfo, projectDescription } = body;
 
     // Validate required fields
-    if (!projectId || !projectName) {
+    const ccProjectId = safeExternalId(projectId)
+    if (!ccProjectId || !projectName) {
       console.error('[Update CompanyCam Project] Error: Missing required fields (projectId, projectName)', body);
       return new Response(
         JSON.stringify({ success: false, error: 'Missing required fields: projectId and projectName are required.' }), 
@@ -55,7 +60,7 @@ Deno.serve(async (req) => {
     console.log(`[Update CompanyCam Project] New Project Name: ${projectName}`);
 
     // 4. Fix CompanyCam API call (PATCH method)
-    const url = new URL(`https://api.companycam.com/v2/projects/${projectId}`);
+    const url = new URL(`https://api.companycam.com/v2/projects/${ccProjectId}`);
     
     // Construct payload - CompanyCam uses 'name' for the project name
     const payload = {

@@ -1,4 +1,5 @@
 import { corsHeaders } from "./cors.ts";
+import { OFFICE_ROLES, requireCaller } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -6,6 +7,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, OFFICE_ROLES)
+    if (caller instanceof Response) return caller
+
     const body = await req.json();
     const { hubspotContactId, email } = body;
 
