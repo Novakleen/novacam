@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import InviteUserDialog from '@/components/users/InviteUserDialog';
+import CompanyLogoSetting from '@/components/admin/CompanyLogoSetting';
 import PendingInvitationsTable from '@/components/users/PendingInvitationsTable';
 import AcceptedInvitationsTable from '@/components/users/AcceptedInvitationsTable';
 import { Input } from '@/components/ui/input';
@@ -89,6 +90,8 @@ const UserManagementPage = () => {
           </div>
           <InviteUserDialog onUserInvited={fetchInvitations} />
         </div>
+
+        <CompanyLogoSetting />
 
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-4 items-center">
             <div className="relative flex-1 w-full">

@@ -148,6 +148,7 @@ const ProjectDetailPage = () => {
   const [showAdvancedCapture, setShowAdvancedCapture] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showBeforeAfterEditor, setShowBeforeAfterEditor] = useState(false);
+  const [compareSeed, setCompareSeed] = useState(null);
   const [showTagManager, setShowTagManager] = useState(false);
   const [activeTab, setActiveTab] = useState('photos');
 
@@ -290,6 +291,7 @@ const ProjectDetailPage = () => {
         .select(
           `
           id, project_id, file_url, web_url, thumbnail_url, file_type, description,
+          kind, annotations, annotated_url,
           created_at, captured_at, latitude, longitude, width, height, duration,
           uploaded_by,
           uploaded_by_profile:profiles!uploaded_by(full_name, initials),
@@ -698,7 +700,7 @@ const ProjectDetailPage = () => {
                     value="beforeafter"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-gray-900 dark:data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:shadow-none bg-transparent px-3 sm:px-4 py-2.5 text-sm font-medium text-gray-500 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white gap-1.5"
                   >
-                    Avant / Après
+                    {t('media.beforeAfter.tab')}
                     {comparisons.length > 0 && (
                       <span className="text-gray-400 font-normal">({comparisons.length})</span>
                     )}
@@ -732,7 +734,7 @@ const ProjectDetailPage = () => {
                     className="rounded-lg h-9 bg-white dark:bg-gray-900"
                   >
                     <ArrowLeftRight className="mr-1.5 h-4 w-4" />
-                    Avant/Après
+                    {t('media.beforeAfter.action')}
                   </Button>
                   <Button
                     variant={isSelectionMode ? 'secondary' : 'outline'}
@@ -753,6 +755,7 @@ const ProjectDetailPage = () => {
                   media={media}
                   onRefresh={fetchMedia}
                   projectId={id}
+                  projectName={project?.name || ''}
                   selectable={isSelectionMode}
                   selectedIds={selectedIds}
                   onToggleSelect={handleToggleSelect}
@@ -824,13 +827,13 @@ const ProjectDetailPage = () => {
                     className="rounded-lg h-9 bg-blue-600 hover:bg-blue-700"
                   >
                     <Plus className="h-4 w-4 mr-1.5" />
-                    Créer
+                    {t('media.beforeAfter.create')}
                   </Button>
                 </div>
                 {comparisons.length === 0 ? (
                   <div className="text-center py-16 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
                     <ArrowLeftRight className="h-8 w-8 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500">Aucune comparaison avant/après.</p>
+                    <p className="text-sm text-gray-500">{t('media.beforeAfter.none')}</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1038,6 +1041,21 @@ const ProjectDetailPage = () => {
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Button
+                  className="bg-[#facc15] font-semibold text-black hover:bg-[#eab308] flex-1 sm:flex-none"
+                  disabled={selectedIds.length !== 2}
+                  onClick={() => {
+                    const photos = selectedIds
+                      .map((mediaId) => media.find((item) => item.id === mediaId))
+                      .filter((item) => item && item.file_type !== 'video');
+                    if (photos.length !== 2) return;
+                    setCompareSeed({ before: photos[0], after: photos[1] });
+                    setShowBeforeAfterEditor(true);
+                  }}
+                >
+                  <ArrowLeftRight className="h-4 w-4 mr-2" />
+                  {t('media.beforeAfter.action')}
+                </Button>
+                <Button
                   className="bg-blue-600 hover:bg-blue-500 text-white flex-1 sm:flex-none"
                   disabled={selectedIds.length === 0}
                   onClick={() => setShowShareDialog(true)}
@@ -1105,12 +1123,20 @@ const ProjectDetailPage = () => {
       {showBeforeAfterEditor && (
         <BeforeAfterEditor
           open={showBeforeAfterEditor}
-          onClose={() => setShowBeforeAfterEditor(false)}
+          onClose={() => {
+            setShowBeforeAfterEditor(false);
+            setCompareSeed(null);
+          }}
           projectId={id}
+          projectName={project?.name || ''}
           projectMedia={media.filter((m) => m.file_type === 'image')}
+          initialBefore={compareSeed?.before || null}
+          initialAfter={compareSeed?.after || null}
           onSuccess={() => {
             fetchComparisons();
             fetchMedia();
+            setSelectedIds([]);
+            setIsSelectionMode(false);
           }}
         />
       )}

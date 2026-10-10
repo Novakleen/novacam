@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Lightbox from 'yet-another-react-lightbox';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
 import 'yet-another-react-lightbox/styles.css';
-import { ChevronDown, Download, MapPin, Trash2 } from 'lucide-react';
+import { Camera, ChevronDown, Download, ImagePlus, MapPin, PenLine, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { IMAGE_LIMITS, computeLongEdgeSize, extensionFromUrl } from '@/lib/imageSizes';
 import { formatCaptureDateTimeShort } from '@/lib/mediaDates';
@@ -51,8 +51,12 @@ function slideFor(item) {
     return { type: 'video', src: item.file_url, poster, media: item };
   }
 
-  const original = item.file_url;
-  const web = item.web_url && item.web_url !== original ? item.web_url : original;
+  const original = item.annotated_url || item.file_url;
+  const web = item.annotated_url
+    ? item.annotated_url
+    : item.web_url && item.web_url !== original
+      ? item.web_url
+      : original;
   let width;
   let height;
   if (item.width && item.height) {
@@ -76,9 +80,10 @@ function slideFor(item) {
 }
 
 async function downloadItem(item) {
+  const source = item.annotated_url || item.file_url;
   const fallback = item.file_type === 'video' ? 'mp4' : 'jpg';
-  const extension = extensionFromUrl(item.file_url, fallback);
-  const response = await fetch(item.file_url);
+  const extension = extensionFromUrl(source, fallback);
+  const response = await fetch(source);
   if (!response.ok) throw new Error('download failed');
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
@@ -161,7 +166,7 @@ const InfoPanel = ({ slide, language, open, onToggle }) => {
   );
 };
 
-const MediaViewer = ({ media, allMedia, onClose, onDelete }) => {
+const MediaViewer = ({ media, allMedia, onClose, onDelete, onTakeAfter, onChooseAfter, onAnnotate }) => {
   const { t, i18n } = useTranslation();
   const language = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2);
   const slides = useMemo(() => (allMedia || []).map(slideFor), [allMedia]);
@@ -236,6 +241,48 @@ const MediaViewer = ({ media, allMedia, onClose, onDelete }) => {
       }}
       toolbar={{
         buttons: [
+          current?.file_type !== 'video' && onTakeAfter ? (
+            <button
+              key="take-after"
+              type="button"
+              className="yarl__button"
+              aria-label={t('media.beforeAfter.takeAfter')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onTakeAfter(current);
+              }}
+            >
+              <Camera className="h-6 w-6" />
+            </button>
+          ) : null,
+          current?.file_type !== 'video' && onChooseAfter ? (
+            <button
+              key="choose-after"
+              type="button"
+              className="yarl__button"
+              aria-label={t('media.beforeAfter.chooseAfter')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onChooseAfter(current);
+              }}
+            >
+              <ImagePlus className="h-6 w-6" />
+            </button>
+          ) : null,
+          current?.file_type !== 'video' && onAnnotate ? (
+            <button
+              key="annotate"
+              type="button"
+              className="yarl__button"
+              aria-label={t('media.capture.annotate')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onAnnotate(current);
+              }}
+            >
+              <PenLine className="h-6 w-6" />
+            </button>
+          ) : null,
           <button
             key="download"
             type="button"

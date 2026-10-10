@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react';
 
-export const useBeforeAfterState = () => {
-  const [beforePhoto, setBeforePhoto] = useState(null);
-  const [afterPhoto, setAfterPhoto] = useState(null);
-  const [editorMode, setEditorMode] = useState('initial'); // 'initial', 'capture', 'gallery', 'preview'
+export const useBeforeAfterState = ({ before = null, after = null, mode = 'initial', slot = null } = {}) => {
+  const [beforePhoto, setBeforePhoto] = useState(before);
+  const [afterPhoto, setAfterPhoto] = useState(after);
+  const [editorMode, setEditorMode] = useState(mode); // 'initial', 'capture', 'gallery', 'compose'
   const [captureMode, setCaptureMode] = useState(null); // 'before' or 'after'
-  const [activeSlot, setActiveSlot] = useState(null); // 'before' or 'after' which is currently being edited
+  const [activeSlot, setActiveSlot] = useState(slot); // 'before' or 'after' which is currently being edited
   const [errors, setErrors] = useState([]);
 
   const updateBeforePhoto = useCallback((photo) => {

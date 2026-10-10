@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Check, ImageOff, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -92,15 +93,16 @@ const GalleryImage = ({ src, alt, isSelected, onClick }) => {
 };
 
 const BeforeAfterGalleryMode = ({ projectMedia, onSelect, selectedId, onCancel, title }) => {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col h-full max-h-[90vh] bg-white dark:bg-gray-950">
       {/* Fixed Header */}
       <div className="flex-none p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-gray-950 z-10">
         <div>
-          <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100 line-clamp-1">{title || 'Select Photo'}</h3>
-          <p className="text-xs md:text-sm text-gray-500 line-clamp-1">Choose from gallery</p>
+          <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100 line-clamp-1">{title || t('media.beforeAfter.selectTitle', { side: '' })}</h3>
+          <p className="text-xs md:text-sm text-gray-500 line-clamp-1">{t('media.beforeAfter.selectHint')}</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onCancel} className="shrink-0 ml-2">Cancel</Button>
+        <Button variant="ghost" size="sm" onClick={onCancel} className="shrink-0 ml-2">{t('media.beforeAfter.cancel')}</Button>
       </div>
       
       {/* Scrollable Content Area */}
@@ -112,9 +114,9 @@ const BeforeAfterGalleryMode = ({ projectMedia, onSelect, selectedId, onCancel, 
                 <div className="w-12 h-12 md:w-16 md:h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
                    <ImageOff className="h-6 w-6 md:h-8 md:w-8 text-gray-400" />
                 </div>
-                <p className="font-medium text-base md:text-lg">No photos found</p>
+                <p className="font-medium text-base md:text-lg">{t('media.beforeAfter.empty')}</p>
                 <p className="text-xs md:text-sm max-w-xs mt-1">
-                  Upload photos to create a comparison.
+                  {t('media.beforeAfter.emptyHint')}
                 </p>
               </div>
             ) : (
@@ -136,7 +138,7 @@ const BeforeAfterGalleryMode = ({ projectMedia, onSelect, selectedId, onCancel, 
       
       {/* Fixed Footer */}
       <div className="flex-none p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 text-xs text-center text-gray-500">
-         {projectMedia.length} photo{projectMedia.length !== 1 ? 's' : ''} available
+         {t('media.beforeAfter.available', { count: projectMedia.length })}
       </div>
     </div>
   );

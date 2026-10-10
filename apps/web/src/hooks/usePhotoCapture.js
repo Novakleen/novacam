@@ -44,6 +44,7 @@ export const usePhotoCapture = () => {
       id: photo.id,
       blob: photo.file,
       annotatedBlob: photo.annotatedFile || null,
+      annotations: photo.annotations || null,
       description: photo.description || '',
       fromCamera: Boolean(photo.fromCamera),
       timestamp: photo.timestamp,
@@ -76,6 +77,7 @@ export const usePhotoCapture = () => {
               id: record.id,
               file,
               annotatedFile,
+              annotations: record.annotations || null,
               objectUrl: trackUrl(URL.createObjectURL(annotatedFile || file)),
               description: record.description || meta?.description || '',
               fromCamera: Boolean(record.fromCamera),
@@ -128,16 +130,19 @@ export const usePhotoCapture = () => {
     return created;
   }, []);
 
-  const updatePhotoAnnotation = useCallback((index, annotatedDataUrl) => {
+  const updatePhotoAnnotation = useCallback((index, payload) => {
+    const dataUrl = typeof payload === 'string' ? payload : payload?.dataUrl;
+    const annotations = typeof payload === 'string' ? null : payload?.document || null;
     setPhotos((prev) => {
       const next = [...prev];
       const current = next[index];
-      if (!current) return prev;
-      const annotatedFile = dataUrlToFile(annotatedDataUrl, `annotated-${current.id}.jpg`);
+      if (!current || !dataUrl) return prev;
+      const annotatedFile = dataUrlToFile(dataUrl, `annotated-${current.id}.jpg`);
       releaseUrl(current.objectUrl);
       const updated = {
         ...current,
         annotatedFile,
+        annotations,
         objectUrl: trackUrl(URL.createObjectURL(annotatedFile)),
       };
       next[index] = updated;

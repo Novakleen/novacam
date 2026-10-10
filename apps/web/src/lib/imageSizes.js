@@ -156,6 +156,9 @@ export function buildVariantPaths(projectId, extension) {
  * candidate. The original is never referenced here.
  */
 export function gridImageProps(item) {
+  if (item?.annotated_url) {
+    return { src: item.annotated_url, srcSet: undefined };
+  }
   const full = item?.file_url || '';
   const thumb = item?.thumbnail_url || full;
   const web = item?.web_url || '';

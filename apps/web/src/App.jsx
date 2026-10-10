@@ -34,6 +34,7 @@ import MarginsPage from '@/pages/MarginsPage';
 import FleetPage from '@/pages/FleetPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
 import PhotoPreviewPage from '@/pages/PhotoPreviewPage';
+import V116PreviewPage from '@/pages/V116PreviewPage';
 
 const PrivateRoute = ({ children }) => {
   const { user, loading, connectionError } = useAuth();
@@ -225,6 +226,9 @@ function AppRoutes() {
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
           {import.meta.env.DEV && (
             <Route path="/dev/photo-preview" element={<PhotoPreviewPage />} />
+          )}
+          {import.meta.env.DEV && (
+            <Route path="/dev/v116" element={<V116PreviewPage />} />
           )}
           
           <Route path="/" element={<Navigate to="/dashboard" />} />
