@@ -1,5 +1,7 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { corsHeaders } from "./cors.ts";
+import { ADMIN_ROLES, requireCaller } from "../_shared/auth.ts";
+
+const ASSIGNABLE_ROLES = new Set(['Admin', 'Manager', 'Member', 'Viewer'])
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -7,18 +9,18 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
+    const caller = await requireCaller(req, corsHeaders, ADMIN_ROLES)
+    if (caller instanceof Response) return caller
+    const supabaseAdmin = caller.admin
 
     const { email, password, fullName, role, address } = await req.json()
+    if (role !== undefined && role !== null && !ASSIGNABLE_ROLES.has(role)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid role' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const assignedRole = ASSIGNABLE_ROLES.has(role) ? role : 'Member'
 
     if (!email || !password) {
       return new Response(
@@ -44,7 +46,7 @@ Deno.serve(async (req) => {
     // Using upsert ensures we handle the race condition if the trigger is slow/fast
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .update({ role: role || 'Member', full_name: fullName, ...(address !== undefined ? { address } : {}) })
+      .update({ role: assignedRole, full_name: fullName, ...(address !== undefined ? { address } : {}) })
       .eq('id', userData.user.id)
 
     if (profileError) {

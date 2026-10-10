@@ -1,5 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { corsHeaders } from "./cors.ts";
+import { OFFICE_ROLES, requireCaller, safeHubSpotId } from "../_shared/auth.ts";
 
 const HUBSPOT_API_BASE = "https://api.hubapi.com";
 
@@ -9,6 +9,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, OFFICE_ROLES)
+    if (caller instanceof Response) return caller
+
     const { action, entityType, entityId } = await req.json();
     
     // Get token
@@ -17,10 +20,7 @@ Deno.serve(async (req) => {
       throw new Error('HUBSPOT_ACCESS_TOKEN secret is missing');
     }
 
-    // Initialize Supabase Client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = caller.admin
 
     let result = null;
 
@@ -73,7 +73,9 @@ Deno.serve(async (req) => {
        let method = 'POST';
        
        if (contact.hubspot_contact_id) {
-          url += `/${contact.hubspot_contact_id}`;
+          const existingId = safeHubSpotId(contact.hubspot_contact_id)
+          if (!existingId) throw new Error('Stored HubSpot contact id is invalid')
+          url += `/${existingId}`;
           method = 'PATCH';
        }
 

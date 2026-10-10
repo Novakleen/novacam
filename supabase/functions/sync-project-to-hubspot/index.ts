@@ -1,5 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { corsHeaders } from "./cors.ts";
+import { ALL_ROLES, requireCaller, safeHubSpotId } from "../_shared/auth.ts";
 
 const HUBSPOT_API_BASE = "https://api.hubapi.com";
 
@@ -18,16 +18,25 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, ALL_ROLES)
+    if (caller instanceof Response) return caller
+
     const { projectId, hubspotContactId, projectName, projectAddress, description, dealStage } = await req.json();
+    const contactId = safeHubSpotId(hubspotContactId)
+    if (!contactId) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'HubSpot Contact ID is required for syncing project',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     console.log(`Starting sync for project: ${projectName} (ID: ${projectId})`);
 
     const hubspotToken = Deno.env.get('HUBSPOT_ACCESS_TOKEN');
     if (!hubspotToken) throw new Error('HUBSPOT_ACCESS_TOKEN secret is missing');
-
-    if (!hubspotContactId) {
-        throw new Error('HubSpot Contact ID is required for syncing project');
-    }
 
     // Validate dealStage
     let selectedStage = dealStage;
@@ -72,7 +81,7 @@ Deno.serve(async (req) => {
     console.log(`Deal created successfully. ID: ${dealId}`);
 
     // 2. Associate Deal with Contact
-    const associationUrl = `${HUBSPOT_API_BASE}/crm/v3/objects/deals/${dealId}/associations/contacts/${hubspotContactId}/deal_to_contact`;
+    const associationUrl = `${HUBSPOT_API_BASE}/crm/v3/objects/deals/${dealId}/associations/contacts/${contactId}/deal_to_contact`;
     
     const associationResponse = await fetch(associationUrl, {
         method: 'PUT',

@@ -1,4 +1,5 @@
 import { corsHeaders } from "./cors.ts";
+import { ALL_ROLES, requireCaller, safeExternalId } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -6,6 +7,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, ALL_ROLES)
+    if (caller instanceof Response) return caller
+
     const token = Deno.env.get('COMPANYCAM_API_TOKEN');
     const apiUrl = Deno.env.get('COMPANYCAM_API_URL') || 'https://api.companycam.com/v2';
 
@@ -35,7 +39,14 @@ Deno.serve(async (req) => {
 
     // If projectId is provided, assign to project (reusing previous logic from earlier tasks)
     if (projectId) {
-        const patchRes = await fetch(`${apiUrl}/projects/${projectId}`, {
+        const ccProjectId = safeExternalId(projectId)
+        if (!ccProjectId) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Invalid projectId' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        const patchRes = await fetch(`${apiUrl}/projects/${ccProjectId}`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${token}`,

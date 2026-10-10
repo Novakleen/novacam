@@ -1,4 +1,17 @@
 import { corsHeaders } from "./cors.ts";
+import { ALL_ROLES, requireCaller } from "../_shared/auth.ts";
+
+const CONTACT_PROPERTIES = [
+  "firstname",
+  "lastname",
+  "email",
+  "phone",
+  "company",
+  "jobtitle",
+  "website",
+  "lifecyclestage",
+  "createdate",
+]
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -6,19 +19,34 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, ALL_ROLES)
+    if (caller instanceof Response) return caller
+
     const { query, limit = 50, after, properties, sort } = await req.json();
-    
-    // Default properties if not provided
-    const propsToFetch = properties || [
-      "firstname", 
-      "lastname", 
-      "email", 
-      "phone", 
-      "company", 
-      "jobtitle", 
-      "website", 
-      "lifecyclestage"
-    ];
+
+    const requested = Array.isArray(properties) ? properties.map(String) : CONTACT_PROPERTIES
+    const propsToFetch = requested.filter((name) => CONTACT_PROPERTIES.includes(name))
+    const safeProps = propsToFetch.length ? propsToFetch : CONTACT_PROPERTIES
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100)
+
+    let sorts: { propertyName: string; direction: string }[] = [
+      { propertyName: "createdate", direction: "DESCENDING" },
+    ]
+    if (Array.isArray(sort) && sort.length > 0 && sort.length <= 3) {
+      const parsed: { propertyName: string; direction: string }[] = []
+      for (const item of sort) {
+        const propertyName = String(item?.propertyName || "")
+        const direction = String(item?.direction || "")
+        if (!CONTACT_PROPERTIES.includes(propertyName)) continue
+        if (direction !== "ASCENDING" && direction !== "DESCENDING") continue
+        parsed.push({ propertyName, direction })
+      }
+      if (parsed.length) sorts = parsed
+    }
+
+    const afterCursor = typeof after === "string" && after.length > 0 && after.length <= 2000
+      ? after
+      : undefined
 
     // Get HubSpot Access Token from secret
     const HUBSPOT_ACCESS_TOKEN = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
@@ -30,22 +58,22 @@ Deno.serve(async (req) => {
     let url = "https://api.hubapi.com/crm/v3/objects/contacts/search";
     let method = "POST";
     let body: any = {
-      limit,
-      properties: propsToFetch,
+      limit: safeLimit,
+      properties: safeProps,
       // Default sort by created date if not specified, to show newest first
-      sorts: sort || [{ propertyName: "createdate", direction: "DESCENDING" }],
+      sorts,
     };
 
-    if (after) {
-      body.after = after;
+    if (afterCursor) {
+      body.after = afterCursor;
     }
 
     // specific search query construction
-    if (query && query.trim().length > 0) {
-      const searchTerm = query.trim();
+    const searchText = typeof query === "string" ? query.trim().slice(0, 200) : ""
+    if (searchText.length > 0) {
       // Apply wildcards to the search term to enable substring matching
       // e.g. "perm" becomes "*perm*" which matches "Permentier"
-      const wildcardQuery = `*${searchTerm}*`;
+      const wildcardQuery = `*${searchText}*`;
 
       body.filterGroups = [
         // Group 1: Match First Name
