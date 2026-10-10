@@ -1,4 +1,5 @@
 import { corsHeaders } from "./cors.ts";
+import { ADMIN_ROLES, requireCaller } from "../_shared/auth.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -8,6 +9,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, ADMIN_ROLES)
+    if (caller instanceof Response) return caller
+
     const { email, invitationLink, expiresAt, invitedByName } = await req.json();
 
     if (!email || !invitationLink) {

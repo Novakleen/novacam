@@ -1,4 +1,5 @@
 import { corsHeaders } from "./cors.ts";
+import { ALL_ROLES, requireCaller } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -6,6 +7,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const caller = await requireCaller(req, corsHeaders, ALL_ROLES)
+    if (caller instanceof Response) return caller
+
     const token = Deno.env.get('COMPANYCAM_API_TOKEN') || Deno.env.get('COMPANYCAM_API_KEY');
     const apiUrl = Deno.env.get('COMPANYCAM_API_URL') || 'https://api.companycam.com/v2';
 
