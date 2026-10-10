@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Image as ImageIcon, Video, X, File } from 'lucide-react';
+import { Upload, Image as ImageIcon, Video, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUpload } from '@/contexts/UploadContext';
+import { isImageFile } from '@/lib/imageSizes';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
@@ -10,6 +12,7 @@ import { cn } from '@/lib/utils';
 const MediaUpload = ({ projectId, onClose, onSuccess }) => {
   const { addUpload } = useUpload();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [files, setFiles] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
@@ -26,17 +29,13 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
     const fileArray = Array.from(selectedFiles);
     
     // Validate files
-    const validFiles = fileArray.filter(file => {
-      const isImage = file.type.startsWith('image/');
-      const isVideo = file.type.startsWith('video/');
-      return isImage || isVideo;
-    });
-    
+    const validFiles = fileArray.filter((file) => isImageFile(file) || file.type.startsWith('video/'));
+
     if (validFiles.length !== fileArray.length) {
       toast({
         variant: "destructive",
-        title: "Invalid file type",
-        description: "Some files were skipped. Only images and videos are allowed."
+        title: t('common.error'),
+        description: t('media.uploadDialog.invalid'),
       });
     }
     
@@ -77,8 +76,8 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
     });
 
     toast({
-      title: "Uploads started",
-      description: `${files.length} file${files.length > 1 ? 's' : ''} added to upload queue.`
+      title: t('media.uploadDialog.started'),
+      description: t('media.uploadDialog.startedDesc', { count: files.length }),
     });
 
     if (onSuccess) onSuccess();
@@ -89,8 +88,8 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] mx-4 sm:mx-auto rounded-2xl p-0 gap-0 overflow-hidden max-h-[90vh] flex flex-col">
         <DialogHeader className="px-4 sm:px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-800">
-          <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Upload Media</DialogTitle>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Add photos and videos to your project</p>
+          <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t('media.uploadDialog.title')}</DialogTitle>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('media.uploadDialog.subtitle')}</p>
         </DialogHeader>
 
         <div className="px-4 sm:px-6 py-4 space-y-4 overflow-y-auto flex-1">
@@ -124,10 +123,10 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
               
               <div className="space-y-1">
                 <p className="text-base sm:text-lg font-semibold text-gray-700 dark:text-gray-300">
-                  {isDragging ? "Drop files here" : "Click or drag files to upload"}
+                  {isDragging ? t('media.uploadDialog.dropActive') : t('media.uploadDialog.drop')}
                 </p>
                 <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 px-4">
-                  Supports JPG, PNG, MP4, MOV • Background uploading enabled
+                  {t('media.uploadDialog.hint')}
                 </p>
               </div>
             </motion.div>
@@ -136,7 +135,7 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,video/*"
+              accept="image/*,.heic,.heif,video/*"
               onChange={(e) => handleFileSelect(e.target.files)}
               className="hidden"
             />
@@ -153,7 +152,7 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
               >
                 <div className="flex justify-between items-center px-1">
                   <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white">
-                    Selected Files ({files.length})
+                    {t('media.uploadDialog.selected', { count: files.length })}
                   </p>
                   <Button 
                     variant="ghost" 
@@ -161,7 +160,7 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
                     onClick={() => setFiles([])} 
                     className="h-8 text-xs sm:text-sm text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
                   >
-                    Clear all
+                    {t('media.uploadDialog.clear')}
                   </Button>
                 </div>
                 
@@ -177,7 +176,7 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
                         layout
                         className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm hover:shadow-md transition-shadow group"
                       >
-                        {file.type.startsWith('image/') ? (
+                        {isImageFile(file) ? (
                           <div className="shrink-0 p-2.5 bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/30 dark:to-blue-800/30 rounded-lg">
                             <ImageIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           </div>
@@ -224,7 +223,7 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
               onClick={onClose} 
               className="h-11 sm:h-10 rounded-xl text-sm sm:text-base border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
-              Cancel
+              {t('media.uploadDialog.cancel')}
             </Button>
             <Button
               onClick={handleStartUpload}
@@ -232,7 +231,9 @@ const MediaUpload = ({ projectId, onClose, onSuccess }) => {
               className="h-11 sm:h-10 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none text-sm sm:text-base font-semibold px-6"
             >
               <Upload className="mr-2 h-4 w-4" />
-              Start Upload {files.length > 0 && `(${files.length})`}
+              {files.length > 0
+                ? t('media.uploadDialog.startCount', { count: files.length })
+                : t('media.uploadDialog.start')}
             </Button>
           </div>
         </div>

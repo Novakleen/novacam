@@ -1,175 +1,221 @@
-import React, { useState, useEffect } from 'react';
-import { X, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/button';
+import React, { useMemo, useRef, useState } from 'react';
+import Lightbox from 'yet-another-react-lightbox';
+import Zoom from 'yet-another-react-lightbox/plugins/zoom';
+import 'yet-another-react-lightbox/styles.css';
+import { Download, MapPin, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { IMAGE_LIMITS, computeLongEdgeSize, extensionFromUrl } from '@/lib/imageSizes';
+import { formatCaptureDateTime } from '@/lib/mediaDates';
 
-const MediaViewer = ({ media, allMedia, onClose }) => {
-  const [currentIndex, setCurrentIndex] = useState(
-    allMedia.findIndex(m => m.id === media.id)
-  );
-  const [zoom, setZoom] = useState(1);
-  const currentMedia = allMedia[currentIndex];
+function slideFor(item) {
+  if (item.file_type === 'video') {
+    const poster = item.thumbnail_url && item.thumbnail_url !== item.file_url ? item.thumbnail_url : undefined;
+    return { type: 'video', src: item.file_url, poster, media: item };
+  }
 
-  useEffect(() => {
-    setZoom(1);
-  }, [currentIndex]);
+  const original = item.file_url;
+  const web = item.web_url && item.web_url !== original ? item.web_url : original;
+  let width;
+  let height;
+  if (item.width && item.height) {
+    const sized = computeLongEdgeSize(
+      item.width,
+      item.height,
+      web === original ? IMAGE_LIMITS.original : IMAGE_LIMITS.web
+    );
+    width = sized.width;
+    height = sized.height;
+  }
 
-  const handlePrevious = (e) => {
-    e?.stopPropagation();
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
+  return {
+    src: web,
+    width,
+    height,
+    alt: item.description || '',
+    originalSrc: original,
+    media: item,
   };
+}
 
-  const handleNext = (e) => {
-    e?.stopPropagation();
-    if (currentIndex < allMedia.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    }
-  };
+async function downloadItem(item) {
+  const fallback = item.file_type === 'video' ? 'mp4' : 'jpg';
+  const extension = extensionFromUrl(item.file_url, fallback);
+  const response = await fetch(item.file_url);
+  if (!response.ok) throw new Error('download failed');
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `photo-${item.id}.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'ArrowLeft') handlePrevious();
-    if (e.key === 'ArrowRight') handleNext();
-    if (e.key === 'Escape') onClose();
-  };
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex]);
-
-  const handleDownload = async (e) => {
-    e.stopPropagation();
-    try {
-      const response = await fetch(currentMedia.file_url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `media-${currentMedia.id}.${currentMedia.file_type === 'video' ? 'mp4' : 'jpg'}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Download failed:', error);
-      window.open(currentMedia.file_url, '_blank');
-    }
-  };
-
-  const handleZoomIn = (e) => {
-    e.stopPropagation();
-    if (currentMedia.file_type !== 'video') {
-       setZoom(prev => Math.min(prev + 0.25, 3));
-    }
-  };
-
-  const handleZoomOut = (e) => {
-    e.stopPropagation();
-    if (currentMedia.file_type !== 'video') {
-       setZoom(prev => Math.max(prev - 0.25, 1));
-    }
-  };
-
-  const isVideo = currentMedia.file_type === 'video';
+const InfoPanel = ({ slide, language }) => {
+  const { t } = useTranslation();
+  const item = slide?.media;
+  if (!item) return null;
+  const author = item.uploaded_by_profile?.full_name || item.uploaded_by_profile?.initials || '';
+  const when = formatCaptureDateTime(item, language);
+  const hasGps = Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude));
+  const maps = hasGps
+    ? `https://www.google.com/maps?q=${item.latitude},${item.longitude}`
+    : null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-md"
-        onClick={onClose}
-      >
-        {/* Mobile Header / Desktop Toolbar */}
-        <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-[110] bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
-          <div className="pointer-events-auto flex items-center gap-2">
-             <span className="text-white/90 text-sm font-medium px-3 py-1 bg-white/10 rounded-full backdrop-blur-md">
-                {currentIndex + 1} / {allMedia.length}
-             </span>
-          </div>
-          
-          <div className="flex gap-2 pointer-events-auto">
-            {!isVideo && (
-                <div className="hidden sm:flex gap-2 mr-2 border-r border-white/20 pr-2">
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-white hover:bg-white/20 rounded-full" onClick={handleZoomIn}>
-                    <ZoomIn className="h-5 w-5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-white hover:bg-white/20 rounded-full" onClick={handleZoomOut}>
-                    <ZoomOut className="h-5 w-5" />
-                    </Button>
-                </div>
-            )}
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-white hover:bg-white/20 rounded-full" onClick={handleDownload}>
-              <Download className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-white hover:bg-red-500/20 hover:text-red-400 rounded-full" onClick={onClose}>
-              <X className="h-6 w-6" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden" onClick={(e) => e.stopPropagation()}>
-          
-          {currentIndex > 0 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute left-2 sm:left-4 z-[105] text-white/70 hover:text-white hover:bg-white/10 rounded-full h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center transition-all"
-              onClick={handlePrevious}
-            >
-              <ChevronLeft className="h-6 w-6 sm:h-8 sm:w-8" />
-            </Button>
+    <div
+      className="pointer-events-auto absolute bottom-3 left-3 right-3 z-20 mx-auto max-w-lg rounded-2xl bg-black/75 text-white backdrop-blur px-4 py-3 text-sm"
+      onClick={(event) => event.stopPropagation()}
+      data-testid="media-info"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {author && (
+            <p className="font-semibold truncate">
+              <span className="text-white/60 font-normal">{t('media.viewerAuthor')}: </span>
+              {author}
+            </p>
           )}
-
-          <motion.div
-            key={currentMedia.id}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="w-full h-full flex items-center justify-center p-2 sm:p-8 md:p-12"
+          {when && (
+            <p className="text-white/85">
+              <span className="text-white/60">{t('media.viewerCaptured')}: </span>
+              {when}
+            </p>
+          )}
+        </div>
+        {maps && (
+          <a
+            href={maps}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 inline-flex items-center gap-1 underline underline-offset-2"
           >
-            {isVideo ? (
-              <div className="relative w-full max-w-5xl aspect-video bg-black rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10">
-                 <video
-                    src={currentMedia.file_url}
-                    controls
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-contain"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                      <p className="text-white text-center">Your browser does not support the video tag.</p>
-                  </video>
-              </div>
-            ) : (
-              <img
-                src={currentMedia.file_url}
-                alt="Media"
-                className="max-w-full max-h-full object-contain shadow-2xl select-none"
-                style={{ transform: `scale(${zoom})`, transition: 'transform 0.2s ease-out' }}
-                draggable={false}
-              />
-            )}
-          </motion.div>
+            <MapPin className="h-4 w-4" />
+            {t('media.viewerGps')}
+          </a>
+        )}
+      </div>
+      <p className="mt-2 text-white/90 whitespace-pre-wrap">
+        <span className="text-white/60">{t('media.viewerDescription')}: </span>
+        {item.description || t('media.viewerNoDescription')}
+      </p>
+    </div>
+  );
+};
 
-          {currentIndex < allMedia.length - 1 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 sm:right-4 z-[105] text-white/70 hover:text-white hover:bg-white/10 rounded-full h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center transition-all"
-              onClick={handleNext}
+const MediaViewer = ({ media, allMedia, onClose, onDelete }) => {
+  const { t, i18n } = useTranslation();
+  const language = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2);
+  const slides = useMemo(() => (allMedia || []).map(slideFor), [allMedia]);
+  const startIndex = Math.max(0, (allMedia || []).findIndex((item) => item.id === media.id));
+  const [index, setIndex] = useState(startIndex);
+  const indexRef = useRef(startIndex);
+  const slidesRef = useRef(slides);
+  slidesRef.current = slides;
+
+  const promoteOriginal = () => {
+    const slide = slidesRef.current[indexRef.current];
+    if (!slide?.originalSrc || slide.originalSrc === slide.src) return;
+    const image = document.querySelector('.yarl__slide_current img');
+    if (!image || image.getAttribute('src') === slide.originalSrc) return;
+    const preload = new Image();
+    preload.onload = () => {
+      image.src = slide.originalSrc;
+    };
+    preload.src = slide.originalSrc;
+  };
+
+  const current = allMedia[index] || media;
+
+  const handleDownload = async (event) => {
+    event?.stopPropagation();
+    try {
+      await downloadItem(current);
+    } catch (error) {
+      console.error(error);
+      window.open(current.file_url, '_blank', 'noopener');
+    }
+  };
+
+  return (
+    <Lightbox
+      open
+      close={onClose}
+      index={index}
+      slides={slides}
+      plugins={[Zoom]}
+      carousel={{ finite: true, preload: 2, imageFit: 'contain' }}
+      animation={{ swipe: 240 }}
+      zoom={{
+        maxZoomPixelRatio: 3,
+        scrollToZoom: true,
+        pinchZoomV4: true,
+      }}
+      controller={{ closeOnBackdropClick: true }}
+      labels={{
+        Previous: t('media.viewerPrev'),
+        Next: t('media.viewerNext'),
+        Close: t('media.viewerClose'),
+        'Zoom in': t('media.viewerZoomIn'),
+        'Zoom out': t('media.viewerZoomOut'),
+      }}
+      toolbar={{
+        buttons: [
+          <button
+            key="download"
+            type="button"
+            className="yarl__button"
+            aria-label={t('media.viewerDownload')}
+            onClick={handleDownload}
+          >
+            <Download className="h-6 w-6" />
+          </button>,
+          onDelete ? (
+            <button
+              key="delete"
+              type="button"
+              className="yarl__button"
+              aria-label={t('media.viewerDelete')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(current);
+              }}
             >
-              <ChevronRight className="h-6 w-6 sm:h-8 sm:w-8" />
-            </Button>
-          )}
-        </div>
-      </motion.div>
-    </AnimatePresence>
+              <Trash2 className="h-6 w-6" />
+            </button>
+          ) : null,
+          'close',
+        ].filter(Boolean),
+      }}
+      on={{
+        view: ({ index: next }) => {
+          indexRef.current = next;
+          setIndex(next);
+        },
+        zoom: ({ zoom }) => {
+          if (zoom > 1.01) promoteOriginal();
+        },
+      }}
+      render={{
+        slide: ({ slide, rect }) => {
+          if (slide.type !== 'video') return undefined;
+          return (
+            <video
+              src={slide.src}
+              poster={slide.poster}
+              controls
+              playsInline
+              style={{ maxWidth: '100%', maxHeight: rect?.height || '100%' }}
+            >
+              {t('media.viewerVideoUnsupported')}
+            </video>
+          );
+        },
+        slideFooter: ({ slide }) => <InfoPanel slide={slide} language={language} />,
+      }}
+    />
   );
 };
 

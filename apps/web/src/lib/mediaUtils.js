@@ -1,66 +1,20 @@
 /**
- * Media processing utilities for client-side compression and thumbnail generation
+ * Media helpers. Photo bytes go through processImageFile (long edge, EXIF, three sizes).
+ * compressImage remains for callers that only need the original-sized file.
  */
 
-export const COMPRESSION_SETTINGS = {
-  HIGH: { quality: 0.8, maxWidth: 1920, maxHeight: 1080 },
-  MEDIUM: { quality: 0.6, maxWidth: 1280, maxHeight: 720 },
-  LOW: { quality: 0.4, maxWidth: 800, maxHeight: 600 }
-};
+import { isImageFile } from '@/lib/imageSizes';
+import { processImageFile } from '@/lib/processImage';
 
-// Worker instance singleton
-let compressionWorker = null;
-const pendingCallbacks = new Map();
-
-const getWorker = () => {
-  if (!compressionWorker) {
-    compressionWorker = new Worker(new URL('./compression.worker.js', import.meta.url), {
-      type: 'module'
-    });
-    
-    compressionWorker.onmessage = (e) => {
-      const { id, success, blob, file, error, name, type } = e.data;
-      const callback = pendingCallbacks.get(id);
-      
-      if (callback) {
-        if (success) {
-          if (blob) {
-            // Reconstruct File object from Blob
-            const newFile = new File([blob], name, { type, lastModified: Date.now() });
-            callback.resolve(newFile);
-          } else {
-            callback.resolve(file);
-          }
-        } else {
-          console.warn('Compression failed, using original:', error);
-          callback.resolve(file); // Fallback to original
-        }
-        pendingCallbacks.delete(id);
-      }
-    };
+export const compressImage = async (file) => {
+  try {
+    if (!isImageFile(file)) return file;
+    const processed = await processImageFile(file);
+    return processed.original;
+  } catch (error) {
+    console.warn('Compression failed, using original', error);
+    return file;
   }
-  return compressionWorker;
-};
-
-export const compressImage = async (file, level = 'HIGH') => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (!file.type.startsWith('image/')) {
-        resolve(file);
-        return;
-      }
-
-      const id = Math.random().toString(36).substring(7);
-      pendingCallbacks.set(id, { resolve, reject });
-      
-      const worker = getWorker();
-      worker.postMessage({ file, settings: level, id });
-
-    } catch (error) {
-      console.error("Compression setup failed", error);
-      resolve(file);
-    }
-  });
 };
 
 export const getVideoDuration = async (file) => {

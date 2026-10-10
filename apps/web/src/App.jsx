@@ -33,6 +33,7 @@ import SprayTrackerPage from '@/pages/SprayTrackerPage';
 import MarginsPage from '@/pages/MarginsPage';
 import FleetPage from '@/pages/FleetPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
+import PhotoPreviewPage from '@/pages/PhotoPreviewPage';
 
 const PrivateRoute = ({ children }) => {
   const { user, loading, connectionError } = useAuth();
@@ -222,6 +223,9 @@ function AppRoutes() {
           <Route path="/margins" element={<RoleRoute allowedRoles={['Admin', 'Manager']}><MarginsPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
+          {import.meta.env.DEV && (
+            <Route path="/dev/photo-preview" element={<PhotoPreviewPage />} />
+          )}
           
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>

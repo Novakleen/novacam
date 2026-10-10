@@ -2,7 +2,11 @@ import React, { createContext, useContext, useState, useRef, useEffect } from 'r
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
-import { compressImage, generateVideoThumbnail } from '@/lib/mediaUtils';
+import { generateVideoThumbnail } from '@/lib/mediaUtils';
+import { isImageFile, buildVariantPaths } from '@/lib/imageSizes';
+import { processImageFile, tryGeolocation } from '@/lib/processImage';
+import { uploadStorageObject } from '@/lib/mediaStorage';
+import { attachTagNames, buildImageMediaInsert } from '@/lib/uploadProjectImage';
 
 const UploadContext = createContext({});
 
@@ -22,6 +26,7 @@ export const UploadProvider = ({ children }) => {
   
   const xhrRefs = useRef({});
   const watchdogRefs = useRef({});
+  const imageJobsRef = useRef({});
 
   // Queue Processor
   useEffect(() => {
@@ -64,7 +69,7 @@ export const UploadProvider = ({ children }) => {
     }
   };
 
-  const addUpload = async (originalFile, projectId) => {
+  const addUpload = async (originalFile, projectId, options = {}) => {
     console.log(`[UploadManager] Adding file: ${originalFile.name} (${originalFile.size} bytes)`);
     try {
       // 1. Create DB Record
@@ -84,9 +89,25 @@ export const UploadProvider = ({ children }) => {
       if (logError) throw logError;
 
       const uploadId = logData.id;
-      const fileExt = originalFile.name.split('.').pop();
-      const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const filePath = `${projectId}/${uniqueId}.${fileExt}`;
+      const imageFile = isImageFile(originalFile);
+      let fileToUpload = originalFile;
+      let filePath = `${projectId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${(originalFile.name.split('.').pop() || 'bin')}`;
+      let imageJob = null;
+
+      if (imageFile) {
+        const processed = await processImageFile(originalFile);
+        const paths = buildVariantPaths(projectId, processed.extension);
+        await uploadStorageObject(paths.thumbnail, processed.thumbnail, processed.contentType);
+        await uploadStorageObject(paths.web, processed.web, processed.contentType);
+        const geoPromise =
+          options.requestGeolocation && processed.metadata.latitude == null
+            ? tryGeolocation(4000)
+            : Promise.resolve(null);
+        imageJob = { processed, paths, geoPromise, options };
+        imageJobsRef.current[uploadId] = imageJob;
+        fileToUpload = processed.original;
+        filePath = paths.original;
+      }
 
       // 2. Initial State
       setUploads(prev => ({
@@ -108,19 +129,13 @@ export const UploadProvider = ({ children }) => {
         }
       }));
 
-      // 3. Compress / Generate Thumbnail
-      let fileToUpload = originalFile;
+      // 3. Video thumbnail (images were prepared above)
       let thumbnailBlob = null;
 
-      if (originalFile.type.startsWith('image/')) {
+      if (!imageFile && originalFile.type.startsWith('video/')) {
         try {
-          fileToUpload = await compressImage(originalFile, 'HIGH');
-        } catch (err) {
-          console.warn('[UploadManager] Compression skipped due to error', err);
-        }
-      } else if (originalFile.type.startsWith('video/')) {
-        try {
-          thumbnailBlob = await generateVideoThumbnail(originalFile);
+          const thumbData = await generateVideoThumbnail(originalFile);
+          thumbnailBlob = thumbData?.blob || null;
         } catch (err) {
           console.warn('[UploadManager] Thumbnail generation failed', err);
         }
@@ -263,23 +278,53 @@ export const UploadProvider = ({ children }) => {
               .from('project-media')
               .getPublicUrl(path);
 
-            // Use main URL as thumbnail for images if needed
-            let finalThumbUrl = thumbnailUrl;
-            if (!finalThumbUrl && file.type.startsWith('image/')) {
-              finalThumbUrl = publicUrlData.publicUrl;
-            }
+            const imageJob = imageJobsRef.current[uploadId];
+            let mediaError = null;
 
-            // Insert Media Record
-            const { error: mediaError } = await supabase
-              .from('media')
-              .insert({
-                project_id: projectId,
-                uploaded_by: user.id,
+            if (imageJob) {
+              const geo = await imageJob.geoPromise;
+              const latitude = imageJob.processed.metadata.latitude ?? geo?.latitude ?? null;
+              const longitude = imageJob.processed.metadata.longitude ?? geo?.longitude ?? null;
+              const urls = {
                 file_url: publicUrlData.publicUrl,
-                file_type: file.type.startsWith('image/') ? 'image' : 'video',
-                thumbnail_url: finalThumbUrl,
-                show_in_portfolio: false
-              });
+                web_url: supabase.storage.from('project-media').getPublicUrl(imageJob.paths.web).data.publicUrl,
+                thumbnail_url: supabase.storage.from('project-media').getPublicUrl(imageJob.paths.thumbnail).data.publicUrl,
+              };
+              const inserted = await supabase
+                .from('media')
+                .insert(
+                  buildImageMediaInsert({
+                    projectId,
+                    userId: user.id,
+                    urls,
+                    processed: imageJob.processed,
+                    description: imageJob.options.description || '',
+                    latitude,
+                    longitude,
+                    capturedAt: imageJob.options.capturedAt || null,
+                    showInPortfolio: false,
+                  })
+                )
+                .select('id')
+                .single();
+              mediaError = inserted.error;
+              if (!mediaError && inserted.data?.id) {
+                await attachTagNames(inserted.data.id, imageJob.options.tagNames || []);
+              }
+            } else {
+              let finalThumbUrl = thumbnailUrl;
+              const inserted = await supabase
+                .from('media')
+                .insert({
+                  project_id: projectId,
+                  uploaded_by: user.id,
+                  file_url: publicUrlData.publicUrl,
+                  file_type: 'video',
+                  thumbnail_url: finalThumbUrl,
+                  show_in_portfolio: false,
+                });
+              mediaError = inserted.error;
+            }
 
             if (mediaError) throw mediaError;
 
@@ -307,8 +352,9 @@ export const UploadProvider = ({ children }) => {
          }
       };
 
+      const imageJob = imageJobsRef.current[uploadId];
       xhr.open('PUT', signedData.signedUrl);
-      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.setRequestHeader('Content-Type', imageJob?.processed.contentType || file.type || 'application/octet-stream');
       xhr.send(file);
 
     } catch (error) {
@@ -320,6 +366,7 @@ export const UploadProvider = ({ children }) => {
 
   const cleanup = (uploadId) => {
     delete xhrRefs.current[uploadId];
+    delete imageJobsRef.current[uploadId];
     if (watchdogRefs.current[uploadId]) {
         clearTimeout(watchdogRefs.current[uploadId]);
         delete watchdogRefs.current[uploadId];
