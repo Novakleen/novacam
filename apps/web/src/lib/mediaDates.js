@@ -61,6 +61,25 @@ export function formatCaptureDateTime(item, language) {
   }).format(date);
 }
 
+/** One-line short form, e.g. "9 oct. 2026, 08:12". */
+export function formatCaptureDateTimeShort(item, language) {
+  const ts = mediaCaptureTime(item);
+  if (!ts) return '';
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return '';
+  const locale = intlLocale(language);
+  const day = new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+  const time = new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+  return `${day}, ${time}`;
+}
+
 export function formatCaptureClock(item, language) {
   const ts = mediaCaptureTime(item);
   if (!ts) return '';

@@ -36,16 +36,36 @@ const PhotoPreviewPage = () => {
   useEffect(() => {
     i18n.changeLanguage('fr');
     const shots = [
-      ['Façade nord', 200, '2026-10-09T08:12:00'],
-      ['Toiture', 24, '2026-10-09T09:40:00'],
-      ['Détail joint', 140, '2026-10-09T11:05:00'],
-      ['Avant lavage', 210, '2026-10-08T15:20:00'],
-      ['Après lavage', 168, '2026-10-08T16:45:00'],
-      ['Accès arrière', 280, '2026-10-08T17:10:00'],
+      ['Façade nord', 200, '2026-10-09T08:12:00', 0],
+      ['Toiture', 24, '2026-10-09T09:40:00', 1],
+      ['Détail joint', 140, '2026-10-09T11:05:00', 2],
+      ['Gouttière', 48, '2026-10-09T12:10:00', 0],
+      ['Châssis', 80, '2026-10-09T13:22:00', 0],
+      ['Seuil', 190, '2026-10-09T14:05:00', 0],
+      ['Avant lavage', 210, '2026-10-08T15:20:00', 0],
+      ['Après lavage', 168, '2026-10-08T16:45:00', 0],
+      ['Accès arrière', 280, '2026-10-08T17:10:00', 0],
+      ['Cour', 320, '2026-10-08T17:40:00', 0],
+      ['Cave', 260, '2026-10-07T09:00:00', 0],
+      ['Palier', 30, '2026-10-07T10:15:00', 0],
+      ['Combles', 12, '2026-10-07T11:30:00', 0],
+      ['Local technique', 300, '2026-10-06T08:05:00', 0],
+      ['Compteur', 90, '2026-10-06T09:12:00', 0],
+      ['Escalier', 40, '2026-10-06T10:20:00', 0],
+      ['Portail', 150, '2026-10-06T11:05:00', 0],
     ];
     setMedia(
-      shots.map(([label, hue, captured], index) => {
+      shots.map(([label, hue, captured, tagMode], index) => {
         const url = paint(label, hue, 900, 1200);
+        const mediaTags =
+          tagMode === 1
+            ? [{ tag_id: 't1', tags: { name: 'Toiture' } }]
+            : tagMode === 2
+              ? [
+                  { tag_id: 't1', tags: { name: 'Toiture' } },
+                  { tag_id: 't2', tags: { name: 'Joint' } },
+                ]
+              : [];
         return {
           id: `preview-${index}`,
           file_type: 'image',
@@ -60,7 +80,7 @@ const PhotoPreviewPage = () => {
           width: 3024,
           height: 4032,
           uploaded_by_profile: { full_name: 'Luc Martin', initials: 'LM' },
-          media_tags: index === 1 ? [{ tag_id: 't1', tags: { name: 'Toiture' } }] : [],
+          media_tags: mediaTags,
         };
       })
     );

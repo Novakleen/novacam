@@ -98,11 +98,12 @@ const MediaGrid = ({
       <div className="space-y-6">
         {groupedMedia.map(([date, items]) => (
           <div key={date}>
-            <div className="sticky top-[120px] md:top-[64px] z-10 bg-gray-50/95 dark:bg-gray-900/95 py-2 mb-1 backdrop-blur-sm">
-              <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400">
-                {date === 'unknown' ? t('media.unknownDay') : formatCaptureDay(date, language)}
-              </h3>
-            </div>
+            <h3
+              data-testid="day-header"
+              className="mb-2 rounded-md bg-white px-2 py-2 text-sm font-bold text-gray-800 dark:bg-gray-900 dark:text-gray-100"
+            >
+              {date === 'unknown' ? t('media.unknownDay') : formatCaptureDay(date, language)}
+            </h3>
 
             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1">
               {items.map((item) => {
@@ -199,7 +200,11 @@ const MediaGrid = ({
                         )}
                       </div>
                       {item.media_tags && item.media_tags.length > 0 && (
-                        <span className="text-[10px] text-white/80">
+                        <span
+                          data-testid="tag-count"
+                          className="inline-flex items-center gap-0.5 text-[10px] text-white/90"
+                        >
+                          <Tag className="h-3 w-3 shrink-0" aria-hidden="true" />
                           {t('media.tagsCount', { count: item.media_tags.length })}
                         </span>
                       )}
