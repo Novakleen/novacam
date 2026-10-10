@@ -3,7 +3,7 @@ import { Save, ArrowLeft, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
+import { sliderImageWidthPercent } from '@/lib/beforeAfterLayout';
 
 const BeforeAfterPreview = ({ beforePhoto, afterPhoto, onSave, onCancel, isSaving }) => {
   const [sliderPosition, setSliderPosition] = useState(50);
@@ -49,17 +49,17 @@ const BeforeAfterPreview = ({ beforePhoto, afterPhoto, onSave, onCancel, isSavin
             className="absolute inset-0 overflow-hidden border-r-2 border-white"
             style={{ width: `${sliderPosition}%` }}
           >
+            {sliderImageWidthPercent(sliderPosition) != null && (
             <img 
               src={beforePhoto?.file_url || beforePhoto?.dataUrl} 
               alt="Before" 
-              className="w-full h-full object-cover"
+              className="h-full object-cover max-w-none"
               style={{ 
-                 // Important: Counteract the container width to keep image static
-                 width: `${10000 / sliderPosition}%`, 
-                 maxWidth: 'none',
+                 width: `${sliderImageWidthPercent(sliderPosition)}%`, 
                  height: '100%'
               }} 
             />
+            )}
             <div className="absolute top-4 left-4 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded">
               BEFORE
             </div>

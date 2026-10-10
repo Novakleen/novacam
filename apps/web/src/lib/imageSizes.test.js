@@ -133,6 +133,17 @@ test('grid srcset offers thumb and web and leaves the original out', () => {
   assert.equal(props.srcSet.endsWith('/a.webp 1600w'), false);
 });
 
+test('annotated photos display the flattened jpeg instead of the clean thumbnail', () => {
+  const props = gridImageProps({
+    thumbnail_url: 'https://cdn.example/storage/v1/object/public/project-media/p/a_thumb.webp',
+    web_url: 'https://cdn.example/storage/v1/object/public/project-media/p/a_web.webp',
+    file_url: 'https://cdn.example/storage/v1/object/public/project-media/p/a.webp',
+    annotated_url: 'https://cdn.example/storage/v1/object/public/project-media/p/a_note_web.jpg',
+  });
+  assert.equal(props.src, 'https://cdn.example/storage/v1/object/public/project-media/p/a_note_web.jpg');
+  assert.equal(props.srcSet, undefined);
+});
+
 test('legacy rows whose thumbnail is the original do not pretend to have a 400w file', () => {
   const full = 'https://cdn.example/storage/v1/object/public/project-media/p/legacy.jpg';
   const props = gridImageProps({ thumbnail_url: full, file_url: full, web_url: null });

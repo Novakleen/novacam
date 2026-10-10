@@ -3,7 +3,11 @@ import { Play, Tag, Trash2, Check, Video } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import MediaViewer from '@/components/media/MediaViewer';
 import TagManager from '@/components/media/TagManager';
+import BeforeAfterEditor from '@/components/media/BeforeAfterEditor';
+import AnnotationEditor from '@/components/capture/AnnotationEditor';
 import { deleteProjectMedia } from '@/lib/mediaStorage';
+import { savePhotoAnnotations } from '@/lib/saveAnnotations';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -31,14 +35,18 @@ const MediaGrid = ({
   onToggleSelect,
   readOnly = false,
   isLoading = false,
+  projectName = '',
 }) => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { t, i18n } = useTranslation();
   const language = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2);
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [showViewer, setShowViewer] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
   const [taggedMedia, setTaggedMedia] = useState(null);
+  const [compareSession, setCompareSession] = useState(null);
+  const [annotateTarget, setAnnotateTarget] = useState(null);
 
   const groupedMedia = groupMediaByCaptureDay(media);
 
@@ -225,6 +233,69 @@ const MediaGrid = ({
           onDelete={readOnly ? undefined : async (item) => {
             const removed = await handleDelete(null, item);
             if (removed) setShowViewer(false);
+          }}
+          onTakeAfter={
+            readOnly
+              ? undefined
+              : (item) => {
+                  setShowViewer(false);
+                  setCompareSession({ before: item, after: null, mode: 'capture' });
+                }
+          }
+          onChooseAfter={
+            readOnly
+              ? undefined
+              : (item) => {
+                  setShowViewer(false);
+                  setCompareSession({ before: item, after: null, mode: 'gallery' });
+                }
+          }
+          onAnnotate={
+            readOnly
+              ? undefined
+              : (item) => {
+                  setShowViewer(false);
+                  setAnnotateTarget(item);
+                }
+          }
+        />
+      )}
+
+      {compareSession && (
+        <BeforeAfterEditor
+          open
+          projectId={compareSession.before?.project_id || projectId}
+          projectName={projectName || compareSession.before?.project?.name || ''}
+          projectMedia={media.filter(
+            (item) => item.project_id === (compareSession.before?.project_id || projectId)
+          )}
+          initialBefore={compareSession.before}
+          initialAfter={compareSession.after}
+          initialMode={compareSession.mode}
+          onClose={() => setCompareSession(null)}
+          onSuccess={() => {
+            setCompareSession(null);
+            if (onRefresh) onRefresh();
+          }}
+        />
+      )}
+
+      {annotateTarget && (
+        <AnnotationEditor
+          imageSrc={annotateTarget.file_url}
+          initialDocument={annotateTarget.annotations || null}
+          onCancel={() => setAnnotateTarget(null)}
+          onSave={async ({ document, file }) => {
+            if (!user) return;
+            try {
+              await savePhotoAnnotations({ media: annotateTarget, document, flattenedFile: file });
+              toast({ title: t('common.success'), description: t('media.annotate.saved') });
+              setAnnotateTarget(null);
+              if (onRefresh) onRefresh();
+            } catch (error) {
+              console.error(error);
+              toast({ variant: 'destructive', title: t('common.error'), description: t('media.annotate.saveFailed') });
+            }
           }}
         />
       )}

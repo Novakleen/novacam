@@ -24,6 +24,7 @@ const PAGE_SIZE = 24;
 
 const MEDIA_COLUMNS = `
   id, project_id, uploaded_by, file_url, web_url, thumbnail_url, file_type,
+  kind, annotations, annotated_url,
   description, duration, size, created_at, captured_at, latitude, longitude, width, height,
   show_in_portfolio,
   uploaded_by_profile:profiles!uploaded_by(full_name, initials, id),
@@ -320,6 +321,7 @@ const PhotosPage = () => {
         ) : (
           <MediaGrid
             media={media}
+            onRefresh={() => loadPage(true)}
             selectable={isSelectionMode}
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}

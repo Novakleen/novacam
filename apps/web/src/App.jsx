@@ -33,7 +33,12 @@ import SprayTrackerPage from '@/pages/SprayTrackerPage';
 import MarginsPage from '@/pages/MarginsPage';
 import FleetPage from '@/pages/FleetPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
-import PhotoPreviewPage from '@/pages/PhotoPreviewPage';
+const devRoutes = import.meta.env.DEV
+  ? [
+      { path: '/dev/photo-preview', Page: React.lazy(() => import('@/pages/PhotoPreviewPage')) },
+      { path: '/dev/v116', Page: React.lazy(() => import('@/pages/V116PreviewPage')) },
+    ]
+  : [];
 
 const PrivateRoute = ({ children }) => {
   const { user, loading, connectionError } = useAuth();
@@ -223,9 +228,17 @@ function AppRoutes() {
           <Route path="/margins" element={<RoleRoute allowedRoles={['Admin', 'Manager']}><MarginsPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
-          {import.meta.env.DEV && (
-            <Route path="/dev/photo-preview" element={<PhotoPreviewPage />} />
-          )}
+          {devRoutes.map(({ path, Page }) => (
+            <Route
+              key={path}
+              path={path}
+              element={(
+                <React.Suspense fallback={null}>
+                  <Page />
+                </React.Suspense>
+              )}
+            />
+          ))}
           
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>

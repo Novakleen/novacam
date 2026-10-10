@@ -20,6 +20,7 @@ export function buildImageMediaInsert({
   longitude = null,
   capturedAt = null,
   showInPortfolio = false,
+  kind = 'photo',
 }) {
   return {
     project_id: projectId,
@@ -36,6 +37,7 @@ export function buildImageMediaInsert({
     width: processed?.metadata?.width || null,
     height: processed?.metadata?.height || null,
     size: processed?.original?.size || null,
+    kind: kind || 'photo',
   };
 }
 
@@ -85,6 +87,7 @@ export async function uploadProjectImage(file, options) {
     latitude: latitudeHint = null,
     longitude: longitudeHint = null,
     showInPortfolio = false,
+    kind = 'photo',
   } = options || {};
 
   const processed = await processImageFile(file);
@@ -117,6 +120,7 @@ export async function uploadProjectImage(file, options) {
         longitude,
         capturedAt,
         showInPortfolio,
+        kind,
       })
     )
     .select()

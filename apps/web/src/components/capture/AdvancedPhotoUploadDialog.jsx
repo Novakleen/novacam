@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { usePhotoCapture } from '@/hooks/usePhotoCapture';
 import PhotoCaptureDialog from './PhotoCaptureDialog';
-import PhotoAnnotationCanvas from './PhotoAnnotationCanvas';
+import AnnotationEditor from './AnnotationEditor';
+import { savePhotoAnnotations } from '@/lib/saveAnnotations';
 import PhotoReviewGallery from './PhotoReviewGallery';
 import VideoUploadFlow from '@/components/media/VideoUploadFlow';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
@@ -24,6 +25,7 @@ const AdvancedPhotoUploadDialog = ({
   const { toast } = useToast();
   const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
+  const [annotateSrc, setAnnotateSrc] = useState(null);
   const [uploadMode, setUploadMode] = useState(defaultMode);
   const [videoFile, setVideoFile] = useState(initialFiles.find((file) => file.type?.startsWith('video/')) || null);
 
@@ -63,8 +65,18 @@ const AdvancedPhotoUploadDialog = ({
     addFiles(images, { fromCamera });
   };
 
-  const handleAnnotationSave = (annotatedDataUrl) => {
-    updatePhotoAnnotation(currentPhotoIndex, annotatedDataUrl);
+  useEffect(() => {
+    if (step !== 'annotate' || !currentPhoto?.file) {
+      setAnnotateSrc(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(currentPhoto.file);
+    setAnnotateSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [step, currentPhoto]);
+
+  const handleAnnotationSave = (payload) => {
+    updatePhotoAnnotation(currentPhotoIndex, payload);
     goToStep('review');
   };
 
@@ -76,9 +88,8 @@ const AdvancedPhotoUploadDialog = ({
 
     try {
       for (const photo of photos) {
-        const source = photo.annotatedFile || photo.file;
         const prior = photo.annotatedFile ? await readCaptureMetadata(photo.file) : {};
-        await uploadProjectImage(source, {
+        const row = await uploadProjectImage(photo.file, {
           projectId,
           userId: user.id,
           description: photo.description || stickyDescription,
@@ -88,6 +99,13 @@ const AdvancedPhotoUploadDialog = ({
           latitude: prior.latitude,
           longitude: prior.longitude,
         });
+        if (photo.annotations && photo.annotatedFile) {
+          await savePhotoAnnotations({
+            media: row,
+            document: photo.annotations,
+            flattenedFile: photo.annotatedFile,
+          });
+        }
         successCount += 1;
       }
 
@@ -158,9 +176,10 @@ const AdvancedPhotoUploadDialog = ({
         />
       )}
 
-      {step === 'annotate' && currentPhoto && (
-        <PhotoAnnotationCanvas
-          photoDataUrl={currentPhoto.objectUrl}
+      {step === 'annotate' && currentPhoto && annotateSrc && (
+        <AnnotationEditor
+          imageSrc={annotateSrc}
+          initialDocument={currentPhoto.annotations}
           onSave={handleAnnotationSave}
           onCancel={() => goToStep('review')}
         />

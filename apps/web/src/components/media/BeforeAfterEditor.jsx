@@ -1,23 +1,34 @@
 import React, { useState } from 'react';
-import { Camera, Image as ImageIcon, RotateCcw, X, AlertCircle } from 'lucide-react';
+import { Camera, Image as ImageIcon, RotateCcw, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { supabase } from '@/lib/customSupabaseClient';
+import { dataUrlToFile } from '@/lib/dataUrl';
+import { uploadProjectImage } from '@/lib/uploadProjectImage';
 import { useBeforeAfterState } from '@/hooks/useBeforeAfterState';
 import BeforeAfterCaptureMode from './BeforeAfterCaptureMode';
 import BeforeAfterGalleryMode from './BeforeAfterGalleryMode';
-import BeforeAfterPreview from './BeforeAfterPreview';
-import { supabase } from '@/lib/customSupabaseClient';
-import { useAuth } from '@/contexts/SupabaseAuthContext';
-import { uploadProjectImage } from '@/lib/uploadProjectImage';
-import { dataUrlToFile } from '@/lib/dataUrl';
-import { useTranslation } from 'react-i18next';
+import BeforeAfterComposer from './BeforeAfterComposer';
 
-const BeforeAfterEditor = ({ open, onClose, projectId, projectMedia, onSuccess }) => {
+const BeforeAfterEditor = ({
+  open,
+  onClose,
+  projectId,
+  projectName,
+  projectMedia,
+  onSuccess,
+  initialBefore = null,
+  initialAfter = null,
+  initialMode = null,
+}) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
+  const seedMode = initialMode || (initialBefore && initialAfter ? 'compose' : 'initial');
 
   const {
     beforePhoto,
@@ -29,249 +40,236 @@ const BeforeAfterEditor = ({ open, onClose, projectId, projectMedia, onSuccess }
     setEditorMode,
     setActiveSlot,
     resetPhotos,
-    getValidationErrors
-  } = useBeforeAfterState();
+    getValidationErrors,
+  } = useBeforeAfterState({
+    before: initialBefore,
+    after: initialAfter,
+    mode: seedMode,
+    slot: seedMode === 'capture' || seedMode === 'gallery' ? 'after' : null,
+  });
+
+  const images = (projectMedia || []).filter((item) => item.file_type !== 'video');
 
   const handleStartSelection = (slot, mode) => {
     setActiveSlot(slot);
-    setEditorMode(mode); // 'capture' or 'gallery'
+    setEditorMode(mode);
+  };
+
+  const returnAfterPick = (slot, photo) => {
+    const other = slot === 'before' ? afterPhoto : beforePhoto;
+    if (slot === 'before') setBeforePhoto(photo);
+    else setAfterPhoto(photo);
+    setEditorMode(other ? 'compose' : 'initial');
   };
 
   const handleCapture = (dataUrl) => {
-    const photoObj = { 
-        id: `temp-${Date.now()}`, 
-        dataUrl, 
-        isTemp: true 
-    };
-
-    if (activeSlot === 'before') {
-      setBeforePhoto(photoObj);
-    } else {
-      setAfterPhoto(photoObj);
-    }
-    setEditorMode('initial');
-  };
-
-  const handleGallerySelect = (media) => {
-    if (activeSlot === 'before') {
-      setBeforePhoto(media);
-    } else {
-      setAfterPhoto(media);
-    }
-    setEditorMode('initial');
+    returnAfterPick(activeSlot || 'after', {
+      id: `temp-${Date.now()}`,
+      dataUrl,
+      isTemp: true,
+      captured_at: new Date().toISOString(),
+    });
   };
 
   const handleUploadTempPhoto = async (photoObj) => {
-     if (!photoObj.isTemp) return photoObj.id; // Already uploaded
-
-     const file = dataUrlToFile(photoObj.dataUrl, `before-after-${Date.now()}.jpg`);
-     const mediaData = await uploadProjectImage(file, {
-        projectId,
-        userId: user.id,
-        description: t('media.beforeAfterCaptured'),
-        requestGeolocation: true,
-        capturedAt: new Date().toISOString(),
-     });
-     return mediaData.id;
+    if (!photoObj?.isTemp) return photoObj.id;
+    const file = dataUrlToFile(photoObj.dataUrl, `before-after-${Date.now()}.jpg`);
+    const mediaData = await uploadProjectImage(file, {
+      projectId,
+      userId: user.id,
+      description: t('media.beforeAfterCaptured'),
+      requestGeolocation: true,
+      capturedAt: photoObj.captured_at || new Date().toISOString(),
+    });
+    return mediaData.id;
   };
 
-  const handleSaveComparison = async ({ name }) => {
-     const errors = getValidationErrors();
-     if (errors.length > 0) {
-        toast({
-           variant: "destructive",
-           title: "Missing Photos",
-           description: "Please select both a Before and After photo."
-        });
-        return;
-     }
-
-     setIsSaving(true);
-     try {
-        // 1. Ensure both photos are uploaded (if captured)
-        const beforeId = await handleUploadTempPhoto(beforePhoto);
-        const afterId = await handleUploadTempPhoto(afterPhoto);
-
-        // 2. Create comparison record
-        const { error } = await supabase
-           .from('before_after_comparisons')
-           .insert({
-              project_id: projectId,
-              before_photo_id: beforeId,
-              after_photo_id: afterId,
-              comparison_name: name
-           });
-
-        if (error) throw error;
-
-        toast({
-           title: "Success",
-           description: "Comparison saved successfully!"
-        });
-        onSuccess?.();
-        onClose();
-        resetPhotos();
-
-     } catch (err) {
-        console.error("Save failed:", err);
-        toast({
-           variant: "destructive",
-           title: "Save Failed",
-           description: "Could not save the comparison. Please try again."
-        });
-     } finally {
-        setIsSaving(false);
-     }
+  const handleSave = async ({ name, template, file, layout }) => {
+    const errors = getValidationErrors();
+    if (errors.length > 0 || !user) {
+      toast({ variant: 'destructive', title: t('common.error'), description: t('media.beforeAfter.missing') });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const beforeId = await handleUploadTempPhoto(beforePhoto);
+      const afterId = await handleUploadTempPhoto(afterPhoto);
+      const exported = await uploadProjectImage(file, {
+        projectId,
+        userId: user.id,
+        description: name,
+        kind: 'before_after',
+        capturedAt: new Date().toISOString(),
+      });
+      const { error } = await supabase.from('before_after_comparisons').insert({
+        project_id: projectId,
+        before_photo_id: beforeId,
+        after_photo_id: afterId,
+        comparison_name: name,
+        template,
+        export_media_id: exported.id,
+        layout,
+      });
+      if (error) throw error;
+      toast({ title: t('common.success'), description: t('media.beforeAfter.saved') });
+      onSuccess?.();
+      resetPhotos();
+      onClose?.();
+    } catch (err) {
+      console.error(err);
+      toast({ variant: 'destructive', title: t('common.error'), description: t('media.beforeAfter.saveFailed') });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleClose = () => {
-     if (beforePhoto || afterPhoto) {
-        if (window.confirm("Discard changes?")) {
-           resetPhotos();
-           onClose();
-        }
-     } else {
-        onClose();
-     }
+    if ((beforePhoto || afterPhoto) && !window.confirm(t('media.beforeAfter.discard'))) return;
+    resetPhotos();
+    onClose?.();
   };
 
   const renderSlot = (type, photo) => {
-    const isFilled = !!photo;
-    const label = type === 'before' ? 'Before' : 'After';
-
+    const label = type === 'before' ? t('media.beforeAfter.before') : t('media.beforeAfter.after');
     return (
-       <div className={`
-          flex-1 flex flex-col relative rounded-xl border-2 transition-all overflow-hidden h-64 md:h-80
-          ${isFilled ? 'border-transparent' : 'border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900'}
-       `}>
-          {isFilled ? (
-             <>
-               <img 
-                 src={photo.file_url || photo.dataUrl} 
-                 alt={label} 
-                 className="w-full h-full object-cover" 
-               />
-               <div className="absolute top-2 left-2 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded">
-                 {label.toUpperCase()}
-               </div>
-               <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => {
-                     if (type === 'before') setBeforePhoto(null);
-                     else setAfterPhoto(null);
-                  }}>
-                     Change
-                  </Button>
-               </div>
-             </>
-          ) : (
-             <div className="flex flex-col items-center justify-center h-full gap-4 p-4 text-center">
-                <span className="text-lg font-medium text-gray-500">{label} Photo</span>
-                <div className="flex flex-col sm:flex-row gap-2 w-full max-w-[240px]">
-                   <Button 
-                     variant="outline" 
-                     className="flex-1" 
-                     onClick={() => handleStartSelection(type, 'gallery')}
-                   >
-                      <ImageIcon className="w-4 h-4 mr-2" /> Gallery
-                   </Button>
-                   <Button 
-                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" 
-                     onClick={() => handleStartSelection(type, 'capture')}
-                   >
-                      <Camera className="w-4 h-4 mr-2" /> Camera
-                   </Button>
-                </div>
-             </div>
-          )}
-       </div>
+      <div
+        className={`relative flex h-64 flex-1 flex-col overflow-hidden rounded-xl border-2 md:h-80 ${
+          photo ? 'border-transparent' : 'border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900'
+        }`}
+      >
+        {photo ? (
+          <>
+            <img src={photo.file_url || photo.dataUrl} alt={label} className="h-full w-full object-cover" />
+            <div className="absolute left-2 top-2 rounded bg-black/70 px-2 py-1 text-xs font-bold text-white">{label}</div>
+            <div className="absolute inset-x-0 bottom-0 flex gap-2 bg-gradient-to-t from-black/80 to-transparent p-3">
+              <Button
+                variant="secondary"
+                className="h-11 flex-1"
+                onClick={() => handleStartSelection(type, 'gallery')}
+              >
+                {t('media.beforeAfter.change')}
+              </Button>
+              <Button variant="secondary" className="h-11" onClick={() => handleStartSelection(type, 'capture')}>
+                <Camera className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="secondary"
+                className="h-11"
+                onClick={() => (type === 'before' ? setBeforePhoto(null) : setAfterPhoto(null))}
+                aria-label={t('common.delete')}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-4 text-center">
+            <span className="text-lg font-medium text-gray-500">{t(type === 'before' ? 'media.beforeAfter.beforePhoto' : 'media.beforeAfter.afterPhoto')}</span>
+            <div className="flex w-full max-w-[260px] flex-col gap-2 sm:flex-row">
+              <Button variant="outline" className="h-11 flex-1" onClick={() => handleStartSelection(type, 'gallery')}>
+                <ImageIcon className="mr-2 h-4 w-4" /> {t('media.beforeAfter.gallery')}
+              </Button>
+              <Button className="h-11 flex-1 bg-[#0b1f4d] text-[#facc15] hover:bg-black" onClick={() => handleStartSelection(type, 'capture')}>
+                <Camera className="mr-2 h-4 w-4" /> {t('media.beforeAfter.camera')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     );
   };
 
   if (!open) return null;
 
-  // Render specific mode based on state
   if (editorMode === 'capture') {
-     return (
-        <BeforeAfterCaptureMode 
-           overlayImage={activeSlot === 'after' ? beforePhoto : null}
-           onCapture={handleCapture}
-           onClose={() => setEditorMode('initial')}
-        />
-     );
+    return (
+      <BeforeAfterCaptureMode
+        overlayImage={activeSlot === 'after' ? beforePhoto : null}
+        onCapture={handleCapture}
+        onClose={() => setEditorMode(beforePhoto && afterPhoto ? 'compose' : 'initial')}
+      />
+    );
   }
 
   if (editorMode === 'gallery') {
-     return (
-        <Dialog open={true} onOpenChange={() => setEditorMode('initial')}>
-           <DialogContent className="max-w-4xl w-full max-h-[90vh] p-0 overflow-hidden flex flex-col">
-              <BeforeAfterGalleryMode 
-                 projectMedia={projectMedia}
-                 onSelect={handleGallerySelect}
-                 selectedId={activeSlot === 'before' ? beforePhoto?.id : afterPhoto?.id}
-                 onCancel={() => setEditorMode('initial')}
-                 title={`Select ${activeSlot === 'before' ? 'Before' : 'After'} Photo`}
-              />
-           </DialogContent>
-        </Dialog>
-     );
+    const sideLabel = activeSlot === 'before' ? t('media.beforeAfter.before') : t('media.beforeAfter.after');
+    return (
+      <Dialog open onOpenChange={() => setEditorMode(beforePhoto && afterPhoto ? 'compose' : 'initial')}>
+        <DialogContent className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden p-0">
+          <BeforeAfterGalleryMode
+            projectMedia={images}
+            onSelect={(media) => returnAfterPick(activeSlot || 'after', media)}
+            selectedId={activeSlot === 'before' ? beforePhoto?.id : afterPhoto?.id}
+            onCancel={() => setEditorMode(beforePhoto && afterPhoto ? 'compose' : 'initial')}
+            title={t('media.beforeAfter.selectTitle', { side: sideLabel })}
+          />
+        </DialogContent>
+      </Dialog>
+    );
   }
 
-  if (editorMode === 'preview') {
-      return (
-         <Dialog open={true} onOpenChange={() => setEditorMode('initial')}>
-            <DialogContent className="max-w-4xl w-full max-h-[95vh] h-[90vh] p-0 overflow-hidden flex flex-col">
-               <BeforeAfterPreview 
-                  beforePhoto={beforePhoto}
-                  afterPhoto={afterPhoto}
-                  onSave={handleSaveComparison}
-                  onCancel={() => setEditorMode('initial')}
-                  isSaving={isSaving}
-               />
-            </DialogContent>
-         </Dialog>
-      );
+  if (editorMode === 'compose' && beforePhoto && afterPhoto) {
+    return (
+      <BeforeAfterComposer
+        beforePhoto={beforePhoto}
+        afterPhoto={afterPhoto}
+        projectName={projectName}
+        initialTemplate="side-by-side"
+        isSaving={isSaving}
+        onBack={() => setEditorMode('initial')}
+        onSwap={() => {
+          const previousBefore = beforePhoto;
+          setBeforePhoto(afterPhoto);
+          setAfterPhoto(previousBefore);
+        }}
+        onChangeSide={(side) => handleStartSelection(side, 'gallery')}
+        onSave={handleSave}
+      />
+    );
   }
 
-  // Initial Split View
   return (
-    <Dialog open={true} onOpenChange={handleClose}>
-      <DialogContent className="max-w-5xl w-full p-0 gap-0 overflow-hidden bg-white dark:bg-gray-950 md:rounded-2xl max-h-[100dvh] md:max-h-[90vh] h-full md:h-auto flex flex-col">
-         <div className="flex-none p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-gray-950">
-            <div>
-               <h2 className="text-xl font-bold">Create Comparison</h2>
-               <p className="text-sm text-gray-500">Select photos to compare</p>
-            </div>
-            <div className="flex items-center gap-2">
-               {(beforePhoto || afterPhoto) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                     if(window.confirm('Reset all selections?')) resetPhotos();
-                  }} className="text-red-500 hover:bg-red-50">
-                     <RotateCcw className="w-4 h-4 mr-2" /> Reset
-                  </Button>
-               )}
-               <Button variant="ghost" size="icon" onClick={handleClose}>
-                  <X className="w-5 h-5" />
-               </Button>
-            </div>
-         </div>
-
-         <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col gap-6">
-            <div className="flex flex-col md:flex-row gap-4 h-full md:h-auto">
-               {renderSlot('before', beforePhoto)}
-               {renderSlot('after', afterPhoto)}
-            </div>
-            
-            <div className="flex justify-center pt-4 mt-auto md:mt-0">
-               <Button 
-                  size="lg" 
-                  className="w-full md:w-64 h-12 text-lg font-medium shadow-xl"
-                  disabled={!beforePhoto || !afterPhoto}
-                  onClick={() => setEditorMode('preview')}
-               >
-                  Preview & Save
-               </Button>
-            </div>
-         </div>
+    <Dialog open onOpenChange={handleClose}>
+      <DialogContent className="flex h-full max-h-[100dvh] w-full max-w-5xl flex-col gap-0 overflow-hidden bg-white p-0 dark:bg-gray-950 md:h-auto md:max-h-[90vh] md:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 p-4 dark:border-gray-800">
+          <div>
+            <h2 className="text-xl font-bold">{t('media.beforeAfter.create')}</h2>
+            <p className="text-sm text-gray-500">{t('media.beforeAfter.createHint')}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {(beforePhoto || afterPhoto) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-500"
+                onClick={() => {
+                  if (window.confirm(t('media.beforeAfter.resetConfirm'))) resetPhotos();
+                }}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" /> {t('media.beforeAfter.reset')}
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" onClick={handleClose} aria-label={t('common.cancel')}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-8">
+          <div className="flex h-full flex-col gap-4 md:h-auto md:flex-row">
+            {renderSlot('before', beforePhoto)}
+            {renderSlot('after', afterPhoto)}
+          </div>
+          <div className="mt-auto flex justify-center pt-4 md:mt-0">
+            <Button
+              size="lg"
+              className="h-12 w-full bg-[#facc15] text-lg font-semibold text-black hover:bg-[#eab308] md:w-64"
+              disabled={!beforePhoto || !afterPhoto}
+              onClick={() => setEditorMode('compose')}
+            >
+              {t('media.beforeAfter.previewSave')}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
