@@ -6,6 +6,15 @@ import ProjectCardMenu from './ProjectCardMenu';
 import QuickPhotoUpload from './QuickPhotoUpload';
 import ContactAssignmentDialog from './ContactAssignmentDialog';
 import { motion } from 'framer-motion';
+import { gridImageProps } from '@/lib/imageSizes';
+
+const stillUrl = (item) => {
+  if (!item) return null;
+  const thumb = item.thumbnail_url;
+  if (thumb && !/\.(mp4|mov|webm|mkv|avi)(\?|$)/i.test(thumb)) return thumb;
+  if (item.file_type === 'video') return null;
+  return item.file_url || item.uri || null;
+};
 
 // Utility format function
 const formatDateTime = (dateString) => {
@@ -46,24 +55,29 @@ const ProjectCard = ({ project, onClick, onToggleStar, onEdit, onDelete, onRefre
       >
         {/* Thumbnail Area */}
         <div className="relative h-56 bg-gray-100 dark:bg-gray-800 overflow-hidden">
-          {mainThumbnail ? (
-            mainThumbnail.file_type === 'video' ? (
-              <>
-                 <video src={mainThumbnail.file_url} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" muted loop playsInline />
-                 <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="h-12 w-12 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/40 shadow-xl group-hover:scale-110 transition-transform">
-                      <Play className="h-5 w-5 text-white fill-white ml-1" />
-                    </div>
-                 </div>
-              </>
-            ) : (
-              <img 
-                src={mainThumbnail.file_url} 
-                alt="Project Thumbnail" 
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+          {mainThumbnail && stillUrl(mainThumbnail) ? (
+            <>
+              <img
+                src={gridImageProps(mainThumbnail).src || stillUrl(mainThumbnail)}
+                srcSet={mainThumbnail.file_type === 'video' ? undefined : gridImageProps(mainThumbnail).srcSet}
+                sizes="(max-width: 768px) 100vw, 33vw"
+                alt=""
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                 loading="lazy"
+                decoding="async"
               />
-            )
+              {mainThumbnail.file_type === 'video' && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="h-12 w-12 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/40 shadow-xl">
+                    <Play className="h-5 w-5 text-white fill-white ml-1" />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : mainThumbnail?.file_type === 'video' ? (
+            <div className="w-full h-full flex items-center justify-center bg-gray-800">
+              <Play className="h-8 w-8 text-white fill-white" />
+            </div>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 dark:bg-gray-800/50 pattern-grid-lg">
               <div className="h-14 w-14 rounded-full bg-white dark:bg-gray-700 shadow-sm flex items-center justify-center mb-3">
@@ -174,10 +188,25 @@ const ProjectCard = ({ project, onClick, onToggleStar, onEdit, onDelete, onRefre
              <div className="grid grid-cols-4 gap-2 mt-auto mb-4">
                {thumbnailGrid.map((media, idx) => (
                  <div key={media.id || idx} className="aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 relative ring-1 ring-black/5 dark:ring-white/10">
-                    {media.file_type === 'video' ? (
-                       <video src={media.file_url} className="w-full h-full object-cover opacity-80" />
+                    {stillUrl(media) ? (
+                       <img
+                         src={stillUrl(media)}
+                         srcSet={media.file_type === 'video' ? undefined : gridImageProps(media).srcSet}
+                         sizes="80px"
+                         className="w-full h-full object-cover"
+                         alt=""
+                         loading="lazy"
+                         decoding="async"
+                       />
                     ) : (
-                       <img src={media.file_url || media.uri} className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" alt="" />
+                       <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700">
+                         <Play className="h-3.5 w-3.5 text-gray-500" />
+                       </div>
+                    )}
+                    {media.file_type === 'video' && stillUrl(media) && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <Play className="h-3.5 w-3.5 text-white fill-white drop-shadow" />
+                      </div>
                     )}
                  </div>
                ))}

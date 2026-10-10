@@ -217,23 +217,39 @@ const CompanyCamProjectDetailPage = () => {
       const photos = normalizeList(res.data);
       const mapped = photos
         .map((ph) => {
-          const url = extractPhotoUrl(ph);
-          if (!url) return null;
+          const uris = Array.isArray(ph.uris) ? ph.uris : [];
+          const byType = (type) => {
+            const hit = uris.find((entry) => entry?.type === type);
+            return hit?.url || hit?.uri || null;
+          };
+          const original = byType('original') || (typeof ph.uri === 'string' ? ph.uri : null) || ph.url || extractPhotoUrl(ph);
+          const web = byType('web') || original;
+          const thumb = byType('thumbnail') || web;
+          if (!original && !thumb) return null;
           const tags = Array.isArray(ph.tags)
             ? ph.tags
-                .map((t) => (typeof t === 'string' ? t : t.display_value || t.name))
+                .map((tag) => (typeof tag === 'string' ? tag : tag.display_value || tag.name))
                 .filter(Boolean)
             : [];
+          const coords = ph.coordinates || ph.coordinate || {};
+          const captured = toIso(ph.captured_at) || toIso(ph.taken_at);
           return {
             id: ph.id,
-            file_url: url,
-            thumbnail_url: url,
+            file_url: original || thumb,
+            web_url: web || original || thumb,
+            thumbnail_url: thumb || web || original,
             file_type: 'image',
-            created_at: toIso(ph.created_at) || toIso(ph.taken_at) || new Date().toISOString(),
+            captured_at: captured,
+            created_at: toIso(ph.created_at) || captured || new Date().toISOString(),
+            latitude: coords.lat ?? coords.latitude ?? null,
+            longitude: coords.lng ?? coords.lon ?? coords.longitude ?? null,
             description: ph.description || ph.caption || null,
             media_tags: tags.map((name) => ({ tag_id: name, tags: { name } })),
             uploaded_by_profile: ph.user
-              ? { initials: (ph.user.name || ph.user.email || 'CC').slice(0, 2).toUpperCase() }
+              ? {
+                  full_name: ph.user.name || ph.user.email || 'CompanyCam',
+                  initials: (ph.user.name || ph.user.email || 'CC').slice(0, 2).toUpperCase(),
+                }
               : { initials: 'CC' },
           };
         })

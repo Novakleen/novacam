@@ -289,13 +289,15 @@ const ProjectDetailPage = () => {
         .from('media')
         .select(
           `
-          id, project_id, file_url, file_type, thumbnail_url, description,
-          created_at, uploaded_by,
+          id, project_id, file_url, web_url, thumbnail_url, file_type, description,
+          created_at, captured_at, latitude, longitude, width, height, duration,
+          uploaded_by,
           uploaded_by_profile:profiles!uploaded_by(full_name, initials),
           media_tags(tag_id, tags(name))
         `
         )
         .eq('project_id', id)
+        .order('captured_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
       if (error) throw error;

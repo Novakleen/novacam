@@ -123,10 +123,21 @@ export const listProjectPhotos = (projectId, params) => makeRequest('GET', `/pro
 export const getPhoto = (id) => makeRequest('GET', `/photos/${id}`);
 export const updatePhoto = (id, data) => makeRequest('PUT', `/photos/${id}`, data);
 export const deletePhoto = (id) => makeRequest('DELETE', `/photos/${id}`);
-// Uploading photo natively might require a two-step process in CC (create photo, get URL, upload). 
-// Here we proxy a basic payload.
-export const uploadPhoto = (projectId, fileDataBase64, metadata) => 
-  makeRequest('POST', `/projects/${projectId}/photos`, { ...metadata, file_data: fileDataBase64 });
+
+/**
+ * CompanyCam POST /projects/{projectId}/photos
+ * Documented body: { photo: { uri, captured_at, coordinates, tags } }
+ * coordinates is { lat, lng } when known.
+ */
+export const uploadPhoto = (projectId, photo = {}) =>
+  makeRequest('POST', `/projects/${projectId}/photos`, {
+    photo: {
+      uri: photo.uri ?? null,
+      captured_at: photo.captured_at ?? null,
+      coordinates: photo.coordinates ?? null,
+      tags: photo.tags ?? null,
+    },
+  });
 
 // Users & Team Members
 export const listTeamMembers = (params) => makeRequest('GET', '/users', null, params);

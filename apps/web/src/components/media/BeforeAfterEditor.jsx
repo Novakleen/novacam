@@ -9,23 +9,14 @@ import BeforeAfterGalleryMode from './BeforeAfterGalleryMode';
 import BeforeAfterPreview from './BeforeAfterPreview';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
-
-// Helper to convert dataURL to Blob
-const dataURLtoBlob = (dataurl) => {
-    const arr = dataurl.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new Blob([u8arr], { type: mime });
-};
+import { uploadProjectImage } from '@/lib/uploadProjectImage';
+import { dataUrlToFile } from '@/lib/dataUrl';
+import { useTranslation } from 'react-i18next';
 
 const BeforeAfterEditor = ({ open, onClose, projectId, projectMedia, onSuccess }) => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
 
   const {
@@ -73,34 +64,14 @@ const BeforeAfterEditor = ({ open, onClose, projectId, projectMedia, onSuccess }
   const handleUploadTempPhoto = async (photoObj) => {
      if (!photoObj.isTemp) return photoObj.id; // Already uploaded
 
-     const blob = dataURLtoBlob(photoObj.dataUrl);
-     const fileName = `${projectId}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-
-     const { error: uploadError } = await supabase.storage
-        .from('project-media')
-        .upload(fileName, blob);
-     
-     if (uploadError) throw uploadError;
-
-     const { data: { publicUrl } } = supabase.storage
-        .from('project-media')
-        .getPublicUrl(fileName);
-
-     // Insert into media table
-     const { data: mediaData, error: dbError } = await supabase
-        .from('media')
-        .insert({
-           project_id: projectId,
-           uploaded_by: user.id,
-           file_url: publicUrl,
-           file_type: 'image',
-           thumbnail_url: publicUrl,
-           description: 'Captured for Before/After'
-        })
-        .select()
-        .single();
-
-     if (dbError) throw dbError;
+     const file = dataUrlToFile(photoObj.dataUrl, `before-after-${Date.now()}.jpg`);
+     const mediaData = await uploadProjectImage(file, {
+        projectId,
+        userId: user.id,
+        description: t('media.beforeAfterCaptured'),
+        requestGeolocation: true,
+        capturedAt: new Date().toISOString(),
+     });
      return mediaData.id;
   };
 
