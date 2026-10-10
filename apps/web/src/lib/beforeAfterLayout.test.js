@@ -107,6 +107,52 @@ test('cover placement centers a landscape photo and pans in dest pixels', () => 
   assert.equal(panned.rotation, 90);
 });
 
+function pointInPolygon(x, y, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const crosses = (yi > y) !== (yj > y);
+    if (!crosses) continue;
+    const xCross = ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (x < xCross) inside = !inside;
+  }
+  return inside;
+}
+
+function boxesOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+test('diagonal labels sit inside their own regions', () => {
+  for (const logoCorner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+    const layout = layoutComparison({ template: 'diagonal', showDateStrip: true, logoCorner });
+    const polygon = layout.frames.clip.beforePolygon;
+    const { before, after } = layout.labelBoxes;
+    const beforeCenter = { x: before.x + before.w / 2, y: before.y + before.h / 2 };
+    const afterCenter = { x: after.x + after.w / 2, y: after.y + after.h / 2 };
+    assert.equal(pointInPolygon(beforeCenter.x, beforeCenter.y, polygon), true, `${logoCorner} before`);
+    assert.equal(pointInPolygon(afterCenter.x, afterCenter.y, polygon), false, `${logoCorner} after`);
+    assert.ok(beforeCenter.x < layout.width / 2, logoCorner);
+    assert.ok(afterCenter.x > layout.width / 2, logoCorner);
+    assert.ok(after.y + after.h < layout.height / 2, logoCorner);
+    assert.ok(before.y + before.h <= layout.dateStrip.y, logoCorner);
+    assert.equal(boxesOverlap(before, layout.logo), false, `${logoCorner} before/logo`);
+    assert.equal(boxesOverlap(after, layout.logo), false, `${logoCorner} after/logo`);
+  }
+});
+
+test('stacked labels stay in their own half and above the date strip', () => {
+  const layout = layoutComparison({ template: 'stacked', showDateStrip: true });
+  const { before, after } = layout.labelBoxes;
+  const mid = layout.height / 2;
+  assert.ok(before.y >= layout.frames.before.y);
+  assert.ok(before.y + before.h <= mid);
+  assert.ok(after.y >= mid);
+  assert.ok(after.y + after.h <= layout.frames.after.y + layout.frames.after.h);
+  assert.ok(after.y + after.h <= layout.dateStrip.y);
+});
+
 test('logo sits above the date strip and the strip spans the bottom edge', () => {
   const layout = layoutComparison({
     template: 'side-by-side',

@@ -155,7 +155,7 @@ export function dateStripHeight(height, enabled) {
   return Math.max(28, Math.round(height * 0.055));
 }
 
-export function labelBoxes(width, height, template, showDateStrip) {
+export function labelBoxes(width, height, template, showDateStrip, logoCorner = 'top-left') {
   const pad = Math.round(Math.min(width, height) * 0.03);
   const boxW = Math.round(Math.min(width, height) * 0.28);
   const boxH = Math.max(22, Math.round(Math.min(width, height) * 0.07));
@@ -167,6 +167,18 @@ export function labelBoxes(width, height, template, showDateStrip) {
     };
   }
   const y = height - boxH - pad - strip;
+  if (template === 'diagonal') {
+    // The before polygon owns the whole bottom edge, so "after" cannot sit bottom-right.
+    const logo = logoBox(width, height, logoCorner, showDateStrip);
+    let beforeY = y;
+    if (logoCorner === 'bottom-left') beforeY = Math.min(beforeY, logo.y - boxH - pad);
+    let afterY = pad;
+    if (logoCorner === 'top-right') afterY = logo.y + logo.h + pad;
+    return {
+      before: { x: pad, y: beforeY, w: boxW, h: boxH },
+      after: { x: width - boxW - pad, y: afterY, w: boxW, h: boxH },
+    };
+  }
   return {
     before: { x: pad, y, w: boxW, h: boxH },
     after: { x: width - boxW - pad, y, w: boxW, h: boxH },
@@ -220,7 +232,7 @@ export function layoutComparison(options = {}) {
     longEdge: Math.max(size.width, size.height),
     frames,
     labels: labelsFor(options.labelLang),
-    labelBoxes: labelBoxes(size.width, size.height, template, showDateStrip),
+    labelBoxes: labelBoxes(size.width, size.height, template, showDateStrip, options.logoCorner || 'top-left'),
     logo: logoBox(size.width, size.height, options.logoCorner || 'top-left', showDateStrip),
     dateStrip: dateStripBox(size.width, size.height, showDateStrip),
     sliderImageWidthPercent: template === 'slider' ? sliderImageWidthPercent(options.slider) : null,

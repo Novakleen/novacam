@@ -63,7 +63,7 @@ const CompanyLogoSetting = () => {
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('media.branding.title')}</h2>
       <p className="mt-1 text-sm text-gray-500">{t('media.branding.hint')}</p>
       <div className="mt-4 flex items-center gap-4">
-        <img src={logoUrl} alt="" className="h-16 w-16 rounded-xl bg-[#0b1f4d] object-contain" />
+        <img src={logoUrl} alt="" className="h-16 w-16 rounded-xl bg-black object-contain" />
         <div className="flex flex-wrap gap-2">
           <label className="inline-flex h-11 cursor-pointer items-center rounded-md bg-[#facc15] px-4 text-sm font-semibold text-black">
             {t('media.branding.upload')}

@@ -83,7 +83,7 @@ export function drawWordmark(ctx, box) {
   roundRect(ctx, box.x, box.y, box.w, box.h, box.w * 0.12);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
-  ctx.fillStyle = BRAND.navy;
+  ctx.fillStyle = BRAND.black;
   roundRect(ctx, box.x + 2, box.y + 2, box.w - 4, box.h - 4, box.w * 0.1);
   ctx.fill();
   ctx.fillStyle = BRAND.yellow;

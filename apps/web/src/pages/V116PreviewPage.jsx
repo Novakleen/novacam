@@ -63,15 +63,16 @@ const V116PreviewPage = () => {
   const [params] = useSearchParams();
   const view = params.get('view') || 'composer';
   const template = params.get('template') || 'side-by-side';
+  const lang = params.get('lang') || 'fr';
   const [shots, setShots] = useState(null);
   const [exported, setExported] = useState(null);
   const [exportSize, setExportSize] = useState('');
   const [langReady, setLangReady] = useState(false);
 
   useEffect(() => {
-    i18n.changeLanguage('fr').then(() => setLangReady(true));
+    i18n.changeLanguage(lang).then(() => setLangReady(true));
     setShots({ before: wall('before', 900, 1200), after: wall('after', 900, 1200) });
-  }, []);
+  }, [lang]);
 
   const beforePhoto = useMemo(() => (shots ? { id: 'before', dataUrl: shots.before, captured_at: '2026-10-08T15:20:00Z' } : null), [shots]);
   const afterPhoto = useMemo(() => (shots ? { id: 'after', dataUrl: shots.after, captured_at: '2026-10-08T16:45:00Z' } : null), [shots]);
@@ -88,7 +89,7 @@ const V116PreviewPage = () => {
       const file = await exportComparisonJpeg({
         template,
         slider: 58,
-        labelLang: 'fr',
+        labelLang: lang,
         logoCorner: 'top-left',
         showDateStrip: true,
         projectName: 'Façade NovaKleen',
@@ -103,7 +104,7 @@ const V116PreviewPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [view, shots, template]);
+  }, [view, shots, template, lang]);
 
   if (!langReady || !shots) return null;
 
@@ -133,20 +134,22 @@ const V116PreviewPage = () => {
 
   if (view === 'export') {
     return (
-      <div data-testid="ba-export" className="relative min-h-screen bg-black">
-        {exported && (
-          <img
-            src={exported.url}
-            alt="Export JPEG"
-            className="mx-auto block max-h-screen w-full object-contain"
-            onLoad={(event) => {
-              const node = event.currentTarget;
-              setExportSize(`${node.naturalWidth}×${node.naturalHeight}`);
-            }}
-          />
-        )}
+      <div data-testid="ba-export" className="flex h-screen flex-col bg-black">
+        <div className="flex min-h-0 flex-1 items-center justify-center p-3">
+          {exported && (
+            <img
+              src={exported.url}
+              alt="Export JPEG"
+              className="max-h-full max-w-full object-contain"
+              onLoad={(event) => {
+                const node = event.currentTarget;
+                setExportSize(`${node.naturalWidth}×${node.naturalHeight}`);
+              }}
+            />
+          )}
+        </div>
         {exportSize && (
-          <p className="absolute left-3 top-3 rounded bg-black/80 px-2 py-1 text-xs font-semibold text-[#facc15]">
+          <p className="shrink-0 px-3 pb-4 text-center text-xs font-semibold text-[#facc15]">
             JPEG {exportSize}
           </p>
         )}

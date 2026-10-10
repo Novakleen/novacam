@@ -327,23 +327,25 @@ const BeforeAfterComposer = ({
       data-template={template}
       className="fixed inset-0 z-[80] flex flex-col bg-[#0b1220] text-white"
     >
-      <header className="flex items-center gap-2 px-3 pt-3">
-        <Button variant="ghost" size="icon" className="h-11 w-11 text-white" onClick={onBack} aria-label={t('common.cancel')}>
+      <header className="flex flex-wrap items-center gap-2 px-3 pt-3">
+        <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-white" onClick={onBack} aria-label={t('common.cancel')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder={t('media.beforeAfter.namePlaceholder')}
-          className="h-11 flex-1 rounded-lg bg-white/10 px-3 text-sm placeholder:text-white/40"
+          className="h-11 min-w-0 flex-1 basis-0 rounded-lg bg-white/10 px-3 text-sm placeholder:text-white/40"
           aria-label={t('media.beforeAfter.name')}
         />
-        <Button variant="ghost" size="icon" className="h-11 w-11 text-white" onClick={handleShare} disabled={busy || !beforeImage || !afterImage} aria-label={t('media.beforeAfter.share')}>
-          <Share2 className="h-5 w-5" />
-        </Button>
-        <Button className="h-11 bg-[#facc15] font-semibold text-black hover:bg-[#eab308]" onClick={handleSave} disabled={busy || !beforeImage || !afterImage}>
-          {busy ? t('media.beforeAfter.saving') : t('media.beforeAfter.save')}
-        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-white" onClick={handleShare} disabled={busy || !beforeImage || !afterImage} aria-label={t('media.beforeAfter.share')}>
+            <Share2 className="h-5 w-5" />
+          </Button>
+          <Button className="h-11 shrink-0 whitespace-nowrap bg-[#facc15] px-3 font-semibold text-black hover:bg-[#eab308]" onClick={handleSave} disabled={busy || !beforeImage || !afterImage}>
+            {busy ? t('media.beforeAfter.saving') : t('media.beforeAfter.save')}
+          </Button>
+        </div>
       </header>
 
       <div ref={frameRef} className="relative flex flex-1 min-h-0 items-center justify-center px-3 py-2">
