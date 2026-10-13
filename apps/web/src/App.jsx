@@ -34,11 +34,13 @@ import MarginsPage from '@/pages/MarginsPage';
 import FleetPage from '@/pages/FleetPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
 import TresoImportPage from '@/pages/TresoImportPage';
+import TresoAValiderPage from '@/pages/TresoAValiderPage';
 const devRoutes = import.meta.env.DEV
   ? [
       { path: '/dev/photo-preview', Page: React.lazy(() => import('@/pages/PhotoPreviewPage')) },
       { path: '/dev/v116', Page: React.lazy(() => import('@/pages/V116PreviewPage')) },
       { path: '/dev/treso-import', Page: React.lazy(() => import('@/pages/TresoImportPreviewPage')) },
+      { path: '/dev/treso-a-valider', Page: React.lazy(() => import('@/pages/TresoAValiderPreviewPage')) },
     ]
   : [];
 
@@ -229,6 +231,7 @@ function AppRoutes() {
           <Route path="/fleet/:section/:id" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/margins" element={<RoleRoute allowedRoles={['Admin', 'Manager']}><MarginsPage /></RoleRoute>} />
           <Route path="/tresorerie/import" element={<RoleRoute allowedRoles={['Admin']}><TresoImportPage /></RoleRoute>} />
+          <Route path="/tresorerie/a-valider" element={<RoleRoute allowedRoles={['Admin']}><TresoAValiderPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
           {devRoutes.map(({ path, Page }) => (

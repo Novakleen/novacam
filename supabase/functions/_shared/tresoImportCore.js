@@ -3,6 +3,7 @@
  * The database is injected so node tests can use an in-memory port.
  */
 import { parseAccountableXlsx, parseIsoDate, sha256Hex } from './tresoAccountable.js'
+import { applyBankMatch } from './tresoMatch.js'
 
 export const BELFIUS_IBAN = 'BE25068955038482'
 const MAX_BYTES = 20 * 1024 * 1024
@@ -299,6 +300,11 @@ export async function handleTresoImport(req, deps) {
       balances,
       db: deps.db,
     })
+    const match = await applyBankMatch(deps.db)
+    if (match) {
+      report.matches_auto = match.auto
+      report.matches_a_valider = match.a_valider
+    }
     return json(cors, report, 200)
   } catch (error) {
     console.error('treso-import', error?.message || error)
@@ -458,5 +464,83 @@ export function supabaseTresoDb(admin) {
         if (error) throw error
       }
     },
+    async getInvoiceCursor() {
+      const { data, error } = await admin.from('treso_settings').select('hubspot_invoices_synced_through').eq('id', 1).maybeSingle()
+      if (error) throw error
+      return data?.hubspot_invoices_synced_through || null
+    },
+    async setInvoiceCursor(value) {
+      const { error } = await admin.from('treso_settings').update({ hubspot_invoices_synced_through: value }).eq('id', 1)
+      if (error) throw error
+    },
+    async upsertInvoices(rows, { userId } = {}) {
+      let inserted = 0
+      let updated = 0
+      for (const part of chunk(rows, 100)) {
+        const ids = part.map((row) => row.hubspot_invoice_id)
+        const { data, error } = await admin.from('treso_client_invoices').select('hubspot_invoice_id').in('hubspot_invoice_id', ids)
+        if (error) throw error
+        const existing = new Set((data || []).map((row) => row.hubspot_invoice_id))
+        const fresh = []
+        const known = []
+        for (const row of part) {
+          if (existing.has(row.hubspot_invoice_id)) known.push(row)
+          else fresh.push(userId ? { ...row, created_by: userId } : row)
+        }
+        if (fresh.length) {
+          const { error: insertError } = await admin.from('treso_client_invoices').insert(fresh)
+          if (insertError) throw insertError
+          inserted += fresh.length
+        }
+        for (const row of known) {
+          const { hubspot_invoice_id, ...patch } = row
+          const { error: updateError } = await admin.from('treso_client_invoices').update(patch).eq('hubspot_invoice_id', hubspot_invoice_id)
+          if (updateError) throw updateError
+          updated += 1
+        }
+      }
+      return { inserted, updated }
+    },
+    async loadMatchState() {
+      const accounts = await this.ensureAccounts()
+      const transactions = await selectAll(admin, 'treso_bank_transactions', 'id, account_id, booking_date, amount, counterparty_name, communication, match_status, match_method, client_invoice_id, is_internal_transfer, excluded_from_cash', (query) => query.gt('amount', 0))
+      const invoices = await selectAll(admin, 'treso_client_invoices', 'id, invoice_number, client_name, invoice_date, amount_ttc, hubspot_invoice_id, excluded_from_cash, bank_paid_amount, paid_at')
+      return { transactions, invoices, belfiusAccountId: accounts.belfiusId }
+    },
+    async applyMatchPlan(plan) {
+      for (const update of plan.transactionUpdates) {
+        const { error } = await admin.from('treso_bank_transactions').update({
+          client_invoice_id: update.client_invoice_id,
+          match_status: update.match_status,
+          match_method: update.match_method,
+        }).eq('id', update.id)
+        if (error) throw error
+      }
+      for (const update of plan.invoiceUpdates) {
+        const { error } = await admin.from('treso_client_invoices').update({
+          bank_paid_amount: update.bank_paid_amount,
+          paid_at: update.paid_at,
+        }).eq('id', update.id)
+        if (error) throw error
+        if (!update.hubspot_invoice_id) continue
+        const project = admin.from('project_invoices').update({ status: update.paid ? 'paid' : 'open' }).eq('hubspot_invoice_id', update.hubspot_invoice_id)
+        const { error: projectError } = update.paid ? await project : await project.eq('status', 'paid')
+        if (projectError) throw projectError
+      }
+    },
   }
+}
+
+async function selectAll(admin, table, columns, refine) {
+  const pageSize = 1000
+  const rows = []
+  for (let from = 0; ; from += pageSize) {
+    let query = admin.from(table).select(columns).range(from, from + pageSize - 1)
+    if (refine) query = refine(query)
+    const { data, error } = await query
+    if (error) throw error
+    rows.push(...(data || []))
+    if (!data || data.length < pageSize) break
+  }
+  return rows
 }

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import TresoSubnav from '@/components/treso/TresoSubnav';
 import {
   createTresoApiKey,
   importAccountableFile,
@@ -167,6 +168,7 @@ const TresoImportPage = ({ preview = null }) => {
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">{t('treso.subtitle')}</p>
         </div>
+        <TresoSubnav active="import" />
 
         <form onSubmit={onImport} className="space-y-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6">
           <div
@@ -254,6 +256,8 @@ const TresoImportPage = ({ preview = null }) => {
               <Stat label={t('treso.internal')} value={report.internal_transfers ?? 0} />
               <Stat label={t('treso.billsInserted')} value={report.supplier_bills_inserted ?? 0} />
               <Stat label={t('treso.billsPaid')} value={report.supplier_bills_marked_paid ?? 0} />
+              <Stat label={t('treso.matchesAuto')} value={report.matches_auto ?? 0} />
+              <Stat label={t('treso.matchesReview')} value={report.matches_a_valider ?? 0} />
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300">
               {t('treso.dateRange')} : {formatDay(report.date_min)} — {formatDay(report.date_max)}
