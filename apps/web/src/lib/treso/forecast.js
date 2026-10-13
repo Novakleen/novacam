@@ -19,10 +19,11 @@ function unwrap(result) {
 
 /**
  * Read the Admin-visible treasury tables and shape them for projectTreasury.
- * Quote amounts are passed as HT; the engine applies the TTC ratio.
+ * Signed jobs already store TTC. event_date is the calendar day; the engine
+ * adds collection_delay_days. A deal with a client invoice is left out.
  */
 export async function loadForecastInput(client = supabase) {
-  const [settings, accounts, snapshots, commitments, invoices, bills, events, transactions, links, batches] = await Promise.all([
+  const [settings, accounts, snapshots, commitments, invoices, bills, events, transactions, signedJobs, batches] = await Promise.all([
     client.from('treso_settings').select('*').eq('id', 1).maybeSingle(),
     client.from('treso_accounts').select('id, name, kind, include_in_cash, is_active'),
     client.from('treso_balance_snapshots').select('account_id, balance_date, balance, source, created_at'),
@@ -31,7 +32,7 @@ export async function loadForecastInput(client = supabase) {
     client.from('treso_supplier_bills').select('id, supplier_name, invoice_date, booking_date, due_date, due_date_source, amount_ttc, is_paid, excluded_from_cash, replaces_commitment_id'),
     client.from('treso_cash_events').select('id, event_date, label, amount, direction, excluded_from_cash'),
     client.from('treso_bank_transactions').select('id, account_id, booking_date, amount, counterparty_name, communication, excluded_from_cash, is_internal_transfer'),
-    client.from('treso_calendar_links').select('id, project_id, hubspot_deal_id, status, projects(google_calendar_end, hubspot_quote_amount)'),
+    client.from('treso_signed_jobs').select('hubspot_deal_id, label, client_name, amount_ttc, event_date'),
     client.from('treso_import_batches').select('report, created_at').eq('kind', 'accountable_xlsx').order('created_at', { ascending: false }).limit(30),
   ]);
   if (settings.error) throw settings.error;
@@ -45,16 +46,15 @@ export async function loadForecastInput(client = supabase) {
     }
   }
   const invoiceRows = unwrap(invoices);
-  const dealIds = new Set(invoiceRows.filter((row) => !row.excluded_from_cash && row.hubspot_deal_id).map((row) => row.hubspot_deal_id));
-  const projectIds = new Set(invoiceRows.filter((row) => !row.excluded_from_cash && row.project_id).map((row) => row.project_id));
-  const jobs = unwrap(links).map((link) => ({
-    id: link.id,
-    hubspot_deal_id: link.hubspot_deal_id,
-    project_id: link.project_id,
-    end_date: link.projects?.google_calendar_end || null,
-    amount_ht: link.projects?.hubspot_quote_amount ?? null,
-    link_status: link.status,
-    invoiced: dealIds.has(link.hubspot_deal_id) || projectIds.has(link.project_id),
+  const dealIds = new Set(invoiceRows.filter((row) => row.hubspot_deal_id).map((row) => String(row.hubspot_deal_id)));
+  const jobs = unwrap(signedJobs).map((row) => ({
+    id: row.hubspot_deal_id,
+    hubspot_deal_id: row.hubspot_deal_id,
+    label: row.label || row.client_name,
+    client_name: row.client_name,
+    end_date: row.event_date,
+    amount_ttc: row.amount_ttc,
+    invoiced: Boolean(row.hubspot_deal_id) && dealIds.has(String(row.hubspot_deal_id)),
   }));
   return {
     settings: settings.data || {},

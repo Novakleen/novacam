@@ -176,6 +176,8 @@ const TresoDashboardPage = ({ preview = null, initialWhatIf = null }) => {
         data-db-writes={dbWrites}
         data-cash-count={input?.cashEvents?.length ?? 0}
         data-what-if={view?.simulated ? 'on' : 'off'}
+        data-signed-total={view?.signedJobs?.total ?? ''}
+        data-sans-date={view?.signedJobs?.undated?.length ?? ''}
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -276,7 +278,33 @@ const TresoDashboardPage = ({ preview = null, initialWhatIf = null }) => {
                 </p>
                 <p className="mt-1 text-sm text-gray-500">{t('treso.invoiceCount', { count: kpis.overdue_count })}</p>
               </button>
+
+              <article data-testid="treso-signed-jobs" className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 break-words">{t('treso.kpiSignedJobs')}</h2>
+                <p className="mt-2 text-2xl font-semibold tabular-nums leading-tight text-gray-900 dark:text-white">
+                  {money(view.signedJobs.total)}
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {t('treso.signedJobCount', { count: view.signedJobs.count })}
+                  {view.signedJobs.undated.length > 0 && ` · ${t('treso.sansDateCount', { count: view.signedJobs.undated.length })}`}
+                </p>
+              </article>
             </div>
+
+            {view.signedJobs.undated.length > 0 && (
+              <section aria-label={t('treso.sansDateTitle')} data-testid="treso-sans-date" className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+                <h2 className="font-semibold text-gray-900 dark:text-white">{t('treso.sansDateTitle')}</h2>
+                <p className="mt-1 text-sm text-gray-500 break-words">{t('treso.sansDateHint')}</p>
+                <ul className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
+                  {view.signedJobs.undated.map((row) => (
+                    <li key={row.id} className="flex items-start justify-between gap-3 py-2">
+                      <p className="min-w-0 break-words text-sm text-gray-900 dark:text-white">{row.label}</p>
+                      <span className="shrink-0 text-sm font-medium tabular-nums">{money(row.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {showOverdue && (
               <section aria-label={t('treso.overdueList')} className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
