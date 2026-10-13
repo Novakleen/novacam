@@ -1,5 +1,4 @@
-import { invoiceIsPaid } from '../../../../../supabase/functions/_shared/tresoMatch.js';
-import { projectTreasury, projectWhatIf } from '../../../../../supabase/functions/_shared/tresoForecast.js';
+import { openClientReceivableTotal, projectTreasury, projectWhatIf } from '../../../../../supabase/functions/_shared/tresoForecast.js';
 
 export const MOVEMENT_PREVIEW_LIMIT = 10;
 export const MOVEMENT_HORIZON_DAYS = 30;
@@ -80,16 +79,8 @@ export function cashAccountName(accounts) {
   return current?.name || '';
 }
 
-export function openClientTotal(invoices) {
-  let sum = 0;
-  for (const invoice of invoices || []) {
-    if (invoice.excluded_from_cash || invoice.paid_at) continue;
-    const total = Number(invoice.amount_ttc);
-    if (!Number.isFinite(total) || total === 0) continue;
-    if (invoiceIsPaid(invoice.bank_paid_amount, invoice.amount_ttc)) continue;
-    sum += total - Number(invoice.bank_paid_amount || 0);
-  }
-  return Math.round(sum * 100) / 100;
+export function openClientTotal(invoices, facturesMinDate) {
+  return openClientReceivableTotal(invoices, facturesMinDate).total;
 }
 
 export function openSupplierTotal(bills) {
@@ -239,7 +230,7 @@ export function buildScreen(input = {}, whatIf = null) {
     : null;
   const computeMs = Date.now() - started;
   const bills = input.supplierBills || input.supplier_bills || [];
-  const clients = openClientTotal(input.invoices);
+  const clients = openClientTotal(input.invoices, input.facturesMinDate);
   const suppliers = openSupplierTotal(bills);
   const lists = buildMovementLists({
     result: base,

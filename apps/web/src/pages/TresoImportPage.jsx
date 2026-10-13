@@ -341,6 +341,12 @@ const TresoImportPage = ({ preview = null }) => {
               <Stat label={t('treso.billsPaid')} value={report.supplier_bills_marked_paid ?? 0} />
               <Stat label={t('treso.matchesAuto')} value={report.matches_auto ?? 0} />
               <Stat label={t('treso.matchesReview')} value={report.matches_a_valider ?? 0} />
+              {report.factures_present && (
+                <>
+                  <Stat label={t('treso.facturesMatched')} value={report.factures_matched ?? 0} />
+                  <Stat label={t('treso.facturesUnmatched')} value={report.factures_unmatched ?? 0} />
+                </>
+              )}
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300">
               {t('treso.dateRange')} : {formatDay(report.date_min)} — {formatDay(report.date_max)}

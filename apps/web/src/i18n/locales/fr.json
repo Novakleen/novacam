@@ -1306,6 +1306,8 @@
     "actionFailed": "Action impossible.",
     "matchesAuto": "Rapprochements auto",
     "matchesReview": "À valider",
+    "facturesMatched": "Factures Accountable rapprochées",
+    "facturesUnmatched": "Factures Accountable sans correspondance",
     "lastImport": "Dernier import",
     "noImport": "Aucun import pour l'instant.",
     "lastImportFailed": "Impossible de lire le dernier import.",

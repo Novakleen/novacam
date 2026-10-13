@@ -3,8 +3,10 @@ import assert from 'node:assert/strict'
 import {
   advanceCommitments,
   classifyImportedBill,
+  clientInvoiceRemaining,
   formatBrusselsDateTime,
   interpretPaymentTerms,
+  isClientInvoiceOpen,
   presentLastImport,
   projectTreasury,
   projectWhatIf,
@@ -100,13 +102,13 @@ function prototypeInput(extra = {}) {
       commitment({ id: 'loan225', label: 'Prêt 22,5k', counterparty: 'Prêt 22,5k', amount: 625, frequency: 'monthly', day_of_month: 10, next_due_date: '2026-10-10', remaining_occurrences: 36, match_pattern: 'pret 22' }),
     ],
     invoices: [
-      { id: 'i1', client_name: 'Client 1', invoice_date: '2026-05-29', amount_ttc: 810.9, bank_paid_amount: 0 },
-      { id: 'i2', client_name: 'Client 2', invoice_date: '2026-07-08', amount_ttc: 449.72, bank_paid_amount: 0 },
-      { id: 'i3', client_name: 'Client 3', invoice_date: '2026-07-31', amount_ttc: 913.87, bank_paid_amount: 0 },
-      { id: 'i4', client_name: 'Client 4', invoice_date: '2026-08-18', amount_ttc: 3079.84, bank_paid_amount: 0 },
-      { id: 'i5', client_name: 'Client 5', invoice_date: '2026-08-25', amount_ttc: 513.46, bank_paid_amount: 0 },
-      { id: 'i6', client_name: 'Client 6', invoice_date: '2026-09-25', amount_ttc: 1766.04, bank_paid_amount: 0 },
-      { id: 'i7', client_name: 'Client 7', invoice_date: '2026-10-07', amount_ttc: 2592, bank_paid_amount: 0 },
+      { id: 'i1', client_name: 'Client 1', invoice_date: '2026-05-29', amount_ttc: 810.9, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'i2', client_name: 'Client 2', invoice_date: '2026-07-08', amount_ttc: 449.72, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'i3', client_name: 'Client 3', invoice_date: '2026-07-31', amount_ttc: 913.87, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'i4', client_name: 'Client 4', invoice_date: '2026-08-18', amount_ttc: 3079.84, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'i5', client_name: 'Client 5', invoice_date: '2026-08-25', amount_ttc: 513.46, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'i6', client_name: 'Client 6', invoice_date: '2026-09-25', amount_ttc: 1766.04, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'i7', client_name: 'Client 7', invoice_date: '2026-10-07', amount_ttc: 2592, bank_paid_amount: 0, accountable_status: 'Envoyé' },
       { id: 'q1', client_name: 'Quimesis', invoice_date: '2026-07-09', amount_ttc: 16131.72, excluded_from_cash: true },
       { id: 'q2', client_name: 'Quimesis', invoice_date: '2026-07-09', amount_ttc: 1908.48, excluded_from_cash: true },
     ],
@@ -384,6 +386,69 @@ test('grey alert when the books are above the threshold but the bank data is sta
   assert.equal(result.kpis.data_stale, true)
   assert.equal(result.kpis.alert_level, 'grey')
   assert.equal(result.kpis.alert_week, null)
+})
+
+test('client invoices are open only when Accountable status is Envoyé', () => {
+  const minDate = '2026-09-01'
+  const open = {
+    id: 'open',
+    invoice_number: '2BLX-2632',
+    client_name: 'Client démo',
+    invoice_date: '2026-09-01',
+    amount_ttc: 1000,
+    bank_paid_amount: 225,
+    paid_at: '2026-09-20',
+    hubspot_status: 'paid',
+    accountable_status: 'Envoyé',
+  }
+  const paid = {
+    id: 'paid',
+    invoice_number: '2BLX-2700',
+    invoice_date: '2026-09-02',
+    amount_ttc: 400,
+    bank_paid_amount: 0,
+    hubspot_status: 'open',
+    accountable_status: 'Payé',
+  }
+  const old = {
+    id: 'old',
+    invoice_number: '2BLX-1001',
+    invoice_date: '2026-01-15',
+    amount_ttc: 5000,
+    bank_paid_amount: 0,
+    hubspot_status: 'open',
+  }
+  const overpaid = {
+    id: 'over',
+    invoice_number: '2BLX-2633',
+    invoice_date: '2026-09-04',
+    amount_ttc: 100,
+    bank_paid_amount: 300,
+    accountable_status: 'Envoyé',
+  }
+  assert.equal(isClientInvoiceOpen(open, minDate), true)
+  assert.equal(isClientInvoiceOpen(paid, minDate), false)
+  assert.equal(isClientInvoiceOpen(old, minDate), false)
+  assert.equal(isClientInvoiceOpen({ ...open, invoice_date: '2026-01-01' }, minDate), true)
+  assert.equal(clientInvoiceRemaining(open), 775)
+  assert.equal(clientInvoiceRemaining(overpaid), 0)
+
+  const result = projectTreasury({
+    asOf: AS_OF,
+    settings: { ...SETTINGS, probable_enabled: false, horizon_weeks: 4 },
+    accounts: [{ id: 'belfius', include_in_cash: true }],
+    snapshots: [{ account_id: 'belfius', balance_date: '2026-10-09', balance: 0, source: 'manuel' }],
+    commitments: [],
+    supplierBills: [],
+    jobs: [],
+    facturesMinDate: minDate,
+    invoices: [open, paid, old, overpaid],
+  })
+  const flows = result.flows.filter((flow) => flow.source === 'facture')
+  assert.deepEqual(flows.map((flow) => flow.ref_id), ['open'])
+  assert.equal(flows[0].amount, 775)
+  assert.equal(flows[0].rawDate, '2026-09-09')
+  assert.equal(flows[0].flow_date, AS_OF)
 })
 
 test('classify Quimesis and Radius on import', () => {

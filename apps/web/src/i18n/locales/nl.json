@@ -1306,6 +1306,8 @@
     "actionFailed": "Actie mislukt.",
     "matchesAuto": "Automatische koppelingen",
     "matchesReview": "Te valideren",
+    "facturesMatched": "Accountable-facturen gekoppeld",
+    "facturesUnmatched": "Accountable-facturen zonder koppeling",
     "lastImport": "Laatste import",
     "noImport": "Nog geen import.",
     "lastImportFailed": "De laatste import kan niet worden gelezen.",

@@ -4,7 +4,7 @@
  */
 import { parseAccountableXlsx, parseIsoDate, sha256Hex } from './tresoAccountable.js'
 import { advanceCommitments, classifyImportedBill } from './tresoForecast.js'
-import { applyBankMatch } from './tresoMatch.js'
+import { applyBankMatch, extractInvoiceNumbers } from './tresoMatch.js'
 
 export const BELFIUS_IBAN = 'BE25068955038482'
 const MAX_BYTES = 20 * 1024 * 1024
@@ -134,6 +134,61 @@ function reportFrom(parsed, extra) {
   }
 }
 
+export function planAccountableStatusUpdates(factures, invoices, syncedAt) {
+  const byNumber = new Map()
+  for (const invoice of invoices || []) {
+    for (const number of extractInvoiceNumbers(invoice.invoice_number)) {
+      const list = byNumber.get(number) || []
+      list.push(invoice)
+      byNumber.set(number, list)
+    }
+  }
+  const updates = []
+  const seen = new Set()
+  let matched = 0
+  let unmatched = 0
+  for (const facture of factures || []) {
+    const hits = byNumber.get(facture.invoiceNumber) || []
+    if (!hits.length) {
+      unmatched += 1
+      continue
+    }
+    matched += 1
+    for (const invoice of hits) {
+      if (seen.has(invoice.id)) continue
+      seen.add(invoice.id)
+      updates.push({
+        id: invoice.id,
+        accountable_status: facture.status,
+        accountable_synced_at: syncedAt,
+      })
+    }
+  }
+  return { matched, unmatched, updates }
+}
+
+function factureReport(parsed, sync) {
+  return {
+    factures_present: Boolean(parsed.facturesPresent),
+    factures_matched: sync?.matched || 0,
+    factures_unmatched: sync?.unmatched || 0,
+    factures_skipped: parsed.facturesSkipped || 0,
+    factures_date_min: parsed.facturesDateMin || null,
+  }
+}
+
+async function applyFactureStatuses(db, parsed) {
+  const factures = parsed.factures || []
+  if (!parsed.facturesPresent || !factures.length) return { matched: 0, unmatched: 0 }
+  if (typeof db.listClientInvoiceNumbers !== 'function' || typeof db.updateAccountableStatuses !== 'function') {
+    return { matched: 0, unmatched: factures.length }
+  }
+  const invoices = await db.listClientInvoiceNumbers()
+  const plan = planAccountableStatusUpdates(factures, invoices, new Date().toISOString())
+  if (plan.updates.length) await db.updateAccountableStatuses(plan.updates)
+  return { matched: plan.matched, unmatched: plan.unmatched }
+}
+
 async function advanceKnownCommitments(db) {
   if (
     typeof db.listTransactionsForAdvance !== 'function'
@@ -164,6 +219,7 @@ export async function applyAccountableImport({
   await db.upsertBalances({ balances, userId })
   const existing = await db.findBatchByHash(fileSha256)
   if (existing) {
+    const factures = await applyFactureStatuses(db, parsed)
     return reportFrom(parsed, {
       already_imported: true,
       file_sha256: fileSha256,
@@ -175,6 +231,7 @@ export async function applyAccountableImport({
       supplier_bills_marked_paid: 0,
       supplier_bills_duplicate: parsed.expenses.length,
       commitments_advanced: await advanceKnownCommitments(db),
+      ...factureReport(parsed, factures),
     })
   }
 
@@ -256,6 +313,7 @@ export async function applyAccountableImport({
     billsInserted = toInsert.length
   }
 
+  const factures = await applyFactureStatuses(db, parsed)
   const report = reportFrom(parsed, {
     already_imported: false,
     file_sha256: fileSha256,
@@ -267,6 +325,7 @@ export async function applyAccountableImport({
     supplier_bills_inserted: billsInserted,
     supplier_bills_marked_paid: billsMarkedPaid,
     supplier_bills_duplicate: billsDuplicate,
+    ...factureReport(parsed, factures),
   })
 
   const batch = await db.insertBatch({
@@ -558,6 +617,18 @@ export function supabaseTresoDb(admin) {
         }
       }
       return { inserted, updated }
+    },
+    async listClientInvoiceNumbers() {
+      return selectAll(admin, 'treso_client_invoices', 'id, invoice_number')
+    },
+    async updateAccountableStatuses(updates) {
+      for (const update of updates) {
+        const { error } = await admin.from('treso_client_invoices').update({
+          accountable_status: update.accountable_status,
+          accountable_synced_at: update.accountable_synced_at,
+        }).eq('id', update.id)
+        if (error) throw error
+      }
     },
     async loadMatchState() {
       const accounts = await this.ensureAccounts()

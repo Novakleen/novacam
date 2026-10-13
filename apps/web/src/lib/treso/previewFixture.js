@@ -66,9 +66,9 @@ export function previewForecastInput() {
       commitment({ id: 'inactif', label: 'Prime suspendue', counterparty: 'Prime suspendue', amount: 800, day_of_month: 1, next_due_date: '2026-10-01', is_active: false, category: 'salaires' }),
     ],
     invoices: [
-      { id: 'inv-1', invoice_number: 'DEMO-1001', client_name: 'Maison Bleue', invoice_date: '2026-09-01', amount_ttc: 1860, bank_paid_amount: 0 },
-      { id: 'inv-2', invoice_number: 'DEMO-1002', client_name: 'Studio Lumen', invoice_date: '2026-09-18', amount_ttc: 940, bank_paid_amount: 0 },
-      { id: 'inv-3', invoice_number: 'DEMO-1003', client_name: 'Atelier Nord', invoice_date: '2026-10-08', amount_ttc: 1280, bank_paid_amount: 0 },
+      { id: 'inv-1', invoice_number: 'DEMO-1001', client_name: 'Maison Bleue', invoice_date: '2026-09-01', amount_ttc: 1860, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'inv-2', invoice_number: 'DEMO-1002', client_name: 'Studio Lumen', invoice_date: '2026-09-18', amount_ttc: 940, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+      { id: 'inv-3', invoice_number: 'DEMO-1003', client_name: 'Atelier Nord', invoice_date: '2026-10-08', amount_ttc: 1280, bank_paid_amount: 0, accountable_status: 'Envoyé' },
       { id: 'inv-x', invoice_number: 'DEMO-9000', client_name: 'Dossier neutre', invoice_date: '2026-07-09', amount_ttc: 5000, excluded_from_cash: true },
     ],
     supplierBills: [
