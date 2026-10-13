@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import i18n from '@/i18n';
 import TresoDashboardPage from '@/pages/TresoDashboardPage';
-import { PREVIEW_LAST_IMPORT, previewForecastInput } from '@/lib/treso/previewFixture';
+import { PREVIEW_LAST_IMPORT, previewCashflowInput } from '@/lib/treso/previewFixture';
 
-const INPUT = previewForecastInput();
+const INPUT = previewCashflowInput();
 
 /** Dev-only screen with synthetic figures. Not linked from the menu. */
 const TresoDashboardPreviewPage = () => {

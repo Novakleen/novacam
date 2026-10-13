@@ -1,14 +1,14 @@
 {
   "name": "web",
   "type": "module",
-  "version": "1.23.0",
+  "version": "1.24.0",
   "private": true,
   "scripts": {
     "dev": "vite --host :: --port 3000",
     "build": "node tools/generate-llms.js || true && vite build --outDir ../../dist/apps/web",
     "preview": "vite preview --host :: --port 3000",
     "lint": "eslint . --quiet; lint_status=$?; eslint \"src/**/*.jsx\" --config eslint.config.mjs --format ./eslint.unicode-escapes-formatter.mjs --no-error-on-unmatched-pattern; exit $lint_status",
-    "test": "node --test src/lib/imageSizes.test.js src/lib/mediaDates.test.js src/lib/treso/screen.test.js ../../supabase/functions/_shared/tresoAccountable.test.js ../../supabase/functions/_shared/tresoMatch.test.js ../../supabase/functions/_shared/tresoHubspotSync.test.js ../../supabase/functions/_shared/tresoForecast.test.js ../../supabase/functions/_shared/tresoPdfExtract.test.js ../../supabase/functions/_shared/tresoSignedJobs.test.js",
+    "test": "node --test src/lib/imageSizes.test.js src/lib/mediaDates.test.js src/lib/treso/screen.test.js src/lib/treso/cashflow.test.js ../../supabase/functions/_shared/tresoAccountable.test.js ../../supabase/functions/_shared/tresoMatch.test.js ../../supabase/functions/_shared/tresoHubspotSync.test.js ../../supabase/functions/_shared/tresoForecast.test.js ../../supabase/functions/_shared/tresoPdfExtract.test.js ../../supabase/functions/_shared/tresoSignedJobs.test.js",
     "start": "vite preview --outDir ../../dist/apps/web --host :: --port 3000"
   },
   "dependencies": {

@@ -120,3 +120,66 @@ export const PREVIEW_WHAT_IF = {
   date: '2026-10-20',
   label: 'Achat démo',
 };
+
+function demoTx(row) {
+  return {
+    account_id: 'demo-courant',
+    excluded_from_cash: false,
+    is_internal_transfer: false,
+    ...row,
+  };
+}
+
+/**
+ * Same fictional books as previewForecastInput, plus dated invoices,
+ * an unknown supplier due date, and bank lines so the cash charts render.
+ */
+export function previewCashflowInput() {
+  const input = previewForecastInput();
+  input.invoices = [
+    { id: 'inv-1', invoice_number: 'DEMO-1001', client_name: 'Maison Bleue', invoice_date: '2026-08-01', due_date: '2026-08-10', amount_ttc: 1860, bank_paid_amount: 360, accountable_status: 'Envoyé' },
+    { id: 'inv-2', invoice_number: 'DEMO-1002', client_name: 'Studio Lumen', invoice_date: '2026-09-01', due_date: '2026-09-15', amount_ttc: 940, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+    { id: 'inv-3', invoice_number: 'DEMO-1003', client_name: 'Atelier Nord', invoice_date: '2026-09-05', due_date: '2026-09-01', amount_ttc: 1280, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+    { id: 'inv-4', invoice_number: 'DEMO-1004', client_name: 'Galerie Est', invoice_date: '2026-10-01', due_date: '2026-10-28', amount_ttc: 640, bank_paid_amount: 0, accountable_status: 'Envoyé' },
+    { id: 'inv-paid', invoice_number: 'DEMO-1005', client_name: 'Clos Payé', invoice_date: '2026-09-01', due_date: '2026-09-15', amount_ttc: 500, bank_paid_amount: 0, accountable_status: 'Payé' },
+    { id: 'inv-x', invoice_number: 'DEMO-9000', client_name: 'Dossier neutre', invoice_date: '2026-07-09', due_date: '2026-07-20', amount_ttc: 5000, excluded_from_cash: true, accountable_status: 'Envoyé' },
+  ];
+  input.supplierBills = [
+    ...input.supplierBills,
+    { id: 'bill-unknown', supplier_name: 'Atelier Inconnu', invoice_date: '2026-10-03', due_date: null, amount_ttc: 180, is_paid: false },
+  ];
+  input.commitments = [
+    ...input.commitments.map((row) => (row.id === 'inactif' ? { ...row, frequency: 'quarterly' } : row)),
+    {
+      direction: 'out',
+      is_active: true,
+      excluded_from_cash: false,
+      spread_weekly: false,
+      amount_rule: 'fixed',
+      frequency: 'yearly',
+      end_date: null,
+      remaining_occurrences: null,
+      needs_review: false,
+      kind: 'fixe',
+      id: 'taxe',
+      label: 'Précompte',
+      counterparty: 'SPF Finances',
+      amount: 1200,
+      day_of_month: 20,
+      next_due_date: '2026-12-20',
+      category: 'tva_impots',
+    },
+  ];
+  input.transactions = [
+    demoTx({ id: 'tx-in-may', booking_date: '2026-05-04', amount: 2000, counterparty_name: 'Maison Bleue' }),
+    demoTx({ id: 'tx-rent-may', booking_date: '2026-05-20', amount: -900, counterparty_name: 'Loyer atelier' }),
+    demoTx({ id: 'tx-ins', booking_date: '2026-06-02', amount: -210, counterparty_name: 'Assurance atelier' }),
+    demoTx({ id: 'tx-in-jul', booking_date: '2026-07-10', amount: 1500, counterparty_name: 'Studio Lumen' }),
+    demoTx({ id: 'tx-aug', booking_date: '2026-08-03', amount: -480, counterparty_name: 'Quincaillerie Démo' }),
+    demoTx({ id: 'tx-rent-sep', booking_date: '2026-09-15', amount: -900, counterparty_name: 'Loyer atelier' }),
+    demoTx({ id: 'tx-in-sep', booking_date: '2026-09-28', amount: 800, counterparty_name: 'Client Démo' }),
+    demoTx({ id: 'tx-internal', booking_date: '2026-10-01', amount: -100, counterparty_name: 'Virement interne', is_internal_transfer: true }),
+    demoTx({ id: 'tx-excluded', booking_date: '2026-10-02', amount: 50, counterparty_name: 'Hors caisse', excluded_from_cash: true }),
+  ];
+  return input;
+}
