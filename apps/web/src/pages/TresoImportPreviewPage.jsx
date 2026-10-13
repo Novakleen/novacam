@@ -39,6 +39,8 @@ const PREVIEW = {
       last_used_at: '2026-09-30T08:00:00Z',
     },
   ],
+  pdfNames: ['facture-exemple-nord.pdf', 'facture-exemple-atelier.pdf'],
+  pdfReport: { applied: 1, queued: 1, kept: 0, errors: 0 },
   lastImport: {
     today: '2026-10-13',
     staleAfterBusinessDays: 2,

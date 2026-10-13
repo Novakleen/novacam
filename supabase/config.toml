@@ -13,3 +13,10 @@ verify_jwt = false
 
 [functions.treso-hubspot-sync]
 verify_jwt = false
+
+# Gateway JWT check is off: treso-pdf-extract accepts an Admin user JWT only
+# (requireCaller). The anon key must not pass. Scanned PDFs use OPENAI_API_KEY
+# or ANTHROPIC_API_KEY when one of those secrets is set.
+
+[functions.treso-pdf-extract]
+verify_jwt = false

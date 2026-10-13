@@ -543,6 +543,17 @@ test('pdf due date is kept when the excel is imported again', async () => {
   await handleTresoImport(importRequest(secondBytes, { key: plain }), deps)
   assert.equal(db.state.bills[0].due_date, '2026-10-06')
   assert.equal(db.state.bills[0].due_date_source, 'pdf')
+
+  db.state.bills[0].due_date = '2026-10-08'
+  db.state.bills[0].due_date_source = 'manuel'
+  const manualBytes = workbook({
+    transactions: [['12/10/2026', BELFIUS_IBAN, 'suite manuelle', 9, 'Client', '']],
+    expenses: [['02/10/2026', 'Papeterie Démo', 40, 'Fournitures', 'Non', '15/11/2026']],
+    expenseHeaders: [...EXP_HEADERS, 'Échéance'],
+  })
+  await handleTresoImport(importRequest(manualBytes, { key: plain }), deps)
+  assert.equal(db.state.bills[0].due_date, '2026-10-08')
+  assert.equal(db.state.bills[0].due_date_source, 'manuel')
 })
 
 test('missing balance or missing column writes nothing', async () => {

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useDropzone } from 'react-dropzone';
 import { useTranslation } from 'react-i18next';
-import { FileSpreadsheet, KeyRound, Landmark, Upload } from 'lucide-react';
+import { FileSpreadsheet, FileText, KeyRound, Landmark, Upload } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import {
   revokeTresoApiKey,
 } from '@/lib/treso/import';
 import { formatBrusselsDateTime, presentLastImport } from '@/lib/treso/forecast';
+import { uploadSupplierPdfs } from '@/lib/treso/pdf';
 
 function formatDay(iso) {
   if (!iso) return '—';
@@ -109,9 +110,16 @@ const TresoImportPage = ({ preview = null }) => {
     preview?.lastImport ? presentLastImport(preview.lastImport) : undefined
   ));
   const [lastImportError, setLastImportError] = useState(false);
+  const [pdfFiles, setPdfFiles] = useState(() => (preview?.pdfNames || []).map((name) => ({ name })));
+  const [pdfReport, setPdfReport] = useState(preview?.pdfReport ?? null);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const onDrop = useCallback((accepted) => {
     setFile(accepted[0] || null);
+  }, []);
+
+  const onPdfDrop = useCallback((accepted) => {
+    setPdfFiles(accepted.slice(0, 20));
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -121,6 +129,17 @@ const TresoImportPage = ({ preview = null }) => {
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
     },
+  });
+
+  const {
+    getRootProps: getPdfRootProps,
+    getInputProps: getPdfInputProps,
+    isDragActive: pdfDragActive,
+  } = useDropzone({
+    onDrop: onPdfDrop,
+    multiple: true,
+    maxFiles: 20,
+    accept: { 'application/pdf': ['.pdf'] },
   });
 
   const loadLastImport = useCallback(async () => {
@@ -222,6 +241,29 @@ const TresoImportPage = ({ preview = null }) => {
     }
   };
 
+  const onReadPdfs = async () => {
+    if (preview) return;
+    if (!pdfFiles.length) {
+      toast({ variant: 'destructive', title: t('treso.pdfEmpty') });
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      const next = await uploadSupplierPdfs(pdfFiles, user?.id);
+      setPdfReport(next);
+      setPdfFiles([]);
+      toast({ title: t('treso.pdfRead') });
+    } catch (error) {
+      console.error(error);
+      const description = error.status === 401 || error.status === 403
+        ? t('treso.forbidden')
+        : (error.body?.message || error.message);
+      toast({ variant: 'destructive', title: t('treso.pdfFailed'), description });
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const copyKey = async () => {
     try {
       await navigator.clipboard.writeText(revealedKey);
@@ -238,7 +280,7 @@ const TresoImportPage = ({ preview = null }) => {
       <Helmet>
         <title>{t('treso.title')} - Novakleen</title>
       </Helmet>
-      <div className="space-y-6 max-w-3xl">
+      <div className="min-w-0 max-w-3xl space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Landmark className="h-7 w-7 text-primary shrink-0" />
@@ -353,6 +395,46 @@ const TresoImportPage = ({ preview = null }) => {
             </p>
           </section>
         )}
+
+        <section id="pdf-upload" className="space-y-4 rounded-2xl border border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+          <div>
+            <h2 className="font-semibold text-gray-900 dark:text-white">{t('treso.pdfTitle')}</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('treso.pdfHint')}</p>
+          </div>
+          <div
+            {...getPdfRootProps()}
+            className={`cursor-pointer rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
+              pdfDragActive ? 'border-primary bg-primary/5' : 'border-gray-200 dark:border-gray-700'
+            }`}
+          >
+            <input {...getPdfInputProps()} />
+            <FileText className="mx-auto mb-2 h-8 w-8 text-gray-400" />
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              {pdfDragActive ? t('treso.pdfDropActive') : t('treso.pdfDrop')}
+            </p>
+          </div>
+          {pdfFiles.length > 0 && (
+            <ul className="space-y-1">
+              {pdfFiles.map((item, index) => (
+                <li key={`${item.name}-${index}`} className="flex min-w-0 items-center gap-2 text-sm text-primary">
+                  <FileText className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{item.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button type="button" onClick={onReadPdfs} disabled={pdfBusy || pdfFiles.length === 0} className="w-full sm:w-auto">
+            {pdfBusy ? t('treso.pdfReading') : t('treso.pdfRead')}
+          </Button>
+          {pdfReport && (
+            <div className="grid grid-cols-2 gap-2">
+              <Stat label={t('treso.pdfApplied')} value={pdfReport.applied ?? 0} />
+              <Stat label={t('treso.pdfQueued')} value={pdfReport.queued ?? 0} />
+              <Stat label={t('treso.pdfKept')} value={pdfReport.kept ?? 0} />
+              <Stat label={t('treso.rowsSkipped')} value={pdfReport.errors ?? 0} />
+            </div>
+          )}
+        </section>
 
         <section id="api-keys" className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 space-y-4">
           <div className="flex items-start gap-2">

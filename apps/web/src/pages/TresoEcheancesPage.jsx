@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { deleteCashEvent, insertCashEvent, saveCommitment, updateCashEvent } from '@/lib/treso/mutations';
+import { listOpenSupplierBills, openSupplierPdf, saveSupplierDueDate } from '@/lib/treso/pdf';
 import { parseAmount } from '@/lib/treso/screen';
 
 const COMMITMENT_COLUMNS = 'id, label, amount, amount_rule, day_of_month, next_due_date, is_active, needs_review, spread_weekly';
@@ -25,6 +26,7 @@ const TresoEcheancesPage = ({ preview = null }) => {
   const { toast } = useToast();
   const [commitments, setCommitments] = useState(preview?.commitments ?? []);
   const [events, setEvents] = useState(preview?.events ?? []);
+  const [bills, setBills] = useState(preview?.supplierBills ?? []);
   const [loading, setLoading] = useState(!preview);
   const [failed, setFailed] = useState(false);
 
@@ -34,7 +36,11 @@ const TresoEcheancesPage = ({ preview = null }) => {
     Promise.all([
       supabase.from('treso_commitments').select(COMMITMENT_COLUMNS).order('label'),
       supabase.from('treso_cash_events').select(EVENT_COLUMNS).order('event_date'),
-    ]).then(([commitmentResult, eventResult]) => {
+      listOpenSupplierBills().catch((error) => {
+        console.error(error);
+        return [];
+      }),
+    ]).then(([commitmentResult, eventResult, supplierBills]) => {
       if (cancelled) return;
       if (commitmentResult.error || eventResult.error) {
         setFailed(true);
@@ -42,6 +48,7 @@ const TresoEcheancesPage = ({ preview = null }) => {
       }
       setCommitments(commitmentResult.data || []);
       setEvents(eventResult.data || []);
+      setBills(supplierBills);
     }).catch((error) => {
       console.error(error);
       if (!cancelled) setFailed(true);
@@ -92,6 +99,32 @@ const TresoEcheancesPage = ({ preview = null }) => {
     }
   };
 
+  const saveBill = async (id, dueDate) => {
+    try {
+      if (!preview) await saveSupplierDueDate(id, dueDate);
+      setBills((rows) => rows.map((row) => (
+        row.id === id ? { ...row, due_date: dueDate, due_date_source: 'manuel' } : row
+      )));
+      toast({ title: t('treso.saved') });
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: t('treso.saveFailed') });
+    }
+  };
+
+  const openPdf = async (path) => {
+    if (preview || !path) {
+      toast({ title: t('treso.pdfDemo') });
+      return;
+    }
+    try {
+      await openSupplierPdf(path);
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: t('treso.actionFailed') });
+    }
+  };
+
   const removeEvent = async (id) => {
     try {
       if (!preview) await deleteCashEvent(id);
@@ -133,6 +166,18 @@ const TresoEcheancesPage = ({ preview = null }) => {
 
         <section className="space-y-3 border-t border-gray-100 pt-4 dark:border-gray-800">
           <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('treso.suppliersTitle')}</h2>
+            <p className="text-sm text-gray-500">{t('treso.suppliersHint')}</p>
+          </div>
+          <ul className="space-y-3">
+            {bills.map((row) => (
+              <SupplierBillEditor key={row.id} row={row} onSave={saveBill} onOpen={openPdf} />
+            ))}
+          </ul>
+        </section>
+
+        <section className="space-y-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('treso.eventsTitle')}</h2>
             <p className="text-sm text-gray-500">{t('treso.eventsHint')}</p>
           </div>
@@ -147,6 +192,62 @@ const TresoEcheancesPage = ({ preview = null }) => {
     </DashboardLayout>
   );
 };
+
+const SOURCE_KEY = {
+  manuel: 'sourceManual',
+  pdf: 'sourcePdf',
+  export: 'sourceExport',
+  estimee: 'sourceEstimated',
+};
+
+function SupplierBillEditor({ row, onSave, onOpen }) {
+  const { t, i18n } = useTranslation();
+  const [due, setDue] = useState(iso(row.due_date));
+  const [busy, setBusy] = useState(false);
+  const sourceKey = SOURCE_KEY[row.due_date_source] || 'sourceEstimated';
+  const amount = Number(row.amount_ttc);
+  const locale = i18n.language?.startsWith('nl') ? 'nl-BE' : i18n.language?.startsWith('en') ? 'en-GB' : 'fr-BE';
+  const money = Number.isFinite(amount)
+    ? new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(amount)
+    : '—';
+
+  const save = async () => {
+    if (!due) return;
+    setBusy(true);
+    try {
+      await onSave(row.id, due);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li className="rounded-2xl border border-gray-100 bg-white p-3 dark:border-gray-800 dark:bg-gray-900 sm:p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h3 className="min-w-0 break-words font-medium text-gray-900 dark:text-white">{row.supplier_name || '—'}</h3>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+          {t(`treso.${sourceKey}`)}
+        </span>
+        <span className="text-sm tabular-nums text-gray-500">{money}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+        <Field label={t('treso.proposedDue')}>
+          <Input type="date" value={due} onChange={(event) => setDue(event.target.value)} className="min-w-0" />
+        </Field>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={save} disabled={busy || !due}>
+            {busy ? t('treso.saving') : t('treso.save')}
+          </Button>
+          {row.pdf_path && (
+            <Button type="button" size="sm" variant="outline" onClick={() => onOpen(row.pdf_path)}>
+              {t('treso.pdfOpen')}
+            </Button>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
 
 function Field({ label, children }) {
   return (
