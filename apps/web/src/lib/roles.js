@@ -9,3 +9,10 @@ export const MARGIN_ROLES = ['Admin', 'Manager'];
 export function canManageMargins(role) {
   return MARGIN_ROLES.includes(role);
 }
+
+/** Treasury screens and treso_* rows are Admin only. */
+export const TREASURY_ROLES = ['Admin'];
+
+export function canAccessTreasury(role) {
+  return TREASURY_ROLES.includes(role);
+}

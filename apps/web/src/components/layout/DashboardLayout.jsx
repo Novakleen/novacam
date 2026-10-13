@@ -219,8 +219,8 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
         )}
         {isAdmin && (
           <SidebarItem
-            icon={Landmark} label={t('nav.treasury')} path="/tresorerie/import"
-            isActive={location.pathname.startsWith('/tresorerie')} onClick={() => navigate('/tresorerie/import')}
+            icon={Landmark} label={t('nav.treasury')} path="/tresorerie"
+            isActive={location.pathname.startsWith('/tresorerie')} onClick={() => navigate('/tresorerie')}
             badgeNew={t('common.new')} badgeSoon={t('common.soon')}
           />
         )}
