@@ -35,12 +35,21 @@ import FleetPage from '@/pages/FleetPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
 import TresoImportPage from '@/pages/TresoImportPage';
 import TresoAValiderPage from '@/pages/TresoAValiderPage';
+import TresoDashboardPage from '@/pages/TresoDashboardPage';
+import TresoEcheancesPage from '@/pages/TresoEcheancesPage';
+import TresoParametresPage from '@/pages/TresoParametresPage';
+import { TREASURY_ROLES } from '@/lib/roles';
 const devRoutes = import.meta.env.DEV
   ? [
       { path: '/dev/photo-preview', Page: React.lazy(() => import('@/pages/PhotoPreviewPage')) },
       { path: '/dev/v116', Page: React.lazy(() => import('@/pages/V116PreviewPage')) },
       { path: '/dev/treso-import', Page: React.lazy(() => import('@/pages/TresoImportPreviewPage')) },
       { path: '/dev/treso-a-valider', Page: React.lazy(() => import('@/pages/TresoAValiderPreviewPage')) },
+      { path: '/dev/treso', Page: React.lazy(() => import('@/pages/TresoDashboardPreviewPage')) },
+      { path: '/dev/treso-whatif', Page: React.lazy(() => import('@/pages/TresoWhatIfPreviewPage')) },
+      { path: '/dev/treso-echeances', Page: React.lazy(() => import('@/pages/TresoEcheancesPreviewPage')) },
+      { path: '/dev/treso-parametres', Page: React.lazy(() => import('@/pages/TresoParametresPreviewPage')) },
+      { path: '/dev/treso-access', Page: React.lazy(() => import('@/pages/TresoAccessPreviewPage')) },
     ]
   : [];
 
@@ -230,8 +239,11 @@ function AppRoutes() {
           <Route path="/fleet/:section" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/fleet/:section/:id" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/margins" element={<RoleRoute allowedRoles={['Admin', 'Manager']}><MarginsPage /></RoleRoute>} />
-          <Route path="/tresorerie/import" element={<RoleRoute allowedRoles={['Admin']}><TresoImportPage /></RoleRoute>} />
-          <Route path="/tresorerie/a-valider" element={<RoleRoute allowedRoles={['Admin']}><TresoAValiderPage /></RoleRoute>} />
+          <Route path="/tresorerie" element={<RoleRoute allowedRoles={TREASURY_ROLES}><TresoDashboardPage /></RoleRoute>} />
+          <Route path="/tresorerie/import" element={<RoleRoute allowedRoles={TREASURY_ROLES}><TresoImportPage /></RoleRoute>} />
+          <Route path="/tresorerie/a-valider" element={<RoleRoute allowedRoles={TREASURY_ROLES}><TresoAValiderPage /></RoleRoute>} />
+          <Route path="/tresorerie/echeances" element={<RoleRoute allowedRoles={TREASURY_ROLES}><TresoEcheancesPage /></RoleRoute>} />
+          <Route path="/tresorerie/parametres" element={<RoleRoute allowedRoles={TREASURY_ROLES}><TresoParametresPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
           {devRoutes.map(({ path, Page }) => (
