@@ -33,10 +33,12 @@ import SprayTrackerPage from '@/pages/SprayTrackerPage';
 import MarginsPage from '@/pages/MarginsPage';
 import FleetPage from '@/pages/FleetPage';
 import CompanyCamProjectDetailPage from '@/pages/CompanyCamProjectDetailPage';
+import TresoImportPage from '@/pages/TresoImportPage';
 const devRoutes = import.meta.env.DEV
   ? [
       { path: '/dev/photo-preview', Page: React.lazy(() => import('@/pages/PhotoPreviewPage')) },
       { path: '/dev/v116', Page: React.lazy(() => import('@/pages/V116PreviewPage')) },
+      { path: '/dev/treso-import', Page: React.lazy(() => import('@/pages/TresoImportPreviewPage')) },
     ]
   : [];
 
@@ -226,6 +228,7 @@ function AppRoutes() {
           <Route path="/fleet/:section" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/fleet/:section/:id" element={<PrivateRoute><FleetPage /></PrivateRoute>} />
           <Route path="/margins" element={<RoleRoute allowedRoles={['Admin', 'Manager']}><MarginsPage /></RoleRoute>} />
+          <Route path="/tresorerie/import" element={<RoleRoute allowedRoles={['Admin']}><TresoImportPage /></RoleRoute>} />
           
           <Route path="/share/:shareId" element={<SharedGalleryPage />} />
           {devRoutes.map(({ path, Page }) => (

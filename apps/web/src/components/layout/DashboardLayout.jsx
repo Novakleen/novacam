@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { 
   Home, Image as ImageIcon, Users, Briefcase, Bell, Monitor, Map as MapIcon, 
   Menu, X, LogOut, Moon, Sun, User, UserPlus, UploadCloud, Link as LinkIcon,
-  Bug, ChevronRight, MessageSquare, BarChart3, Camera, Clock, Droplets, PieChart, Truck
+  Bug, ChevronRight, MessageSquare, BarChart3, Camera, Clock, Droplets, PieChart, Truck, Landmark
 } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -127,6 +127,7 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
     if (location.pathname === '/companycam-explorer') return t('nav.companyCam');
     if (location.pathname === '/direct7-debug') return t('nav.direct7Sms');
     if (location.pathname === '/margins') return t('nav.margins');
+    if (location.pathname.startsWith('/tresorerie')) return t('nav.treasury');
     if (location.pathname === '/bug-hunter') return t('nav.bugHunter');
     if (location.pathname === '/time-tracker') return t('nav.timeTracker');
     if (location.pathname === '/spray-tracker') return t('nav.sprayTracker');
@@ -213,6 +214,13 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
           <SidebarItem 
             icon={PieChart} label={t('nav.margins')} path="/margins"
             isActive={location.pathname === '/margins'} onClick={() => navigate('/margins')}
+            badgeNew={t('common.new')} badgeSoon={t('common.soon')}
+          />
+        )}
+        {isAdmin && (
+          <SidebarItem
+            icon={Landmark} label={t('nav.treasury')} path="/tresorerie/import"
+            isActive={location.pathname.startsWith('/tresorerie')} onClick={() => navigate('/tresorerie/import')}
             badgeNew={t('common.new')} badgeSoon={t('common.soon')}
           />
         )}

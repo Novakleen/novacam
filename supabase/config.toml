@@ -1,0 +1,9 @@
+# Local project id only. Does not touch the hosted project.
+project_id = "novacam"
+
+# Gateway JWT check is off for this function only.
+# treso-import authenticates the caller itself: Admin JWT (requireCaller)
+# or header x-treso-api-key (sha256, scope treso-import, not revoked).
+
+[functions.treso-import]
+verify_jwt = false
