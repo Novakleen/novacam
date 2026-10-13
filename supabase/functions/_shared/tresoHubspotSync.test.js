@@ -148,4 +148,26 @@ test('non-admin JWT is 403 and does not call HubSpot; service role may sync', as
   const body = await ok.json()
   assert.equal(body.ok, true)
   assert.equal(body.fetched, 0)
+  assert.equal(body.signed_jobs.error, 'calendar_not_configured')
+})
+
+test('a calendar failure does not fail the invoice sync', async () => {
+  const db = memoryDb()
+  const res = await handleTresoHubspotSync(new Request('http://local/treso-hubspot-sync', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer service-secret' },
+  }), {
+    corsHeaders,
+    serviceRoleKey: 'service-secret',
+    db,
+    request: async () => ({ results: [], paging: {} }),
+    requireCaller: async () => ({ userId: 'admin-1' }),
+    listCalendarEvents: async () => { throw new Error('calendar down') },
+  })
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.fetched, 0)
+  assert.equal(body.signed_jobs.error, 'calendar down')
+  assert.equal(db.state.rows.length, 0)
 })

@@ -87,6 +87,15 @@ export function previewForecastInput() {
         link_status: 'auto',
         invoiced: false,
       },
+      {
+        id: 'job-undated',
+        hubspot_deal_id: 'deal-undated',
+        label: 'Chantier sans date',
+        client_name: 'Maison Verte',
+        end_date: null,
+        amount_ttc: 800,
+        invoiced: false,
+      },
     ],
     cashEvents: [
       { id: 'evt-1', event_date: '2026-11-06', label: 'Acompte matériel', amount: 350, direction: 'out', category: 'autre', excluded_from_cash: false },

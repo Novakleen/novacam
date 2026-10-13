@@ -47,6 +47,11 @@ test('dashboard screen: orange alert, lists, what-if does not write', () => {
   assert.equal(new Set(spreadDates).size, spreadDates.length);
   assert.equal(view.lists.inflows[0].overdue, true);
   assert.ok(view.lists.inflows.some((row) => row.origin === 'chantier'));
+  assert.equal(view.signedJobs.total, 2300);
+  assert.equal(view.signedJobs.count, 2);
+  assert.equal(view.signedJobs.undated.length, 1);
+  assert.equal(view.signedJobs.undated[0].label, 'Chantier sans date');
+  assert.equal(view.signedJobs.undated[0].amount, 800);
   assert.ok(view.lists.inflows.every((row, index, list) => index === 0 || !row.overdue || list[index - 1].overdue));
 
   const simulated = buildScreen(input, { amount: '5000', date: '2026-10-20', label: 'Achat démo' });

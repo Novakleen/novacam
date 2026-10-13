@@ -594,6 +594,24 @@ export function supabaseTresoDb(admin) {
       const { error } = await admin.from('treso_settings').update({ hubspot_invoices_synced_through: value }).eq('id', 1)
       if (error) throw error
     },
+    async getSignedStageIds() {
+      const { data, error } = await admin.from('treso_settings').select('signed_deal_stage_ids').eq('id', 1).maybeSingle()
+      if (error) throw error
+      return data?.signed_deal_stage_ids || []
+    },
+    async replaceSignedJobs(rows) {
+      const existing = await selectAll(admin, 'treso_signed_jobs', 'hubspot_deal_id')
+      const keep = new Set(rows.map((row) => row.hubspot_deal_id))
+      const stale = existing.map((row) => row.hubspot_deal_id).filter((id) => id && !keep.has(id))
+      for (const part of chunk(rows, 200)) {
+        const { error } = await admin.from('treso_signed_jobs').upsert(part, { onConflict: 'hubspot_deal_id' })
+        if (error) throw error
+      }
+      for (const part of chunk(stale, 200)) {
+        const { error } = await admin.from('treso_signed_jobs').delete().in('hubspot_deal_id', part)
+        if (error) throw error
+      }
+    },
     async upsertInvoices(rows, { userId } = {}) {
       let inserted = 0
       let updated = 0

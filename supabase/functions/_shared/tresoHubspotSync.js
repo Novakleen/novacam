@@ -5,6 +5,8 @@
  * TTC = hs_amount_billed, HT = hs_amount_billed_pre_tax.
  */
 import { applyBankMatch } from './tresoMatch.js'
+import { todayInBrussels } from './tresoForecast.js'
+import { refreshSignedJobs } from './tresoSignedJobs.js'
 
 export const HUBSPOT_INVOICE_PROPERTIES = [
   'hs_number',
@@ -302,7 +304,22 @@ export async function handleTresoHubspotSync(req, deps) {
       return hubspotRequest(deps.hubspotToken, path, init)
     })
     const result = await syncHubspotInvoices({ db: deps.db, request, userId })
-    return json(cors, result, 200)
+    let signedJobs = { error: 'calendar_not_configured' }
+    if (deps.listCalendarEvents) {
+      try {
+        const events = await deps.listCalendarEvents()
+        signedJobs = await refreshSignedJobs({
+          db: deps.db,
+          request,
+          events,
+          asOf: deps.asOf || todayInBrussels(),
+        })
+      } catch (error) {
+        console.error('treso signed jobs', error?.message || error)
+        signedJobs = { error: error?.message || 'signed_jobs_failed' }
+      }
+    }
+    return json(cors, { ...result, signed_jobs: signedJobs }, 200)
   } catch (error) {
     console.error('treso-hubspot-sync', error?.message || error)
     return json(cors, { error: 'sync_failed', message: error?.message || 'Sync impossible.' }, 500)

@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { saveTreasurySettings } from '@/lib/treso/mutations';
 import { normalizeSeasonality, parseAmount } from '@/lib/treso/screen';
+import { DEFAULT_SIGNED_STAGE_IDS, normalizeStageIds } from '../../../../supabase/functions/_shared/tresoSignedJobs.js';
 
 const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -25,7 +26,7 @@ const TresoParametresPage = ({ preview = null }) => {
     let cancelled = false;
     supabase
       .from('treso_settings')
-      .select('alert_threshold, usual_revenue_ht_month, seasonality_coefficients')
+      .select('alert_threshold, usual_revenue_ht_month, seasonality_coefficients, signed_deal_stage_ids')
       .eq('id', 1)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -91,6 +92,9 @@ function SettingsForm({ settings, onSave }) {
   const [threshold, setThreshold] = useState(settings.alert_threshold ?? 0);
   const [usual, setUsual] = useState(settings.usual_revenue_ht_month ?? '');
   const [coeffs, setCoeffs] = useState(() => normalizeSeasonality(settings.seasonality_coefficients).map(String));
+  const [stages, setStages] = useState(() => (settings.signed_deal_stage_ids?.length
+    ? settings.signed_deal_stage_ids
+    : DEFAULT_SIGNED_STAGE_IDS).join(', '));
   const [busy, setBusy] = useState(false);
 
   const submit = async (event) => {
@@ -108,6 +112,7 @@ function SettingsForm({ settings, onSave }) {
         alert_threshold: alertThreshold,
         usual_revenue_ht_month: usualRevenue,
         seasonality_coefficients: seasonality,
+        signed_deal_stage_ids: normalizeStageIds(stages),
       });
     } catch (error) {
       console.error(error);
@@ -126,6 +131,11 @@ function SettingsForm({ settings, onSave }) {
       <label className="block min-w-0 space-y-1 text-sm">
         <span className="text-gray-500">{t('treso.usualRevenue')}</span>
         <Input inputMode="decimal" value={usual} onChange={(event) => setUsual(event.target.value)} className="min-w-0" />
+      </label>
+      <label className="block min-w-0 space-y-1 text-sm">
+        <span className="text-gray-500">{t('treso.signedStages')}</span>
+        <Input value={stages} onChange={(event) => setStages(event.target.value)} className="min-w-0" />
+        <span className="block text-xs text-gray-400">{t('treso.signedStagesHint')}</span>
       </label>
       <fieldset className="min-w-0 space-y-2">
         <legend className="text-sm font-medium text-gray-900 dark:text-white">{t('treso.seasonality')}</legend>

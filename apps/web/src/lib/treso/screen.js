@@ -1,4 +1,4 @@
-import { openClientReceivableTotal, projectTreasury, projectWhatIf } from '../../../../../supabase/functions/_shared/tresoForecast.js';
+import { openClientReceivableTotal, projectTreasury, projectWhatIf, summarizeSignedJobs } from '../../../../../supabase/functions/_shared/tresoForecast.js';
 
 export const MOVEMENT_PREVIEW_LIMIT = 10;
 export const MOVEMENT_HORIZON_DAYS = 30;
@@ -245,6 +245,7 @@ export function buildScreen(input = {}, whatIf = null) {
     computeMs,
     accountName: cashAccountName(input.accounts),
     lists,
+    signedJobs: summarizeSignedJobs(input.jobs, input.settings?.ttc_ratio),
     footer: {
       clients,
       suppliers,

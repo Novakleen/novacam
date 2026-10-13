@@ -631,6 +631,26 @@ function jobCash(job, ratio) {
   return 0
 }
 
+export function summarizeSignedJobs(jobs, ratio = 1.06) {
+  const used = Number.isFinite(Number(ratio)) && Number(ratio) > 0 ? Number(ratio) : 1.06
+  const rows = collapseJobs(jobs)
+  let total = 0
+  const undated = []
+  for (const job of rows) {
+    const amount = round2(jobCash(job, used))
+    total += amount
+    const end = asIsoDate(job.end_date || job.google_calendar_end)
+    if (!end) {
+      undated.push({
+        id: String(job.id || job.hubspot_deal_id || undated.length),
+        label: job.label || job.client_name || job.hubspot_deal_id || 'Chantier',
+        amount,
+      })
+    }
+  }
+  return { total: round2(total), count: rows.length, undated }
+}
+
 function buildContext(input) {
   const settings = normalizeSettings(input.settings)
   const asOf = asIsoDate(input.asOf) || todayInBrussels()
