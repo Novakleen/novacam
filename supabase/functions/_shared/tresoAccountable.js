@@ -4,8 +4,11 @@
  * No row contents from real exports belong in this file.
  */
 
+import { extractInvoiceNumbers } from './tresoMatch.js'
+
 const TX_SHEET = 'transactions'
 const EXPENSE_SHEET = 'depenses'
+const FACTURE_SHEET = 'factures'
 
 const TX_COLUMNS = [
   ['date', 'date de transaction'],
@@ -22,6 +25,16 @@ const EXPENSE_COLUMNS = [
   ['amount', 'montant total'],
   ['category', 'description du code'],
   ['paid', 'paye'],
+]
+
+const FACTURE_COLUMNS = [
+  ['number', 'numero de revenue'],
+  ['type', 'facture type'],
+  ['status', 'statut'],
+  ['date', 'date de facturation'],
+  ['due', 'echeance'],
+  ['ht', 'montant htva'],
+  ['total', 'montant total'],
 ]
 
 export function normalizeText(value) {
@@ -281,6 +294,90 @@ function paidFlag(value) {
   return null
 }
 
+function factureStatus(value) {
+  const s = normalizeText(value)
+  if (s === 'paye' || s === 'paid') return 'Payé'
+  if (s === 'envoye' || s === 'sent') return 'Envoyé'
+  return null
+}
+
+function factureType(value) {
+  const s = normalizeText(value).replace(/\s+/g, '-')
+  if (s === 'invoice' || s === 'facture') return 'invoice'
+  if (s === 'credit-note' || s === 'note-de-credit') return 'credit-note'
+  return null
+}
+
+function parseFactureSheet(sheet) {
+  const missing = missingColumn(sheet.headers, FACTURE_COLUMNS)
+  if (missing) {
+    return {
+      ok: false,
+      error: 'missing_column',
+      sheet: 'Factures',
+      column: missing,
+      message: `Colonne obligatoire manquante : Factures / ${missing}.`,
+    }
+  }
+  const label = Object.fromEntries(FACTURE_COLUMNS)
+  const groups = new Map()
+  let skipped = 0
+  for (const row of sheet.rows) {
+    const numbers = extractInvoiceNumbers(pick(row, sheet.headers, label.number))
+    const type = factureType(pick(row, sheet.headers, label.type))
+    const status = factureStatus(pick(row, sheet.headers, label.status))
+    const invoiceDate = parseIsoDate(pick(row, sheet.headers, label.date))
+    const amount = canonicalAmount(pick(row, sheet.headers, label.total))
+    const htText = String(pick(row, sheet.headers, label.ht) ?? '').trim()
+    let amountHt = 0
+    if (htText) {
+      const parsedHt = canonicalAmount(htText)
+      if (parsedHt == null) {
+        skipped += 1
+        continue
+      }
+      amountHt = Number(parsedHt)
+    }
+    if (!numbers.length || !type || !status || !invoiceDate || amount == null) {
+      skipped += 1
+      continue
+    }
+    const dueText = String(pick(row, sheet.headers, label.due) ?? '').trim()
+    const dueDate = dueText ? parseIsoDate(dueText) : null
+    const key = numbers[0]
+    const amountTtc = Number(amount)
+    const prev = groups.get(key)
+    if (!prev) {
+      groups.set(key, {
+        invoiceNumber: key,
+        type,
+        status,
+        invoiceDate,
+        dueDate,
+        amountHt,
+        amountTtc,
+        lineCount: 1,
+      })
+      continue
+    }
+    prev.amountTtc = Math.round((prev.amountTtc + amountTtc) * 100) / 100
+    prev.amountHt = Math.round((prev.amountHt + amountHt) * 100) / 100
+    prev.lineCount += 1
+    if (invoiceDate < prev.invoiceDate) prev.invoiceDate = invoiceDate
+    if (!prev.dueDate && dueDate) prev.dueDate = dueDate
+    if (type === 'invoice') prev.type = 'invoice'
+    if (status === 'Envoyé') prev.status = 'Envoyé'
+  }
+  const factures = [...groups.values()]
+  const dates = factures.map((row) => row.invoiceDate).filter(Boolean).sort()
+  return {
+    ok: true,
+    factures,
+    facturesSkipped: skipped,
+    facturesDateMin: dates[0] ?? null,
+  }
+}
+
 /**
  * Rows that share account|date|amount|counterparty|communication are the
  * exact duplicates described in the spec (67 rows sit in such groups in the
@@ -315,6 +412,20 @@ export async function interpretAccountableSheets(sheets, { supplierDefaultDueDay
       column: expMissing,
       message: `Colonne obligatoire manquante : Dépenses / ${expMissing}.`,
     }
+  }
+
+  const factureSheet = findSheet(sheets, FACTURE_SHEET)
+  let facturesPresent = false
+  let factures = []
+  let facturesSkipped = 0
+  let facturesDateMin = null
+  if (factureSheet) {
+    facturesPresent = true
+    const parsedFactures = parseFactureSheet(factureSheet)
+    if (!parsedFactures.ok) return parsedFactures
+    factures = parsedFactures.factures
+    facturesSkipped = parsedFactures.facturesSkipped
+    facturesDateMin = parsedFactures.facturesDateMin
   }
 
   const txLabel = Object.fromEntries(TX_COLUMNS)
@@ -455,6 +566,10 @@ export async function interpretAccountableSheets(sheets, { supplierDefaultDueDay
     expenseRowsTotal: expSheet.rows.length,
     expenseSkipped,
     expenseInFileExtras,
+    factures,
+    facturesPresent,
+    facturesSkipped,
+    facturesDateMin,
   }
 }
 

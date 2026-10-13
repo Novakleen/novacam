@@ -6,7 +6,6 @@
  */
 
 import { addDays, isBankDataStale } from './tresoAccountable.js'
-import { invoiceIsPaid } from './tresoMatch.js'
 
 const REPLACE_MIN_RATIO = 0.2
 const NAME_STOP = new Set('sa nv srl sprl bvba gmbh ltd asbl the and pour avec van den der des les une aux'.split(' '))
@@ -562,11 +561,43 @@ function openingBalance(input, asOf) {
   return { balance: total, balanceDate, estimated, dataAsOf: balanceDate }
 }
 
-function invoiceRemaining(invoice) {
+/**
+ * Past client invoices are open only when Accountable says Envoyé.
+ * HubSpot status and bank paid_at do not open or close them.
+ * No status and a date before the earliest invoice in the latest Factures
+ * import counts as closed. Bank payments only reduce the remaining TTC.
+ */
+export function isClientInvoiceOpen(invoice, facturesMinDate) {
+  if (!invoice || invoice.excluded_from_cash) return false
+  const total = num(invoice.amount_ttc, NaN)
+  if (!Number.isFinite(total) || total <= 0) return false
+  if (invoice.accountable_status === 'Envoyé') return true
+  if (!invoice.accountable_status) {
+    const date = asIsoDate(invoice.invoice_date)
+    const minDate = asIsoDate(facturesMinDate)
+    if (minDate && date && date < minDate) return false
+  }
+  return false
+}
+
+export function clientInvoiceRemaining(invoice) {
   const total = num(invoice.amount_ttc, NaN)
   if (!Number.isFinite(total)) return 0
-  const paid = num(invoice.bank_paid_amount, 0)
-  return round2(total - paid)
+  const paid = Math.max(0, num(invoice.bank_paid_amount, 0))
+  return round2(Math.max(0, total - paid))
+}
+
+export function openClientReceivableTotal(invoices, facturesMinDate) {
+  let total = 0
+  let count = 0
+  for (const invoice of invoices || []) {
+    if (!isClientInvoiceOpen(invoice, facturesMinDate)) continue
+    const remaining = clientInvoiceRemaining(invoice)
+    if (remaining <= 0) continue
+    total += remaining
+    count += 1
+  }
+  return { total: round2(total), count }
 }
 
 function pushFlow(flows, flow) {
@@ -652,13 +683,11 @@ export function projectTreasury(input = {}) {
     })
   }
 
+  const facturesMinDate = asIsoDate(input.facturesMinDate || input.factures_date_min)
   for (const invoice of ctx.invoices) {
-    if (invoice.excluded_from_cash) continue
-    const total = num(invoice.amount_ttc, NaN)
-    if (!Number.isFinite(total) || total === 0) continue
-    if (invoice.paid_at || invoiceIsPaid(invoice.bank_paid_amount, invoice.amount_ttc)) continue
-    const remaining = invoiceRemaining(invoice)
-    if (remaining === 0) continue
+    if (!isClientInvoiceOpen(invoice, facturesMinDate)) continue
+    const remaining = clientInvoiceRemaining(invoice)
+    if (remaining <= 0) continue
     const rawDate = asIsoDate(invoice.expected_date_override)
       || (asIsoDate(invoice.invoice_date) ? addDays(asIsoDate(invoice.invoice_date), ctx.collectionDelayDays) : null)
       || asIsoDate(invoice.due_date)

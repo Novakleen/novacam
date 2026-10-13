@@ -1306,6 +1306,8 @@
     "actionFailed": "Action failed.",
     "matchesAuto": "Automatic matches",
     "matchesReview": "To review",
+    "facturesMatched": "Accountable invoices matched",
+    "facturesUnmatched": "Accountable invoices unmatched",
     "lastImport": "Last import",
     "noImport": "No import yet.",
     "lastImportFailed": "Could not read the last import.",

@@ -21,6 +21,9 @@ const PREVIEW = {
     internal_transfers: 1,
     supplier_bills_inserted: 3,
     supplier_bills_marked_paid: 1,
+    factures_present: true,
+    factures_matched: 8,
+    factures_unmatched: 2,
   },
   keys: [
     {

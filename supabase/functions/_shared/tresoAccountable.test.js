@@ -9,6 +9,7 @@ import {
   sha256Text,
 } from './tresoAccountable.js'
 import { handleTresoImport, BELFIUS_IBAN } from './tresoImportCore.js'
+import { openClientReceivableTotal } from './tresoForecast.js'
 
 function crc32(buf) {
   let c = ~0
@@ -138,42 +139,67 @@ const EXP_HEADERS = [
   'Description Du Code',
   'Payé',
 ]
+const FACTURE_HEADERS = [
+  'Numéro De Revenue',
+  'Facture Type',
+  'Statut',
+  'Date De Facturation',
+  'Échéance',
+  'Montant HTVA',
+  'Montant Total',
+]
 
-function workbook({ transactions, expenses, expenseHeaders = EXP_HEADERS, txHeaders = TX_HEADERS, deflate = false }) {
+function workbook({ transactions, expenses, expenseHeaders = EXP_HEADERS, txHeaders = TX_HEADERS, deflate = false, factures = null, factureHeaders = FACTURE_HEADERS }) {
   const sheet1 = sheetXml(expenseHeaders, expenses)
   const sheet2 = sheetXml(txHeaders, transactions)
+  const hasFactures = factures != null
+  const sheet3 = hasFactures ? sheetXml(factureHeaders, factures) : null
+  const sheetOverrides = [
+    '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
+    '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
+    hasFactures ? '<Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' : '',
+  ].filter(Boolean).join('\n  ')
   const contentTypes = `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  ${sheetOverrides}
 </Types>`
   const rels = `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>`
+  const sheetTags = [
+    '<sheet name="Dépenses" sheetId="1" r:id="rId1"/>',
+    '<sheet name="Transactions" sheetId="2" r:id="rId2"/>',
+    hasFactures ? '<sheet name="Factures" sheetId="3" r:id="rId3"/>' : '',
+  ].filter(Boolean).join('\n    ')
   const workbookXml = `<?xml version="1.0" encoding="UTF-8"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Dépenses" sheetId="1" r:id="rId1"/>
-    <sheet name="Transactions" sheetId="2" r:id="rId2"/>
+    ${sheetTags}
   </sheets>
 </workbook>`
+  const relTags = [
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>',
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>',
+    hasFactures ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>' : '',
+  ].filter(Boolean).join('\n  ')
   const wbRels = `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+  ${relTags}
 </Relationships>`
-  return zipStore([
+  const entries = [
     ['[Content_Types].xml', contentTypes],
     ['_rels/.rels', rels],
     ['xl/workbook.xml', workbookXml],
     ['xl/_rels/workbook.xml.rels', wbRels],
     ['xl/worksheets/sheet1.xml', sheet1],
     ['xl/worksheets/sheet2.xml', sheet2],
-  ], { deflateNames: deflate ? ['xl/worksheets/sheet2.xml'] : [] })
+  ]
+  if (hasFactures) entries.push(['xl/worksheets/sheet3.xml', sheet3])
+  return zipStore(entries, { deflateNames: deflate ? ['xl/worksheets/sheet2.xml'] : [] })
 }
 
 function sampleWorkbook() {
@@ -310,6 +336,17 @@ function createMemoryDb(keys = []) {
         if (wanted.has(row.dedup_hash)) row.import_batch_id = batchId
       }
     },
+    async listClientInvoiceNumbers() {
+      return state.invoices.map((row) => ({ id: row.id, invoice_number: row.invoice_number }))
+    },
+    async updateAccountableStatuses(updates) {
+      for (const update of updates) {
+        const row = state.invoices.find((invoice) => invoice.id === update.id)
+        if (!row) continue
+        row.accountable_status = update.accountable_status
+        row.accountable_synced_at = update.accountable_synced_at
+      }
+    },
     async loadMatchState() {
       return {
         transactions: state.tx.map((row) => ({ ...row })),
@@ -394,6 +431,8 @@ test('parser keeps one exact duplicate and flags a visa reload', async () => {
   assert.equal(parsed.expenses.filter((row) => !row.isPaid).length, 1)
   assert.equal(parsed.expenses.find((row) => !row.isPaid).dueDateSource, 'estimee')
   assert.equal(parsed.expenses.find((row) => !row.isPaid).dueDate, '2026-11-01')
+  assert.equal(parsed.facturesPresent, false)
+  assert.deepEqual(parsed.factures, [])
 })
 
 test('deflated worksheet and échéance column are read', async () => {
@@ -659,3 +698,164 @@ test('import excludes Quimesis bills and links Radius to the spread commitment',
   assert.equal(byName['Papeterie Démo'].excluded_from_cash, false)
   assert.equal(byName['Papeterie Démo'].replaces_commitment_id, null)
 })
+
+test('Factures sheet groups line items and normalizes the invoice number', async () => {
+  const parsed = await interpretAccountableSheets([
+    {
+      name: 'Transactions',
+      headers: TX_HEADERS,
+      rows: [{
+        'Date De Transaction': '09/10/2026',
+        'Numéro De Compte': BELFIUS_IBAN,
+        Communication: 'ok',
+        Montant: 10,
+        'Nom Contrepartie': 'Client',
+        'Compte Contrepartie': '',
+      }],
+    },
+    {
+      name: 'Dépenses',
+      headers: EXP_HEADERS,
+      rows: [{
+        'Date Comptable': '02/10/2026',
+        'Nom Du Fournisseur': 'Papeterie Démo',
+        'Montant Total': 40,
+        'Description Du Code': 'Fournitures',
+        'Payé': 'Non',
+      }],
+    },
+    {
+      name: 'Factures',
+      headers: FACTURE_HEADERS,
+      rows: [
+        rowFacture('2BXL-2632', 'invoice', 'Envoyé', '01/09/2026', '01/10/2026', 400, 400),
+        rowFacture('2blx - 2632', 'invoice', 'Envoyé', '01/09/2026', '01/10/2026', 600, 600),
+        rowFacture('2632', 'invoice', 'Envoyé', '01/08/2026', '01/09/2026', 10, 10),
+        rowFacture('2BLX-2900', 'credit-note', 'Payé', '10/09/2026', '10/10/2026', 50, 50),
+      ].map(factureObject),
+    },
+  ])
+  assert.equal(parsed.ok, true)
+  assert.equal(parsed.facturesPresent, true)
+  assert.equal(parsed.facturesSkipped, 1)
+  assert.equal(parsed.facturesDateMin, '2026-09-01')
+  assert.equal(parsed.factures.length, 2)
+  const invoice = parsed.factures.find((row) => row.invoiceNumber === '2BLX-2632')
+  assert.equal(invoice.lineCount, 2)
+  assert.equal(invoice.amountTtc, 1000)
+  assert.equal(invoice.amountHt, 1000)
+  assert.equal(invoice.status, 'Envoyé')
+  assert.equal(invoice.type, 'invoice')
+  assert.equal(parsed.factures.find((row) => row.invoiceNumber === '2BLX-2900').type, 'credit-note')
+})
+
+test('missing Factures column rejects the workbook', async () => {
+  const parsed = await parseAccountableXlsx(workbook({
+    transactions: [['09/10/2026', BELFIUS_IBAN, 'ok', 10, 'Client', '']],
+    expenses: [['02/10/2026', 'Papeterie Démo', 40, 'Fournitures', 'Non']],
+    factures: [['2BLX-2632', 'invoice', '01/09/2026', '01/10/2026', 100, 121]],
+    factureHeaders: FACTURE_HEADERS.filter((header) => header !== 'Statut'),
+  }))
+  assert.equal(parsed.ok, false)
+  assert.equal(parsed.error, 'missing_column')
+  assert.equal(parsed.sheet, 'Factures')
+  assert.equal(parsed.column, 'statut')
+})
+
+test('synthetic Factures import: 7 Envoyé invoices, partial bank payments 225 and 300', async () => {
+  const plain = 'nvk_test_key_0123456789abcdef'
+  const db = createMemoryDb([{
+    id: 'key-1',
+    key_hash: await sha256Text(plain),
+    scope: 'treso-import',
+    revoked_at: null,
+    created_by: 'user-admin',
+  }])
+  const openInvoices = [
+    { id: 'i1', invoice_number: '2BXL 2632', invoice_date: '2026-09-01', amount_ttc: 1000, bank_paid_amount: 0, hubspot_status: 'open', hubspot_invoice_id: 'hs-1' },
+    { id: 'i2', invoice_number: '2BLX-2633', invoice_date: '2026-09-02', amount_ttc: 800, bank_paid_amount: 225, hubspot_status: 'open', hubspot_invoice_id: 'hs-2' },
+    { id: 'i3', invoice_number: '2BLX-2634', invoice_date: '2026-09-03', amount_ttc: 700, bank_paid_amount: 300, hubspot_status: 'open', hubspot_invoice_id: 'hs-3' },
+    { id: 'i4', invoice_number: '2BLX-2635', invoice_date: '2026-09-04', amount_ttc: 500, bank_paid_amount: 0, hubspot_status: 'open', hubspot_invoice_id: 'hs-4' },
+    { id: 'i5', invoice_number: '2BLX-2636', invoice_date: '2026-09-05', amount_ttc: 450, bank_paid_amount: 0, hubspot_status: 'open', hubspot_invoice_id: 'hs-5' },
+    { id: 'i6', invoice_number: '2BLX-2637', invoice_date: '2026-09-06', amount_ttc: 600, bank_paid_amount: 0, hubspot_status: 'open', hubspot_invoice_id: 'hs-6' },
+    { id: 'i7', invoice_number: '2BLX-2638', invoice_date: '2026-09-07', amount_ttc: 550, bank_paid_amount: 0, hubspot_status: 'paid', hubspot_invoice_id: 'hs-7' },
+  ]
+  db.state.invoices.push(
+    ...openInvoices,
+    { id: 'paid', invoice_number: '2BLX-2700', invoice_date: '2026-09-08', amount_ttc: 999, bank_paid_amount: 0, hubspot_status: 'open', hubspot_invoice_id: 'hs-paid' },
+    { id: 'old', invoice_number: '2BLX-1001', invoice_date: '2026-01-10', amount_ttc: 5000, bank_paid_amount: 0, hubspot_status: 'open', hubspot_invoice_id: 'hs-old' },
+  )
+  db.state.tx.push(
+    { id: 'pay-225', account_id: 'acc-belfius', booking_date: '2026-09-20', amount: 225, communication: '2BLX-2633', counterparty_name: 'Client Démo', match_status: 'auto', match_method: 'numero', client_invoice_id: 'i2', is_internal_transfer: false, excluded_from_cash: false },
+    { id: 'pay-300', account_id: 'acc-belfius', booking_date: '2026-09-21', amount: 300, communication: '2BLX-2634', counterparty_name: 'Client Démo', match_status: 'auto', match_method: 'numero', client_invoice_id: 'i3', is_internal_transfer: false, excluded_from_cash: false },
+  )
+  const before = db.state.invoices.length
+  const factures = [
+    ['2BLX-2632', 'invoice', 'Envoyé', '01/09/2026', '01/10/2026', 400, 400],
+    ['2BXL-2632', 'invoice', 'Envoyé', '01/09/2026', '01/10/2026', 600, 600],
+    ['2BLX-2633', 'invoice', 'Envoyé', '02/09/2026', '02/10/2026', 800, 800],
+    ['2BLX-2634', 'invoice', 'Envoyé', '03/09/2026', '03/10/2026', 700, 700],
+    ['2BLX-2635', 'invoice', 'Envoyé', '04/09/2026', '04/10/2026', 500, 500],
+    ['2BLX-2636', 'invoice', 'Envoyé', '05/09/2026', '05/10/2026', 450, 450],
+    ['2blx - 2637', 'invoice', 'Envoyé', '06/09/2026', '06/10/2026', 600, 600],
+    ['2BLX-2638', 'invoice', 'Envoyé', '07/09/2026', '07/10/2026', 550, 550],
+    ['2BLX-2700', 'invoice', 'Payé', '08/09/2026', '08/10/2026', 999, 999],
+    ['2BLX-2800', 'invoice', 'Envoyé', '09/09/2026', '09/10/2026', 111, 111],
+    ['2BLX-2900', 'credit-note', 'Payé', '10/09/2026', '10/10/2026', 50, 50],
+    ['2632', 'invoice', 'Envoyé', '01/08/2026', '01/09/2026', 10, 10],
+  ]
+  const bytes = workbook({
+    transactions: [['09/10/2026', BELFIUS_IBAN, 'demo', 10, 'Client Démo', '']],
+    expenses: [['02/10/2026', 'Papeterie Démo', 40, 'Fournitures', 'Non']],
+    factures,
+  })
+  const response = await handleTresoImport(importRequest(bytes, { key: plain }), {
+    corsHeaders,
+    db,
+    requireCaller: async () => ({ userId: 'unused' }),
+  })
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(body.factures_present, true)
+  assert.equal(body.factures_matched, 8)
+  assert.equal(body.factures_unmatched, 2)
+  assert.equal(body.factures_skipped, 1)
+  assert.equal(body.factures_date_min, '2026-09-01')
+  assert.equal(db.state.invoices.length, before)
+  assert.equal(db.state.batches[0].report.factures_date_min, '2026-09-01')
+
+  const envoyes = db.state.invoices.filter((row) => row.accountable_status === 'Envoyé')
+  assert.equal(envoyes.length, 7)
+  assert.deepEqual(
+    envoyes.map((row) => row.bank_paid_amount).filter((amount) => amount > 0).sort((a, b) => a - b),
+    [225, 300],
+  )
+  const ttc = envoyes.reduce((sum, row) => sum + row.amount_ttc, 0)
+  const receivable = openClientReceivableTotal(db.state.invoices, body.factures_date_min)
+  assert.equal(receivable.count, 7)
+  assert.equal(receivable.total, Math.round((ttc - 525) * 100) / 100)
+
+  const paid = db.state.invoices.find((row) => row.id === 'paid')
+  assert.equal(paid.accountable_status, 'Payé')
+  assert.equal(paid.hubspot_status, 'open')
+  assert.equal(paid.hubspot_invoice_id, 'hs-paid')
+  assert.equal(paid.bank_paid_amount, 0)
+  const stillOpen = db.state.invoices.find((row) => row.id === 'i7')
+  assert.equal(stillOpen.hubspot_status, 'paid')
+  assert.equal(stillOpen.accountable_status, 'Envoyé')
+  const old = db.state.invoices.find((row) => row.id === 'old')
+  assert.equal(old.accountable_status, undefined)
+  assert.equal(old.hubspot_status, 'open')
+  assert.ok(envoyes.every((row) => row.accountable_synced_at))
+  const partial = db.state.invoices.find((row) => row.id === 'i2')
+  assert.equal(partial.bank_paid_amount, 225)
+  assert.equal(partial.amount_ttc, 800)
+})
+
+function rowFacture(number, type, status, date, due, ht, total) {
+  return [number, type, status, date, due, ht, total]
+}
+
+function factureObject(row) {
+  return Object.fromEntries(FACTURE_HEADERS.map((header, index) => [header, row[index]]))
+}

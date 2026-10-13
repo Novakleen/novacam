@@ -65,6 +65,18 @@ test('dashboard screen: orange alert, lists, what-if does not write', () => {
   assert.ok(simulated.effect.lowAfter < simulated.effect.lowBefore);
 });
 
+test('dashboard client total uses Accountable status, not HubSpot or the bank', () => {
+  const input = previewForecastInput();
+  input.facturesMinDate = '2026-09-01';
+  input.invoices = [
+    { id: 'a', invoice_number: '2BLX-2632', invoice_date: '2026-09-02', amount_ttc: 1000, bank_paid_amount: 225, hubspot_status: 'paid', accountable_status: 'Envoyé' },
+    { id: 'b', invoice_number: '2BLX-2700', invoice_date: '2026-09-03', amount_ttc: 400, bank_paid_amount: 0, hubspot_status: 'open', accountable_status: 'Payé' },
+    { id: 'c', invoice_number: '2BLX-1001', invoice_date: '2026-01-15', amount_ttc: 5000, bank_paid_amount: 0, hubspot_status: 'open' },
+  ];
+  const view = buildScreen(input);
+  assert.equal(view.footer.clients, 775);
+});
+
 test('amount parsing and seasonality length', () => {
   assert.equal(parseAmount('5 000,50'), 5000.5);
   assert.equal(parseAmount(''), null);
