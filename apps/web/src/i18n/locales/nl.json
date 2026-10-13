@@ -1305,6 +1305,16 @@
     "loadFailed": "De lijst laden is mislukt.",
     "actionFailed": "Actie mislukt.",
     "matchesAuto": "Automatische koppelingen",
-    "matchesReview": "Te valideren"
+    "matchesReview": "Te valideren",
+    "lastImport": "Laatste import",
+    "noImport": "Nog geen import.",
+    "lastImportFailed": "De laatste import kan niet worden gelezen.",
+    "channel": "Kanaal",
+    "channelApi": "API-sleutel",
+    "channelManual": "Handmatig",
+    "importedAt": "Datum en uur",
+    "rowsInsertedShort": "Toegevoegde lijnen",
+    "lastBalance": "Belfius-saldo",
+    "staleBadge": "Verouderde gegevens"
   }
 }

@@ -101,6 +101,7 @@ from (values
 where not exists (select 1 from public.treso_commitments c where c.label = v.label);
 
 -- Quimesis 16 131,72 + 1 908,48 = 18 040,20 € au 09/07/2026, hors cash.
+-- Le nom exclu sert aussi à l'import des factures fournisseurs (voir treso_settings.excluded_names).
 insert into public.treso_client_invoices (
   hubspot_invoice_id, client_name, invoice_date, due_date, amount_ttc, excluded_from_cash
 )

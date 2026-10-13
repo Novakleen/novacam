@@ -3,6 +3,7 @@
  * The database is injected so node tests can use an in-memory port.
  */
 import { parseAccountableXlsx, parseIsoDate, sha256Hex } from './tresoAccountable.js'
+import { advanceCommitments, classifyImportedBill } from './tresoForecast.js'
 import { applyBankMatch } from './tresoMatch.js'
 
 export const BELFIUS_IBAN = 'BE25068955038482'
@@ -133,6 +134,24 @@ function reportFrom(parsed, extra) {
   }
 }
 
+async function advanceKnownCommitments(db) {
+  if (
+    typeof db.listTransactionsForAdvance !== 'function'
+    || typeof db.updateCommitmentSchedule !== 'function'
+    || typeof db.listCommitments !== 'function'
+  ) return 0
+  const transactions = await db.listTransactionsForAdvance()
+  const current = await db.listCommitments()
+  const updates = advanceCommitments({ commitments: current, transactions })
+  for (const update of updates) {
+    await db.updateCommitmentSchedule(update.id, {
+      next_due_date: update.next_due_date,
+      remaining_occurrences: update.remaining_occurrences,
+    })
+  }
+  return updates.length
+}
+
 export async function applyAccountableImport({
   parsed,
   fileSha256,
@@ -155,6 +174,7 @@ export async function applyAccountableImport({
       supplier_bills_inserted: 0,
       supplier_bills_marked_paid: 0,
       supplier_bills_duplicate: parsed.expenses.length,
+      commitments_advanced: await advanceKnownCommitments(db),
     })
   }
 
@@ -188,6 +208,8 @@ export async function applyAccountableImport({
   let billsInserted = 0
   let billsMarkedPaid = 0
   let billsDuplicate = 0
+  const excludedNames = typeof db.listExcludedNames === 'function' ? await db.listExcludedNames() : []
+  const commitments = typeof db.listCommitments === 'function' ? await db.listCommitments() : []
   const existingBills = await db.findBillsByHashes(parsed.expenses.map((bill) => bill.rowHash))
   const byHash = new Map(existingBills.map((bill) => [bill.row_hash, bill]))
   const toInsert = []
@@ -198,6 +220,11 @@ export async function applyAccountableImport({
         billsDuplicate += 1
         continue
       }
+      const flags = classifyImportedBill({
+        supplierName: bill.supplierName,
+        excludedNames,
+        commitments,
+      })
       toInsert.push({
         supplier_name: bill.supplierName,
         booking_date: bill.bookingDate,
@@ -208,6 +235,8 @@ export async function applyAccountableImport({
         due_date: bill.dueDate,
         due_date_source: bill.dueDateSource,
         row_hash: bill.rowHash,
+        excluded_from_cash: flags.excluded_from_cash,
+        replaces_commitment_id: flags.replaces_commitment_id,
         created_by: userId,
       })
       continue
@@ -257,6 +286,7 @@ export async function applyAccountableImport({
   if (insertedHashes.length && batch?.id) {
     await db.attachBatch(insertedHashes, batch.id)
   }
+  report.commitments_advanced = await advanceKnownCommitments(db)
   return report
 }
 
@@ -333,6 +363,34 @@ export function supabaseTresoDb(admin) {
       const { data, error } = await admin.from('treso_settings').select('supplier_default_due_days').eq('id', 1).maybeSingle()
       if (error) throw error
       return data
+    },
+    async listExcludedNames() {
+      const names = new Set()
+      const settings = await admin.from('treso_settings').select('excluded_names').eq('id', 1).maybeSingle()
+      if (!settings.error && Array.isArray(settings.data?.excluded_names)) {
+        for (const name of settings.data.excluded_names) if (name) names.add(String(name))
+      }
+      const invoices = await admin.from('treso_client_invoices').select('client_name').eq('excluded_from_cash', true)
+      if (invoices.error) throw invoices.error
+      for (const row of invoices.data || []) if (row.client_name) names.add(row.client_name)
+      const bills = await admin.from('treso_supplier_bills').select('supplier_name').eq('excluded_from_cash', true)
+      if (bills.error) throw bills.error
+      for (const row of bills.data || []) if (row.supplier_name) names.add(row.supplier_name)
+      return [...names]
+    },
+    async listCommitments() {
+      const { data, error } = await admin.from('treso_commitments').select('id, label, counterparty, amount, frequency, day_of_month, next_due_date, end_date, remaining_occurrences, spread_weekly, amount_rule, match_pattern, is_active, excluded_from_cash, direction')
+      if (error) throw error
+      return data || []
+    },
+    async listTransactionsForAdvance() {
+      const { data, error } = await admin.from('treso_bank_transactions').select('id, booking_date, amount, counterparty_name, communication, excluded_from_cash, is_internal_transfer')
+      if (error) throw error
+      return data || []
+    },
+    async updateCommitmentSchedule(id, patch) {
+      const { error } = await admin.from('treso_commitments').update(patch).eq('id', id)
+      if (error) throw error
     },
     async findBatchByHash(hash) {
       const { data, error } = await admin.from('treso_import_batches').select('id, file_sha256').eq('file_sha256', hash).maybeSingle()

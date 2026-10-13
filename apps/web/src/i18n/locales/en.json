@@ -1305,6 +1305,16 @@
     "loadFailed": "Could not load the queue.",
     "actionFailed": "Action failed.",
     "matchesAuto": "Automatic matches",
-    "matchesReview": "To review"
+    "matchesReview": "To review",
+    "lastImport": "Last import",
+    "noImport": "No import yet.",
+    "lastImportFailed": "Could not read the last import.",
+    "channel": "Channel",
+    "channelApi": "API key",
+    "channelManual": "Manual",
+    "importedAt": "Date and time",
+    "rowsInsertedShort": "Rows inserted",
+    "lastBalance": "Belfius balance",
+    "staleBadge": "Stale data"
   }
 }
