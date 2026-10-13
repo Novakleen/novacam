@@ -69,6 +69,11 @@ async function readPayload(req) {
   }
 }
 
+/** A PDF or manual due date is never replaced by an Accountable re-import. */
+export function supplierDueDateLocked(source) {
+  return source === 'manuel' || source === 'pdf'
+}
+
 export function readBalances(payload) {
   const belfiusAmount = parseMoney(payload.balanceBelfius)
   const belfiusDate = parseIsoDate(payload.balanceDate)
@@ -303,8 +308,7 @@ export async function applyAccountableImport({
       await db.markBillPaid(found.id)
       billsMarkedPaid += 1
     }
-    const locked = found.due_date_source === 'manuel' || found.due_date_source === 'pdf'
-    if (!locked && bill.dueDateSource === 'export' && (found.due_date_source !== 'export' || found.due_date !== bill.dueDate)) {
+    if (!supplierDueDateLocked(found.due_date_source) && bill.dueDateSource === 'export' && (found.due_date_source !== 'export' || found.due_date !== bill.dueDate)) {
       await db.updateBillDue(found.id, bill.dueDate, 'export')
     }
   }
