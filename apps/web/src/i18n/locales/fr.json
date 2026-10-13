@@ -1291,6 +1291,20 @@
     "noKeys": "Aucune clé.",
     "confirmRevoke": "Révoquer cette clé ? Les imports avec cette clé seront refusés.",
     "keyCreated": "Clé créée",
-    "keyRevoked": "Clé révoquée"
+    "keyRevoked": "Clé révoquée",
+    "navImport": "Import",
+    "navQueue": "À valider",
+    "queueTitle": "Trésorerie — À valider",
+    "queueSubtitle": "Montant exact, sans numéro de facture. Ces paiements ne comptent qu'une fois confirmés.",
+    "queueEmpty": "Rien à valider.",
+    "confirm": "Confirmer",
+    "reject": "Rejeter",
+    "confirmed": "Rapprochement confirmé",
+    "rejected": "Rapprochement rejeté",
+    "proposed": "Facture proposée",
+    "loadFailed": "Impossible de charger la file.",
+    "actionFailed": "Action impossible.",
+    "matchesAuto": "Rapprochements auto",
+    "matchesReview": "À valider"
   }
 }

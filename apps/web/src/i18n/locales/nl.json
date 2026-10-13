@@ -1291,6 +1291,20 @@
     "noKeys": "Geen sleutels.",
     "confirmRevoke": "Deze sleutel intrekken? Imports met deze sleutel worden geweigerd.",
     "keyCreated": "Sleutel aangemaakt",
-    "keyRevoked": "Sleutel ingetrokken"
+    "keyRevoked": "Sleutel ingetrokken",
+    "navImport": "Import",
+    "navQueue": "Te valideren",
+    "queueTitle": "Thesaurie — Te valideren",
+    "queueSubtitle": "Exact bedrag, zonder factuurnummer. Deze betalingen tellen pas na bevestiging.",
+    "queueEmpty": "Niets te valideren.",
+    "confirm": "Bevestigen",
+    "reject": "Afwijzen",
+    "confirmed": "Koppeling bevestigd",
+    "rejected": "Koppeling afgewezen",
+    "proposed": "Voorgestelde factuur",
+    "loadFailed": "De lijst laden is mislukt.",
+    "actionFailed": "Actie mislukt.",
+    "matchesAuto": "Automatische koppelingen",
+    "matchesReview": "Te valideren"
   }
 }

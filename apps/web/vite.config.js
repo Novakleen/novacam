@@ -393,6 +393,7 @@ export default defineConfig({
 			allow: [
 				path.resolve(__dirname),
 				path.join(path.resolve(__dirname, '../..'), 'node_modules'),
+				path.join(path.resolve(__dirname, '../..'), 'supabase/functions/_shared'),
 			],
 		},
 	},

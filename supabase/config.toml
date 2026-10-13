@@ -7,3 +7,9 @@ project_id = "novacam"
 
 [functions.treso-import]
 verify_jwt = false
+
+# Gateway JWT check is off: treso-hubspot-sync accepts an Admin user JWT
+# or the service role key (hourly cron). The anon key must not pass.
+
+[functions.treso-hubspot-sync]
+verify_jwt = false

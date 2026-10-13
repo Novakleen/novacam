@@ -1291,6 +1291,20 @@
     "noKeys": "No keys.",
     "confirmRevoke": "Revoke this key? Imports using it will be rejected.",
     "keyCreated": "Key created",
-    "keyRevoked": "Key revoked"
+    "keyRevoked": "Key revoked",
+    "navImport": "Import",
+    "navQueue": "To review",
+    "queueTitle": "Treasury — To review",
+    "queueSubtitle": "Exact amount, no invoice number. These payments count only after confirmation.",
+    "queueEmpty": "Nothing to review.",
+    "confirm": "Confirm",
+    "reject": "Reject",
+    "confirmed": "Match confirmed",
+    "rejected": "Match rejected",
+    "proposed": "Proposed invoice",
+    "loadFailed": "Could not load the queue.",
+    "actionFailed": "Action failed.",
+    "matchesAuto": "Automatic matches",
+    "matchesReview": "To review"
   }
 }

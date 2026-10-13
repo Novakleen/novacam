@@ -204,6 +204,7 @@ function createMemoryDb(keys = []) {
     tx: [],
     bills: [],
     snapshots: [],
+    invoices: [],
     accounts: [
       { id: 'acc-belfius', name: 'Belfius courant', iban: BELFIUS_IBAN, kind: 'courant', is_active: true },
       { id: 'acc-visa', name: 'Visa prépayée', iban: null, kind: 'carte', is_active: true },
@@ -286,6 +287,28 @@ function createMemoryDb(keys = []) {
       const wanted = new Set(hashes)
       for (const row of state.tx) {
         if (wanted.has(row.dedup_hash)) row.import_batch_id = batchId
+      }
+    },
+    async loadMatchState() {
+      return {
+        transactions: state.tx.map((row) => ({ ...row })),
+        invoices: state.invoices.map((row) => ({ ...row })),
+        belfiusAccountId: 'acc-belfius',
+      }
+    },
+    async applyMatchPlan(plan) {
+      for (const update of plan.transactionUpdates) {
+        const row = state.tx.find((tx) => tx.id === update.id)
+        if (!row) continue
+        row.client_invoice_id = update.client_invoice_id
+        row.match_status = update.match_status
+        row.match_method = update.match_method
+      }
+      for (const update of plan.invoiceUpdates) {
+        const row = state.invoices.find((invoice) => invoice.id === update.id)
+        if (!row) continue
+        row.bank_paid_amount = update.bank_paid_amount
+        row.paid_at = update.paid_at
       }
     },
   }
