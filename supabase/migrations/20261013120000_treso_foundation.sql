@@ -290,7 +290,6 @@ insert into storage.buckets (id, name, public)
 values ('treso-supplier-invoices', 'treso-supplier-invoices', false)
 on conflict (id) do update set public = false, name = excluded.name;
 
-alter table storage.objects enable row level security;
 
 drop policy if exists treso_supplier_invoices_select on storage.objects;
 create policy treso_supplier_invoices_select on storage.objects
