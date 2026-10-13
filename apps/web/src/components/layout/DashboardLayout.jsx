@@ -127,7 +127,7 @@ const DashboardLayout = ({ children, fullWidth = false }) => {
     if (location.pathname === '/companycam-explorer') return t('nav.companyCam');
     if (location.pathname === '/direct7-debug') return t('nav.direct7Sms');
     if (location.pathname === '/margins') return t('nav.margins');
-    if (location.pathname.startsWith('/tresorerie')) return t('nav.treasury');
+    if (location.pathname.startsWith('/tresorerie') || location.pathname.startsWith('/dev/treso')) return t('nav.treasury');
     if (location.pathname === '/bug-hunter') return t('nav.bugHunter');
     if (location.pathname === '/time-tracker') return t('nav.timeTracker');
     if (location.pathname === '/spray-tracker') return t('nav.sprayTracker');

@@ -9,13 +9,20 @@ const LINKS = [
   { id: 'settings', to: '/tresorerie/parametres', label: 'navSettings' },
 ];
 
-const TresoSubnav = ({ active }) => {
+const TresoSubnav = ({ active, secondary = false }) => {
   const { t } = useTranslation();
   return (
-    <nav className="flex flex-wrap gap-2" aria-label={t('nav.treasury')}>
+    <nav className={secondary ? 'flex flex-wrap gap-x-4 gap-y-2' : 'flex flex-wrap gap-2'} aria-label={t('nav.treasury')}>
       {LINKS.map((link) => {
         const className = ({ isActive }) => {
           const on = active ? active === link.id : isActive;
+          if (secondary) {
+            return `text-sm whitespace-nowrap ${
+              on
+                ? 'font-semibold text-neutral-950 underline decoration-[#facc15] decoration-2 underline-offset-4 dark:text-white'
+                : 'text-neutral-500 hover:text-neutral-950 dark:hover:text-white'
+            }`;
+          }
           return `rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap ${
             on
               ? 'bg-primary text-primary-foreground'
