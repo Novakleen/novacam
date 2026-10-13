@@ -36,6 +36,20 @@ const PREVIEW = {
       last_used_at: '2026-09-30T08:00:00Z',
     },
   ],
+  lastImport: {
+    today: '2026-10-13',
+    staleAfterBusinessDays: 2,
+    batch: {
+      created_at: '2026-10-08T07:10:00Z',
+      channel: 'api',
+      rows_inserted: 42,
+      data_as_of: '2026-10-08',
+    },
+    balance: {
+      balance: 2651.62,
+      balance_date: '2026-10-08',
+    },
+  },
 };
 
 /** Dev-only screen with synthetic figures. Not linked from the menu. */

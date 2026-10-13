@@ -1,4 +1,5 @@
 import { supabase, supabaseAnonKey, supabaseUrl } from '@/lib/customSupabaseClient';
+import { presentLastImport, todayInBrussels } from '../../../../../supabase/functions/_shared/tresoForecast.js';
 
 async function sha256Text(text) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -77,4 +78,55 @@ export async function revokeTresoApiKey(id) {
     .update({ revoked_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
+}
+
+function pickCurrentAccount(accounts) {
+  const rows = accounts || [];
+  return rows.find((row) => String(row.iban || '').replace(/\s+/g, '').toUpperCase().endsWith('8482'))
+    || rows.find((row) => row.is_active !== false && row.include_in_cash !== false)
+    || null;
+}
+
+export async function loadLastImportSummary() {
+  const { data: batch, error } = await supabase
+    .from('treso_import_batches')
+    .select('id, created_at, channel, rows_inserted, data_as_of')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+
+  const { data: accounts, error: accountsError } = await supabase
+    .from('treso_accounts')
+    .select('id, iban, kind, is_active, include_in_cash')
+    .eq('kind', 'courant');
+  if (accountsError) throw accountsError;
+  const account = pickCurrentAccount(accounts);
+
+  let balance = null;
+  if (account?.id) {
+    const { data: snap, error: snapError } = await supabase
+      .from('treso_balance_snapshots')
+      .select('balance, balance_date, created_at')
+      .eq('account_id', account.id)
+      .order('balance_date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (snapError) throw snapError;
+    balance = snap;
+  }
+
+  const { data: settings, error: settingsError } = await supabase
+    .from('treso_settings')
+    .select('stale_after_business_days')
+    .eq('id', 1)
+    .maybeSingle();
+  if (settingsError) throw settingsError;
+
+  return presentLastImport({
+    batch,
+    balance,
+    today: todayInBrussels(),
+    staleAfterBusinessDays: settings?.stale_after_business_days ?? 2,
+  });
 }

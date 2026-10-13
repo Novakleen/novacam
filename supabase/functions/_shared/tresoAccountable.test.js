@@ -205,6 +205,7 @@ function createMemoryDb(keys = []) {
     bills: [],
     snapshots: [],
     invoices: [],
+    commitments: [],
     accounts: [
       { id: 'acc-belfius', name: 'Belfius courant', iban: BELFIUS_IBAN, kind: 'courant', is_active: true },
       { id: 'acc-visa', name: 'Visa prépayée', iban: null, kind: 'carte', is_active: true },
@@ -224,6 +225,26 @@ function createMemoryDb(keys = []) {
     },
     async getSettings() {
       return state.settings
+    },
+    async listExcludedNames() {
+      const names = new Set(state.settings.excluded_names || [])
+      for (const row of state.invoices) {
+        if (row.excluded_from_cash && row.client_name) names.add(row.client_name)
+      }
+      for (const row of state.bills) {
+        if (row.excluded_from_cash && row.supplier_name) names.add(row.supplier_name)
+      }
+      return [...names]
+    },
+    async listCommitments() {
+      return state.commitments.map((row) => ({ ...row }))
+    },
+    async listTransactionsForAdvance() {
+      return state.tx.map((row) => ({ ...row }))
+    },
+    async updateCommitmentSchedule(id, patch) {
+      const row = state.commitments.find((item) => item.id === id)
+      if (row) Object.assign(row, patch)
     },
     async findBatchByHash(hash) {
       return state.batches.find((batch) => batch.file_sha256 === hash) ?? null
@@ -592,4 +613,49 @@ test('shared strings and direct row interpretation stay aligned', async () => {
   const parsed = await interpretAccountableSheets(sheets)
   assert.equal(parsed.transactions[0].amount, 12.5)
   assert.equal(parsed.expenses[0].dueDate, '2026-10-31')
+})
+
+test('import excludes Quimesis bills and links Radius to the spread commitment', async () => {
+  const plain = 'nvk_test_key_0123456789abcdef'
+  const db = createMemoryDb([{
+    id: 'key-1',
+    key_hash: await sha256Text(plain),
+    scope: 'treso-import',
+    revoked_at: null,
+    created_by: 'user-admin',
+  }])
+  db.state.invoices.push({
+    id: 'inv-quimesis',
+    client_name: 'Quimesis',
+    excluded_from_cash: true,
+  })
+  db.state.commitments.push({
+    id: 'radius',
+    counterparty: 'Radius',
+    spread_weekly: true,
+    is_active: true,
+    amount: 2302.27,
+    amount_rule: 'fixed',
+  })
+  const tx = [['09/10/2026', BELFIUS_IBAN, 'Achat', -10, 'Fournisseur', '']]
+  const expenses = [
+    ['08/10/2026', 'QUIMESIS SRL', 18040.2, 'Sous-traitance', 'Non'],
+    ['08/10/2026', 'Radius Business Solutions', 480, 'Carburant', 'Non'],
+    ['08/10/2026', 'Papeterie Démo', 40, 'Fournitures', 'Non'],
+  ]
+  const bytes = workbook({ transactions: tx, expenses })
+  const response = await handleTresoImport(importRequest(bytes, { key: plain }), {
+    corsHeaders,
+    db,
+    requireCaller: async () => ({ userId: 'unused' }),
+  })
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(body.supplier_bills_inserted, 3)
+  const byName = Object.fromEntries(db.state.bills.map((bill) => [bill.supplier_name, bill]))
+  assert.equal(byName['QUIMESIS SRL'].excluded_from_cash, true)
+  assert.equal(byName['Radius Business Solutions'].excluded_from_cash, false)
+  assert.equal(byName['Radius Business Solutions'].replaces_commitment_id, 'radius')
+  assert.equal(byName['Papeterie Démo'].excluded_from_cash, false)
+  assert.equal(byName['Papeterie Démo'].replaces_commitment_id, null)
 })

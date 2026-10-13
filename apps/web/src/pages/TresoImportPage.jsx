@@ -14,14 +14,72 @@ import {
   createTresoApiKey,
   importAccountableFile,
   listTresoApiKeys,
+  loadLastImportSummary,
   revokeTresoApiKey,
 } from '@/lib/treso/import';
+import { formatBrusselsDateTime, presentLastImport } from '@/lib/treso/forecast';
 
 function formatDay(iso) {
   if (!iso) return '—';
   const [year, month, day] = String(iso).slice(0, 10).split('-');
   if (!year || !month || !day) return iso;
   return `${day}/${month}/${year}`;
+}
+
+function formatEuro(value, language) {
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  const locale = String(language || '').startsWith('nl')
+    ? 'nl-BE'
+    : String(language || '').startsWith('en')
+      ? 'en-GB'
+      : 'fr-BE';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(Number(value));
+}
+
+function LastImportCard({ summary, language }) {
+  const { t } = useTranslation();
+  const channel = summary.channel === 'api'
+    ? t('treso.channelApi')
+    : summary.channel === 'ecran'
+      ? t('treso.channelManual')
+      : '—';
+  return (
+    <section aria-labelledby="treso-last-import" className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="treso-last-import" className="font-semibold text-gray-900 dark:text-white">{t('treso.lastImport')}</h2>
+        {summary.stale && (
+          <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+            {t('treso.staleBadge')}
+          </span>
+        )}
+      </div>
+      {summary.empty ? (
+        <p className="text-sm text-gray-500">{t('treso.noImport')}</p>
+      ) : (
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+          <div>
+            <dt className="text-gray-500">{t('treso.importedAt')}</dt>
+            <dd className="font-medium tabular-nums text-gray-900 dark:text-white">{formatBrusselsDateTime(summary.importedAt) || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">{t('treso.channel')}</dt>
+            <dd className="font-medium text-gray-900 dark:text-white">{channel}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">{t('treso.rowsInsertedShort')}</dt>
+            <dd className="font-medium tabular-nums text-gray-900 dark:text-white">{summary.rowsInserted ?? 0}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">{t('treso.lastBalance')}</dt>
+            <dd className="font-medium tabular-nums text-gray-900 dark:text-white">
+              {formatEuro(summary.balance, language)}
+              {summary.balanceDate ? ` · ${formatDay(summary.balanceDate)}` : ''}
+            </dd>
+          </div>
+        </dl>
+      )}
+    </section>
+  );
 }
 
 function Stat({ label, value }) {
@@ -34,7 +92,7 @@ function Stat({ label, value }) {
 }
 
 const TresoImportPage = ({ preview = null }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const { user } = useAuth();
   const [file, setFile] = useState(null);
@@ -47,6 +105,10 @@ const TresoImportPage = ({ preview = null }) => {
   const [keys, setKeys] = useState(preview?.keys ?? []);
   const [revealedKey, setRevealedKey] = useState(preview?.revealedKey ?? '');
   const [keyBusy, setKeyBusy] = useState(false);
+  const [lastImport, setLastImport] = useState(() => (
+    preview?.lastImport ? presentLastImport(preview.lastImport) : undefined
+  ));
+  const [lastImportError, setLastImportError] = useState(false);
 
   const onDrop = useCallback((accepted) => {
     setFile(accepted[0] || null);
@@ -60,6 +122,21 @@ const TresoImportPage = ({ preview = null }) => {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
     },
   });
+
+  const loadLastImport = useCallback(async () => {
+    if (preview) return;
+    try {
+      setLastImport(await loadLastImportSummary());
+      setLastImportError(false);
+    } catch (error) {
+      console.error(error);
+      setLastImportError(true);
+    }
+  }, [preview]);
+
+  useEffect(() => {
+    loadLastImport();
+  }, [loadLastImport]);
 
   const loadKeys = useCallback(async () => {
     if (preview) return;
@@ -107,6 +184,7 @@ const TresoImportPage = ({ preview = null }) => {
         visaBalanceDate: visaDate,
       });
       setReport(next);
+      await loadLastImport();
     } catch (error) {
       console.error(error);
       toast({ variant: 'destructive', title: t('treso.failed'), description: importErrorMessage(error) });
@@ -169,6 +247,11 @@ const TresoImportPage = ({ preview = null }) => {
           <p className="text-gray-500 dark:text-gray-400 mt-1">{t('treso.subtitle')}</p>
         </div>
         <TresoSubnav active="import" />
+
+        {lastImport && <LastImportCard summary={lastImport} language={i18n.language} />}
+        {lastImportError && (
+          <p className="text-sm text-red-600 dark:text-red-400">{t('treso.lastImportFailed')}</p>
+        )}
 
         <form onSubmit={onImport} className="space-y-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6">
           <div

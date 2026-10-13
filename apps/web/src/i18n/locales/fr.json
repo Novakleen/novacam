@@ -1305,6 +1305,16 @@
     "loadFailed": "Impossible de charger la file.",
     "actionFailed": "Action impossible.",
     "matchesAuto": "Rapprochements auto",
-    "matchesReview": "À valider"
+    "matchesReview": "À valider",
+    "lastImport": "Dernier import",
+    "noImport": "Aucun import pour l'instant.",
+    "lastImportFailed": "Impossible de lire le dernier import.",
+    "channel": "Canal",
+    "channelApi": "Clé API",
+    "channelManual": "Manuel",
+    "importedAt": "Date et heure",
+    "rowsInsertedShort": "Lignes ajoutées",
+    "lastBalance": "Solde Belfius",
+    "staleBadge": "Données périmées"
   }
 }
