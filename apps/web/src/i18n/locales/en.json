@@ -395,6 +395,7 @@
     "sourceNovacam": "Novacam",
     "sourceCompanyCam": "CompanyCam",
     "resetFilters": "Reset",
+    "withMargin": "With margin",
     "clearFilters": "Clear filters",
     "colName": "Project name",
     "colUpdated": "Last update",

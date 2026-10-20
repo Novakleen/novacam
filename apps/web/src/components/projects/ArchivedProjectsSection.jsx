@@ -5,14 +5,25 @@ import { useToast } from '@/components/ui/use-toast';
 import { Archive, Search, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import ProjectCard from '@/components/projects/ProjectCard';
+import {
+  attachMarginSnapshot,
+  filterDashboardProjects,
+} from '@/lib/dashboardProjectFilters';
 
-const ArchivedProjectsSection = () => {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
+const ArchivedProjectsSection = ({
+  sourceFilter = 'all',
+  withMargin = false,
+  marginByProject = {},
+  marginByCc = {},
+  previewProjects = null,
+}) => {
+  const [projects, setProjects] = useState(previewProjects || []);
+  const [loading, setLoading] = useState(previewProjects == null);
   const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
 
   const fetchArchivedProjects = async () => {
+    if (previewProjects) return;
     try {
       setLoading(true);
       
@@ -45,13 +56,40 @@ const ArchivedProjectsSection = () => {
   };
 
   useEffect(() => {
+    if (previewProjects) {
+      setProjects(previewProjects);
+      setLoading(false);
+      return;
+    }
     fetchArchivedProjects();
-  }, []);
+    // fetchArchivedProjects closes over toast; previewProjects is the only input that should refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewProjects]);
 
-  const filteredProjects = projects.filter(p =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.address.toLowerCase().includes(searchQuery.toLowerCase())
+  const prepared = projects.map((project) =>
+    attachMarginSnapshot(
+      {
+        ...project,
+        is_archived: true,
+        source: project.companycam_project_id ? 'companycam' : (project.source || 'novacam'),
+      },
+      marginByProject,
+      marginByCc
+    )
   );
+
+  const visibleProjects = filterDashboardProjects(prepared, {
+    source: sourceFilter,
+    tab: 'archived',
+    withMargin,
+  });
+
+  const filteredProjects = visibleProjects.filter((p) => {
+    const name = (p.name || '').toLowerCase();
+    const address = typeof p.address === 'string' ? p.address.toLowerCase() : '';
+    const q = searchQuery.toLowerCase();
+    return name.includes(q) || address.includes(q);
+  });
 
   return (
     <div className="space-y-6">
