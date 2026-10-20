@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/customSupabaseClient';
+import { collectVisibleCompanyCamProjects } from '@/lib/companycamProjects';
 
 /**
  * Generic request wrapper for CompanyCam API via Supabase Edge Function
@@ -49,7 +50,29 @@ const normalizeProjectList = (payload) => {
 };
 
 /**
- * Fast path for UI pickers: returns the most recent active projects,
+ * status=active excludes deleted projects only. Walk following pages until
+ * enough non-archived projects are collected or the list ends.
+ */
+const loadVisibleProjects = (perPage, extraParams = {}) =>
+  collectVisibleCompanyCamProjects({
+    perPage,
+    targetCount: perPage,
+    fetchPage: async (page) => {
+      const res = await makeRequest('GET', '/projects', null, {
+        page,
+        per_page: perPage,
+        status: 'active',
+        ...extraParams,
+      });
+      if (!res.success) {
+        throw new Error(res.error || 'CompanyCam request failed');
+      }
+      return normalizeProjectList(res.data);
+    },
+  });
+
+/**
+ * Fast path for UI pickers: returns the most recent non-archived projects,
  * with an in-memory cache so reopening a form is instant.
  */
 export const listRecentProjects = async ({ per_page = 25, force = false } = {}) => {
@@ -66,17 +89,11 @@ export const listRecentProjects = async ({ per_page = 25, force = false } = {}) 
     return recentProjectsCache.promise;
   }
 
-  const pending = makeRequest('GET', '/projects', null, {
-    page: 1,
-    per_page,
-    status: 'active',
-  })
-    .then((res) => {
-      if (!res.success) return res;
-      const list = normalizeProjectList(res.data);
-      recentProjectsCache.data = list;
+  const pending = loadVisibleProjects(per_page)
+    .then((collected) => {
+      recentProjectsCache.data = collected.projects;
       recentProjectsCache.fetchedAt = Date.now();
-      return { success: true, data: list, fromCache: false };
+      return { success: true, data: collected.projects, fromCache: false };
     })
     .catch((error) => ({
       success: false,
@@ -92,18 +109,16 @@ export const listRecentProjects = async ({ per_page = 25, force = false } = {}) 
   return pending;
 };
 
-/** Server-side name/address search (most relevant matches). */
+/** Server-side name/address search (most relevant matches), archived excluded. */
 export const searchProjects = async (query, { per_page = 25 } = {}) => {
   const q = String(query || '').trim();
   if (!q) return listRecentProjects({ per_page });
-  const res = await makeRequest('GET', '/projects', null, {
-    page: 1,
-    per_page,
-    status: 'active',
-    query: q,
-  });
-  if (!res.success) return res;
-  return { success: true, data: normalizeProjectList(res.data) };
+  try {
+    const collected = await loadVisibleProjects(per_page, { query: q });
+    return { success: true, data: collected.projects };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
 };
 
 /** Warm the recent-projects cache (e.g. when opening Time Tracker). */

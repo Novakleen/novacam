@@ -22,6 +22,11 @@ import CreateProjectDialog from '@/components/projects/CreateProjectDialog';
 import EditProjectDialog from '@/components/projects/EditProjectDialog';
 import ArchivedProjectsSection from '@/components/projects/ArchivedProjectsSection';
 import * as ccApi from '@/lib/companycamService';
+import { collectVisibleCompanyCamProjects } from '@/lib/companycamProjects';
+import {
+  filterDashboardProjects,
+  resetDashboardFilters,
+} from '@/lib/dashboardProjectFilters';
 import { enrichEntry } from '@/lib/timeTracking';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -55,13 +60,14 @@ const extractFeatureImage = (project) => {
   return extractCcPhotoUrl(fi) || fi.url || null;
 };
 
-const DashboardPage = () => {
+const DashboardPage = ({ preview = null }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
 
   const savedFilters = (() => {
+    if (preview) return {};
     try {
       return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     } catch {
@@ -69,21 +75,24 @@ const DashboardPage = () => {
     }
   })();
 
-  const [novacamProjects, setNovacamProjects] = useState([]);
-  const [ccProjects, setCcProjects] = useState([]);
-  const [availableTags, setAvailableTags] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [novacamProjects, setNovacamProjects] = useState(preview?.novacamProjects || []);
+  const [ccProjects, setCcProjects] = useState(preview?.ccProjects || []);
+  const [availableTags, setAvailableTags] = useState(preview?.tags || []);
+  const [loading, setLoading] = useState(!preview);
   const [ccLoading, setCcLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
-  const [ccPage, setCcPage] = useState(1);
-  const [ccHasMore, setCcHasMore] = useState(true);
+  const [ccNextPage, setCcNextPage] = useState(1);
+  const [ccHasMore, setCcHasMore] = useState(!preview);
+  const [marginByProject, setMarginByProject] = useState({});
+  const [marginByCc, setMarginByCc] = useState({});
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [sourceFilter, setSourceFilter] = useState(savedFilters.sourceFilter || 'all');
+  const [sourceFilter, setSourceFilter] = useState(preview?.sourceFilter || savedFilters.sourceFilter || 'all');
   const [selectedTags, setSelectedTags] = useState(savedFilters.selectedTags || []);
-  const [mainViewTab, setMainViewTab] = useState('active');
+  const [withMargin, setWithMargin] = useState(preview?.withMargin ?? Boolean(savedFilters.withMargin));
+  const [mainViewTab, setMainViewTab] = useState(preview?.tab || 'active');
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
@@ -93,11 +102,12 @@ const DashboardPage = () => {
   const debouncedSearchRef = useRef('');
 
   useEffect(() => {
+    if (preview) return;
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ sourceFilter, selectedTags })
+      JSON.stringify({ sourceFilter, selectedTags, withMargin })
     );
-  }, [sourceFilter, selectedTags]);
+  }, [preview, sourceFilter, selectedTags, withMargin]);
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -184,6 +194,8 @@ const DashboardPage = () => {
       marginByProject,
       marginByCc,
     };
+    setMarginByProject(marginByProject);
+    setMarginByCc(marginByCc);
     return statsRef.current;
   }, []);
 
@@ -342,18 +354,26 @@ const DashboardPage = () => {
   }, [enrichNovacam]);
 
   const fetchCcPage = useCallback(
-    async (page, query, stats, append) => {
-      const params = {
-        page,
-        per_page: CC_PAGE_SIZE,
-        status: 'active',
-      };
-      if (query) params.query = query;
+    async (startPage, query, stats, append) => {
+      // status=active still includes CompanyCam-archived projects (archived: true).
+      const collected = await collectVisibleCompanyCamProjects({
+        startPage,
+        perPage: CC_PAGE_SIZE,
+        targetCount: CC_PAGE_SIZE,
+        fetchPage: async (page) => {
+          const params = {
+            page,
+            per_page: CC_PAGE_SIZE,
+            status: 'active',
+          };
+          if (query) params.query = query;
+          const res = await ccApi.listProjects(params);
+          if (!res.success) throw new Error(res.error || t('dashboard.ccLoadError'));
+          return normalizeCcList(res.data);
+        },
+      });
 
-      const res = await ccApi.listProjects(params);
-      if (!res.success) throw new Error(res.error || t('dashboard.ccLoadError'));
-
-      let list = enrichCc(normalizeCcList(res.data), stats);
+      let list = enrichCc(collected.projects, stats);
 
       // Map linked Supabase projects (lean fields only)
       try {
@@ -392,8 +412,8 @@ const DashboardPage = () => {
       }
 
       // Paint list immediately — hydrate thumbs/labels in background (non-blocking)
-      setCcHasMore(list.length >= CC_PAGE_SIZE);
-      setCcPage(page);
+      setCcHasMore(collected.nextPage != null);
+      setCcNextPage(collected.nextPage);
       setCcProjects((prev) => {
         if (!append) return list;
         const seen = new Set(prev.map((p) => String(p.id)));
@@ -413,7 +433,7 @@ const DashboardPage = () => {
   );
 
   const fetchAll = useCallback(async () => {
-    if (!user) return;
+    if (preview || !user) return;
     setLoading(true);
     setError(null);
     try {
@@ -450,17 +470,19 @@ const DashboardPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, sourceFilter, loadTrackerStats, fetchNovacam, fetchCcPage, toast, t]);
+  }, [preview, user, sourceFilter, loadTrackerStats, fetchNovacam, fetchCcPage, toast, t]);
 
   // Initial + source filter changes
   useEffect(() => {
+    if (preview) return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sourceFilter]);
+  }, [user, sourceFilter, preview]);
 
   // CompanyCam server-side search only (debounced). Initial load is fetchAll.
   const lastSearchRef = useRef(debouncedSearch);
   useEffect(() => {
+    if (preview) return;
     if (lastSearchRef.current === debouncedSearch) return;
     lastSearchRef.current = debouncedSearch;
     if (sourceFilter === 'novacam') return;
@@ -484,14 +506,14 @@ const DashboardPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, fetchCcPage, toast, sourceFilter]);
+  }, [debouncedSearch, fetchCcPage, toast, sourceFilter, preview]);
 
   const handleLoadMore = async () => {
-    if (loadingMore || !ccHasMore) return;
+    if (loadingMore || !ccHasMore || ccNextPage == null) return;
     if (sourceFilter === 'novacam') return;
     setLoadingMore(true);
     try {
-      await fetchCcPage(ccPage + 1, debouncedSearch, statsRef.current, true);
+      await fetchCcPage(ccNextPage, debouncedSearch, statsRef.current, true);
     } catch (err) {
       toast({ variant: 'destructive', title: t('common.error'), description: err.message });
     } finally {
@@ -506,11 +528,14 @@ const DashboardPage = () => {
   };
 
   const resetFilters = () => {
-    setSourceFilter('all');
-    setSelectedTags([]);
-    setSearchQuery('');
+    const cleared = resetDashboardFilters();
+    setSourceFilter(cleared.sourceFilter);
+    setSelectedTags(cleared.selectedTags);
+    setSearchQuery(cleared.searchQuery);
     setDebouncedSearch('');
-    localStorage.removeItem(STORAGE_KEY);
+    debouncedSearchRef.current = '';
+    setWithMargin(cleared.withMargin);
+    if (!preview) localStorage.removeItem(STORAGE_KEY);
   };
 
   const unifiedList = useMemo(() => {
@@ -565,6 +590,12 @@ const DashboardPage = () => {
       });
     }
 
+    list = filterDashboardProjects(list, {
+      source: sourceFilter,
+      tab: 'active',
+      withMargin,
+    });
+
     list.sort((a, b) => {
       const da = new Date(a.updated_at || a.created_at || 0).getTime();
       const db = new Date(b.updated_at || b.created_at || 0).getTime();
@@ -578,6 +609,7 @@ const DashboardPage = () => {
     sourceFilter,
     debouncedSearch,
     selectedTags,
+    withMargin,
   ]);
 
   const handleProjectClick = (project) => {
@@ -653,55 +685,66 @@ const DashboardPage = () => {
             </div>
           </div>
 
-          {mainViewTab === 'active' && (
-            <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
-              <div className="inline-flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                {sourceTabs.map((tab) => (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    onClick={() => setSourceFilter(tab.value)}
-                    className={cn(
-                      'px-4 h-9 rounded-lg text-sm font-medium transition-all',
-                      sourceFilter === tab.value
-                        ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
-                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                {(selectedTags.length > 0 || sourceFilter !== 'all' || searchQuery) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetFilters}
-                    className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50 text-xs shrink-0"
-                  >
-                    <FilterX className="mr-1 h-3 w-3" /> {t('dashboard.resetFilters')}
-                  </Button>
-                )}
-                {availableTags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => handleTagToggle(tag.name)}
-                    className={cn(
-                      'cursor-pointer px-3 py-1.5 rounded-full text-xs font-medium border transition-all whitespace-nowrap',
-                      selectedTags.includes(tag.name)
-                        ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
-                    )}
-                  >
-                    {tag.name}
-                  </button>
-                ))}
-              </div>
+          <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
+            <div className="inline-flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+              {sourceTabs.map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setSourceFilter(tab.value)}
+                  className={cn(
+                    'px-4 h-9 rounded-lg text-sm font-medium transition-all',
+                    sourceFilter === tab.value
+                      ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
-          )}
+
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
+              {(selectedTags.length > 0 || sourceFilter !== 'all' || searchQuery || withMargin) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetFilters}
+                  className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50 text-xs shrink-0"
+                >
+                  <FilterX className="mr-1 h-3 w-3" /> {t('dashboard.resetFilters')}
+                </Button>
+              )}
+              <button
+                type="button"
+                onClick={() => setWithMargin((on) => !on)}
+                aria-pressed={withMargin}
+                className={cn(
+                  'cursor-pointer px-3 py-1.5 rounded-full text-xs font-medium border transition-all whitespace-nowrap',
+                  withMargin
+                    ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+                )}
+              >
+                {t('dashboard.withMargin')}
+              </button>
+              {mainViewTab === 'active' && availableTags.map((tag) => (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => handleTagToggle(tag.name)}
+                  className={cn(
+                    'cursor-pointer px-3 py-1.5 rounded-full text-xs font-medium border transition-all whitespace-nowrap',
+                    selectedTags.includes(tag.name)
+                      ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+                  )}
+                >
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <TabsContent value="active" className="mt-0 space-y-4">
@@ -741,11 +784,11 @@ const DashboardPage = () => {
                   {t('dashboard.emptyTitle')}
                 </h3>
                 <p className="text-sm text-gray-500 max-w-sm mb-4">
-                  {searchQuery || selectedTags.length
+                  {searchQuery || selectedTags.length || withMargin
                     ? t('dashboard.emptyFiltered')
                     : t('dashboard.emptyHint')}
                 </p>
-                {searchQuery || selectedTags.length || sourceFilter !== 'all' ? (
+                {searchQuery || selectedTags.length || sourceFilter !== 'all' || withMargin ? (
                   <Button variant="outline" onClick={resetFilters}>
                     {t('dashboard.clearFilters')}
                   </Button>
@@ -787,7 +830,13 @@ const DashboardPage = () => {
         </TabsContent>
 
         <TabsContent value="archived" className="mt-0">
-          <ArchivedProjectsSection />
+          <ArchivedProjectsSection
+            sourceFilter={sourceFilter}
+            withMargin={withMargin}
+            marginByProject={marginByProject}
+            marginByCc={marginByCc}
+            previewProjects={preview?.archivedProjects}
+          />
         </TabsContent>
       </Tabs>
 

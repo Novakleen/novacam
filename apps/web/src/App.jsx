@@ -50,6 +50,7 @@ const devRoutes = import.meta.env.DEV
       { path: '/dev/treso-echeances', Page: React.lazy(() => import('@/pages/TresoEcheancesPreviewPage')) },
       { path: '/dev/treso-parametres', Page: React.lazy(() => import('@/pages/TresoParametresPreviewPage')) },
       { path: '/dev/treso-access', Page: React.lazy(() => import('@/pages/TresoAccessPreviewPage')) },
+      { path: '/dev/dashboard-margin', Page: React.lazy(() => import('@/pages/DashboardMarginPreviewPage')) },
     ]
   : [];
 
